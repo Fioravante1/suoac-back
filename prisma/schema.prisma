@@ -1,0 +1,390 @@
+// ============================================================
+// SUOAC - Sistema Unificado de Ônibus para Assembleias e Congressos
+// Prisma Schema v2.0
+// Database: Neon PostgreSQL (Serverless)
+// ============================================================
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  CIRCUIT_COORDINATOR
+  CIRCUIT_ASSISTANT
+  CONGREGATION_COORDINATOR
+  CONGREGATION_ASSISTANT
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum EventType {
+  ASSEMBLY
+  REGIONAL_CONVENTION
+}
+
+enum EventStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  FINISHED
+}
+
+enum EventDayStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  EXEMPT
+}
+
+enum CongregationListStatus {
+  PENDING
+  FINALIZED
+}
+
+// ============================================================
+// MULTI-TENANCY ROOT
+// ============================================================
+
+model Circuit {
+  id    String @id @default(uuid()) @db.Uuid
+  name  String @db.VarChar(100)
+  city  String @db.VarChar(100)
+  state String @db.VarChar(2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  congregations Congregation[]
+  users         User[]
+  events        Event[]
+  invitations   Invitation[]
+
+  @@map("circuits")
+}
+
+// ============================================================
+// CONGREGATIONS
+// ============================================================
+
+model Congregation {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String  @db.VarChar(150)
+  city     String? @db.VarChar(100)
+  isActive Boolean @default(true) @map("is_active")
+
+  circuitId String  @map("circuit_id") @db.Uuid
+  circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                    User[]
+  passengers               Passenger[]
+  eventPassengers          EventPassenger[]
+  congregationEventStatus  CongregationEventStatus[]
+  invitations              Invitation[]
+
+  @@index([circuitId])
+  @@map("congregations")
+}
+
+// ============================================================
+// USERS & AUTH
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(150)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String?  @map("password_hash") @db.VarChar(255)
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+
+  circuitId      String  @map("circuit_id") @db.Uuid
+  circuit        Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+
+  congregationId String?       @map("congregation_id") @db.Uuid
+  congregation   Congregation? @relation(fields: [congregationId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  accounts                Account[]
+  createdEvents           Event[]               @relation("EventCreatedBy")
+  registeredPassengers    EventPassenger[]       @relation("RegisteredBy")
+  registeredPayments      Payment[]              @relation("PaymentRegisteredBy")
+  finalizedLists          CongregationEventStatus[] @relation("FinalizedBy")
+  createdInvitations      Invitation[]           @relation("InvitationCreatedBy")
+  auditLogs               AuditLog[]
+
+  @@index([circuitId])
+  @@index([congregationId])
+  @@map("users")
+}
+
+model Account {
+  id                String       @id @default(uuid()) @db.Uuid
+  provider          AuthProvider
+  providerAccountId String       @map("provider_account_id") @db.VarChar(255)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+// ============================================================
+// EVENTS
+// ============================================================
+
+model Event {
+  id          String      @id @default(uuid()) @db.Uuid
+  title       String      @db.VarChar(200)
+  type        EventType
+  ticketPrice Decimal     @map("ticket_price") @db.Decimal(10, 2)
+  status      EventStatus @default(DRAFT)
+
+  registrationDeadline DateTime @map("registration_deadline")
+  paymentDeadline      DateTime @map("payment_deadline")
+
+  venue        String  @db.VarChar(200)
+  address      String  @db.VarChar(300)
+  city         String  @db.VarChar(100)
+  state        String  @db.VarChar(2)
+  observations String? @db.Text
+
+  circuitId   String @map("circuit_id") @db.Uuid
+  circuit     Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("EventCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  eventDays               EventDay[]
+  eventPassengers         EventPassenger[]
+  congregationEventStatus CongregationEventStatus[]
+
+  @@index([circuitId])
+  @@index([status])
+  @@map("events")
+}
+
+model EventDay {
+  id            String         @id @default(uuid()) @db.Uuid
+  dayNumber     Int            @map("day_number")
+  date          DateTime       @db.Date
+  label         String         @db.VarChar(100)
+  departureTime String         @map("departure_time") @db.VarChar(5)
+  returnTime    String         @map("return_time") @db.VarChar(5)
+  status        EventDayStatus @default(ACTIVE)
+
+  eventId String @map("event_id") @db.Uuid
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  eventPassengerDays EventPassengerDay[]
+
+  @@unique([eventId, date])
+  @@unique([eventId, dayNumber])
+  @@index([eventId])
+  @@map("event_days")
+}
+
+// ============================================================
+// PASSENGERS
+// ============================================================
+
+model Passenger {
+  id           String  @id @default(uuid()) @db.Uuid
+  name         String  @db.VarChar(200)
+  rgEncrypted  String  @map("rg_encrypted") @db.Text
+  rgHash       String  @map("rg_hash") @db.VarChar(64)
+  phone        String? @db.VarChar(20)
+  observations String? @db.Text
+
+  congregationId String       @map("congregation_id") @db.Uuid
+  congregation   Congregation @relation(fields: [congregationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  eventPassengers EventPassenger[]
+
+  @@unique([congregationId, rgHash])
+  @@index([congregationId])
+  @@index([rgHash])
+  @@map("passengers")
+}
+
+model EventPassenger {
+  id              String        @id @default(uuid()) @db.Uuid
+  totalAmount     Decimal       @map("total_amount") @db.Decimal(10, 2)
+  paidAmount      Decimal       @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  paymentStatus   PaymentStatus @default(PENDING) @map("payment_status")
+  exemptionReason String?       @map("exemption_reason") @db.VarChar(300)
+  observations    String?       @db.Text
+
+  eventId String @map("event_id") @db.Uuid
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  passengerId String    @map("passenger_id") @db.Uuid
+  passenger   Passenger @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+
+  congregationId String       @map("congregation_id") @db.Uuid
+  congregation   Congregation @relation(fields: [congregationId], references: [id])
+
+  registeredById String @map("registered_by_id") @db.Uuid
+  registeredBy   User   @relation("RegisteredBy", fields: [registeredById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  eventPassengerDays EventPassengerDay[]
+  payments           Payment[]
+
+  @@unique([eventId, passengerId])
+  @@index([eventId])
+  @@index([passengerId])
+  @@index([congregationId])
+  @@index([paymentStatus])
+  @@map("event_passengers")
+}
+
+model EventPassengerDay {
+  id          String   @id @default(uuid()) @db.Uuid
+  checkedIn   Boolean  @default(false) @map("checked_in")
+  checkedInAt DateTime? @map("checked_in_at")
+
+  eventPassengerId String         @map("event_passenger_id") @db.Uuid
+  eventPassenger   EventPassenger @relation(fields: [eventPassengerId], references: [id], onDelete: Cascade)
+
+  eventDayId String   @map("event_day_id") @db.Uuid
+  eventDay   EventDay @relation(fields: [eventDayId], references: [id], onDelete: Cascade)
+
+  @@unique([eventPassengerId, eventDayId])
+  @@index([eventPassengerId])
+  @@index([eventDayId])
+  @@map("event_passenger_days")
+}
+
+// ============================================================
+// PAYMENTS
+// ============================================================
+
+model Payment {
+  id           String   @id @default(uuid()) @db.Uuid
+  amount       Decimal  @db.Decimal(10, 2)
+  paidAt       DateTime @map("paid_at")
+  observations String?  @db.Text
+
+  eventPassengerId String         @map("event_passenger_id") @db.Uuid
+  eventPassenger   EventPassenger @relation(fields: [eventPassengerId], references: [id], onDelete: Cascade)
+
+  registeredById String @map("registered_by_id") @db.Uuid
+  registeredBy   User   @relation("PaymentRegisteredBy", fields: [registeredById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([eventPassengerId])
+  @@map("payments")
+}
+
+// ============================================================
+// CONGREGATION EVENT STATUS (list finalization)
+// ============================================================
+
+model CongregationEventStatus {
+  id     String                 @id @default(uuid()) @db.Uuid
+  status CongregationListStatus @default(PENDING)
+
+  congregationId String       @map("congregation_id") @db.Uuid
+  congregation   Congregation @relation(fields: [congregationId], references: [id], onDelete: Cascade)
+
+  eventId String @map("event_id") @db.Uuid
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  finalizedById String? @map("finalized_by_id") @db.Uuid
+  finalizedBy   User?   @relation("FinalizedBy", fields: [finalizedById], references: [id])
+
+  finalizedAt DateTime? @map("finalized_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([congregationId, eventId])
+  @@index([eventId])
+  @@map("congregation_event_status")
+}
+
+// ============================================================
+// INVITATIONS
+// ============================================================
+
+model Invitation {
+  id    String   @id @default(uuid()) @db.Uuid
+  email String   @db.VarChar(255)
+  role  UserRole
+  token String   @unique @db.VarChar(255)
+
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+
+  circuitId String  @map("circuit_id") @db.Uuid
+  circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+
+  congregationId String?       @map("congregation_id") @db.Uuid
+  congregation   Congregation? @relation(fields: [congregationId], references: [id], onDelete: SetNull)
+
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User   @relation("InvitationCreatedBy", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([token])
+  @@index([circuitId])
+  @@map("invitations")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id       String   @id @default(uuid()) @db.Uuid
+  action   String   @db.VarChar(50)
+  entity   String   @db.VarChar(50)
+  entityId String   @map("entity_id") @db.Uuid
+  details  Json?
+  ip       String?  @db.VarChar(45)
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
