@@ -79,7 +79,73 @@ O projeto está configurado com regras severas de qualidade (`ESLint Flat Config
 
 ---
 
-## 5. Padrões de Versionamento (Conventional Commits)
+## 5. Testes
+
+O projeto utiliza **Jest** como framework de testes. Todo código de negócio implementado **DEVE** ter testes correspondentes. A ausência de testes é considerada *technical debt* e não será aceita.
+
+### Pirâmide de Testes
+
+| Camada | Proporção | Escopo | Banco de Dados |
+|---|---|---|---|
+| **Unit** | Maioria (~70%) | Service/UseCase isolado, lógica pura | ❌ Mockado |
+| **Integration** | Moderado (~20%) | Módulo + dependências internas | ❌ Mockado |
+| **E2E** | Poucos (~10%) | Fluxo HTTP completo (request → response) | ✅ Real (Docker) |
+
+### Testes Unitários (`.spec.ts`)
+
+Testes unitários verificam a **lógica de negócio isolada**. Todas as dependências externas (Prisma, APIs, etc.) devem ser mockadas.
+
+- **Localização:** No mesmo diretório do arquivo testado (ex: `users.service.spec.ts` ao lado de `users.service.ts`).
+- **Mock do Prisma:** Utilize `jest-mock-extended` para criar mocks tipados do `PrismaService`. Nunca conecte ao banco real em testes unitários.
+  ```typescript
+  import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+  import type { PrismaClient } from '../generated/prisma/client';
+
+  const prismaMock = mockDeep<PrismaClient>();
+
+  // No TestingModule:
+  { provide: PrismaService, useValue: { client: prismaMock } }
+  ```
+- **Foco:** Testar transformações de dados, validações, regras de negócio, tratamento de erros. Não testar queries do Prisma em si.
+- **Padrão de nomeação:**
+  ```typescript
+  describe('UsersService', () => {
+    describe('create', () => {
+      it('deve criar um usuário com os dados válidos', async () => { ... });
+      it('deve lançar ConflictException quando o email já existe', async () => { ... });
+    });
+  });
+  ```
+
+### Testes E2E (`.e2e-spec.ts`)
+
+Testes end-to-end verificam o **fluxo completo** da aplicação: HTTP request → Controller → Service → Banco → Response.
+
+- **Localização:** Pasta `test/` na raiz do projeto.
+- **Banco de dados:** Utilizar um banco de dados real via Docker (isolado do dev). Nunca usar o banco de desenvolvimento.
+- **Limpeza:** Sempre limpar o estado do banco entre os testes (`afterEach` ou `afterAll`) para evitar poluição entre suítes.
+- **Execução:** Rodar com `--runInBand` para evitar race conditions e esgotamento do pool de conexões.
+- **Escopo:** Limitar E2E aos fluxos críticos: autenticação, CRUD principal, fluxos de pagamento. Lógica complexa deve ser coberta por testes unitários.
+
+### Regras Gerais
+
+- 🚫 **Nunca ignore testes falhando:** Testes quebrando devem ser corrigidos, não desabilitados com `.skip`.
+- ✅ **Test data factories:** Use funções factory para criar dados de teste dinâmicos. Evitar fixtures estáticas com dados hardcoded.
+- ✅ **Uma asserção por conceito:** Cada `it()` deve testar uma única coisa. Múltiplas asserções são aceitáveis apenas quando verificam aspectos do mesmo resultado.
+- ✅ **Nomenclatura descritiva:** Os nomes dos testes devem descrever o comportamento esperado em português (ex: `'deve retornar 404 quando o passageiro não existe'`).
+
+### Scripts
+
+```bash
+npm run test           # Testes unitários
+npm run test:watch     # Watch mode (desenvolvimento)
+npm run test:cov       # Cobertura de código
+npm run test:e2e       # Testes end-to-end
+```
+
+---
+
+## 6. Padrões de Versionamento (Conventional Commits)
 
 Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Commits** em **Português**, usando o modo imperativo:
 
@@ -87,13 +153,16 @@ Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Co
 - `fix(scope): corrige erro de validação Y`
 - `chore(deps): atualiza pacote Z`
 - `refactor(scope): refatora service W para remover código duplicado`
+- `test(scope): adiciona testes unitários para o service X`
 
 ---
 
-## 6. Fluxo de Trabalho e AI Assistant
+## 7. Fluxo de Trabalho e AI Assistant
 
 Quando solicitado para implementar uma nova funcionalidade:
 1. **Pense na Arquitetura:** Verifique em qual módulo a nova lógica pertence. Se não existe, crie o módulo.
 2. **SOLID Primeiro:** Separe DTOs, crie o Controller lidando só com a requisição, e o Service para a lógica.
 3. **Type Safety:** Garanta que todas as interfaces, retornos e payloads tenham tipagem completa. NUNCA sugira a desabilitação de regras do ESLint com `// eslint-disable-next-line` (apenas em exceções justificáveis de integração com bibliotecas untyped antigas).
-4. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck` e `npm run lint`.
+4. **Testes:** Ao implementar qualquer lógica de negócio, crie os testes unitários correspondentes no mesmo PR. Testes E2E devem ser adicionados para os fluxos críticos.
+5. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
+
