@@ -47,6 +47,17 @@ O projeto deve seguir princípios **SOLID** e **Clean Architecture**, organizado
 - **Controllers devem ser anêmicos:** Devem lidar APENAS com a camada HTTP (receber request, validar input com pipes, chamar UseCase/Service, mapear resposta).
 - **Services/UseCases são o coração:** Toda a lógica de negócio deve residir aqui, totalmente agnóstica ao protocolo HTTP (sem acessar `req`, `res`, ou headers diretamente).
 
+### Interfaces de Resposta (DRY)
+- **Nunca repita tipos de retorno inline.** Quando o mesmo tipo de retorno aparece em mais de um lugar (controller, service, testes), ele **DEVE** ser extraído para uma interface na pasta `interfaces/` do módulo.
+  ```text
+  src/circuits/
+    ├── interfaces/
+    │   └── circuit-response.interface.ts   ← Interface centralizada
+    ├── circuits.controller.ts              ← usa Promise<CircuitResponse>
+    └── circuits.service.ts                 ← usa Promise<CircuitResponse>
+  ```
+- Nomenclatura: `{Entity}Response` (ex: `CircuitResponse`, `EventResponse`, `PassengerResponse`).
+
 ---
 
 ## 3. Diretrizes do Prisma 7 e Banco de Dados
