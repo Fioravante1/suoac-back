@@ -24,12 +24,13 @@ services:
       target: deps
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '8080:8080'
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://suoac:suoac_dev@db:5432/suoac_dev
+      PORT: 8080
       NODE_ENV: development
     volumes:
       - .:/app

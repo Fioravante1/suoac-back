@@ -41,6 +41,6 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 
-EXPOSE 3000
+EXPOSE 8080
 
 CMD ["node", "dist/main.js"]
