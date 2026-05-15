@@ -1,0 +1,104 @@
+{
+  "info": {
+    "name": "SUOAC Backend",
+    "description": "Postman collection para a API do projeto SUOAC.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Circuits",
+      "item": [
+        {
+          "name": "Create Circuit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Circuito Teste SP\",\n  \"city\": \"São Paulo\",\n  \"state\": \"sp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Circuit by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Circuit",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nome Atualizado do Circuito\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ]
+}
