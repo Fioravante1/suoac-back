@@ -13,4 +13,7 @@ export default defineConfig({
     // Se não existir, usa a DATABASE_URL padrão (dev local com Docker).
     url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
   },
+  migrations: {
+    seed: 'ts-node prisma/seed.ts',
+  },
 });

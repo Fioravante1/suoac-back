@@ -28,7 +28,7 @@ erDiagram
 
   Circuit {
     uuid id PK
-    string name
+    string name UK
     string city
     string state
     datetime created_at
@@ -38,7 +38,9 @@ erDiagram
   Congregation {
     uuid id PK
     uuid circuit_id FK
+    string code UK
     string name
+    string email UK
     string city
     boolean is_active
     datetime created_at
