@@ -41,6 +41,48 @@ describe('CircuitsService', () => {
     service = module.get(CircuitsService);
   });
 
+  // ── findAll ──────────────────────────────────────────────────
+  describe('findAll', () => {
+    it('deve retornar lista paginada de circuitos', async () => {
+      const circuits = [buildCircuit(), buildCircuit({ id: 'a1b2c3d4-0000-0000-0000-000000000002', name: 'Circuito RJ-01' })];
+
+      prismaMock.circuit.findMany.mockResolvedValue(circuits);
+      prismaMock.circuit.count.mockResolvedValue(2);
+
+      const result = await service.findAll(1, 20);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.meta).toEqual({
+        total: 2,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      });
+    });
+
+    it('deve calcular totalPages corretamente', async () => {
+      prismaMock.circuit.findMany.mockResolvedValue([buildCircuit()]);
+      prismaMock.circuit.count.mockResolvedValue(45);
+
+      const result = await service.findAll(1, 20);
+
+      expect(result.meta.totalPages).toBe(3);
+    });
+
+    it('deve aplicar skip e take para paginação', async () => {
+      prismaMock.circuit.findMany.mockResolvedValue([]);
+      prismaMock.circuit.count.mockResolvedValue(0);
+
+      await service.findAll(3, 10);
+
+      expect(prismaMock.circuit.findMany).toHaveBeenCalledWith({
+        orderBy: { name: 'asc' },
+        skip: 20,
+        take: 10,
+      });
+    });
+  });
+
   // ── create ────────────────────────────────────────────────────
   describe('create', () => {
     it('deve criar um circuito com os dados válidos', async () => {
