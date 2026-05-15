@@ -352,8 +352,16 @@ Quando solicitado para implementar uma nova funcionalidade:
 2. **SOLID Primeiro:** Separe DTOs, crie o Controller lidando só com a requisição, e o Service para a lógica.
 3. **Type Safety:** Garanta que todas as interfaces, retornos e payloads tenham tipagem completa. NUNCA sugira a desabilitação de regras do ESLint com `// eslint-disable-next-line` (apenas em exceções justificáveis de integração com bibliotecas untyped antigas).
 4. **Testes:** Ao implementar qualquer lógica de negócio, crie os testes unitários correspondentes no mesmo PR. Testes E2E devem ser adicionados para os fluxos críticos.
-5. **Postman:** Atualize sempre o arquivo `docs/suoac_postman_collection.json` com os novos endpoints criados, e se necessário, o arquivo `docs/suoac_postman_environment.json` com novas variáveis.
-6. **README:** Sempre que houver mudança relevante no setup do projeto, dependências, scripts, variáveis de ambiente ou instruções de desenvolvimento/deploy, atualize o `README.md` na raiz do repositório para refletir o estado atual.
-7. **Progresso:** Ao concluir a implementação de uma feature, atualize o arquivo `PROGRESS.md` na raiz do repositório registrando o que foi implementado, decisões relevantes e o estado atual do projeto.
-8. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
+5. **Logging Estratégico:** Adicione logs nos services usando `Logger` do `@nestjs/common` (`private readonly logger = new Logger(NomeService.name)`). Siga as regras de nível:
+   - `debug` — Leituras/listagens (parâmetros de paginação, filtros aplicados). Alto volume, útil apenas em debugging.
+   - `log` (info) — Mutações bem-sucedidas (create, update, soft-delete). Inclua o ID do recurso criado/alterado.
+   - `warn` — Violações de regra de negócio: not-found (404), conflitos de unicidade (409), operações destrutivas (hard-delete).
+   - `error` — Falhas inesperadas (erros de infra, exceções não tratadas).
+   - **Não logar em controllers** — são anêmicos; o `pino-http` já cobre request/response automaticamente.
+   - **Não logar payloads completos** — apenas IDs e metadados relevantes (name, code, circuitId). A redaction do Pino cuida de campos sensíveis.
+   - **Nunca usar `console.log`** — sempre `this.logger.log()`, `this.logger.warn()`, etc.
+6. **Postman:** Atualize sempre o arquivo `docs/suoac_postman_collection.json` com os novos endpoints criados, e se necessário, o arquivo `docs/suoac_postman_environment.json` com novas variáveis.
+7. **README:** Sempre que houver mudança relevante no setup do projeto, dependências, scripts, variáveis de ambiente ou instruções de desenvolvimento/deploy, atualize o `README.md` na raiz do repositório para refletir o estado atual.
+8. **Progresso:** Ao concluir a implementação de uma feature, atualize o arquivo `PROGRESS.md` na raiz do repositório registrando o que foi implementado, decisões relevantes e o estado atual do projeto.
+9. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
 
