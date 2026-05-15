@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCongregationDto } from './dto/create-congregation.dto';
@@ -7,6 +7,8 @@ import type { CongregationResponse } from './interfaces/congregation-response.in
 
 @Injectable()
 export class CongregationsService {
+  private readonly logger = new Logger(CongregationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(circuitId: string, dto: CreateCongregationDto): Promise<CongregationResponse> {
@@ -20,10 +22,11 @@ export class CongregationsService {
 
     if (existing) {
       const field = existing.code === dto.code ? 'code' : 'email';
+      this.logger.warn(`Conflito ao criar congregação — ${field} duplicado, circuitId=${circuitId}`);
       throw new ConflictException(`Já existe uma congregação com este ${field}`);
     }
 
-    return this.prisma.client.congregation.create({
+    const congregation = await this.prisma.client.congregation.create({
       data: {
         code: dto.code,
         name: dto.name,
@@ -32,6 +35,9 @@ export class CongregationsService {
         circuitId,
       },
     });
+
+    this.logger.log(`Congregação criada — id=${congregation.id}, code="${congregation.code}", circuitId=${circuitId}`);
+    return congregation;
   }
 
   async findByCircuit(
@@ -40,6 +46,8 @@ export class CongregationsService {
     limit: number,
   ): Promise<PaginatedResponse<CongregationResponse>> {
     await this.ensureCircuitExists(circuitId);
+
+    this.logger.debug(`Listando congregações — circuitId=${circuitId}, page=${page}, limit=${limit}`);
 
     const where = { circuitId, isActive: true };
 
@@ -70,6 +78,7 @@ export class CongregationsService {
     });
 
     if (!congregation) {
+      this.logger.warn(`Congregação não encontrada — id=${id}`);
       throw new NotFoundException('Congregação não encontrada');
     }
 
@@ -97,11 +106,12 @@ export class CongregationsService {
 
       if (existing) {
         const field = dto.code !== undefined && existing.code === dto.code ? 'code' : 'email';
+        this.logger.warn(`Conflito ao atualizar congregação — id=${id}, ${field} duplicado`);
         throw new ConflictException(`Já existe uma congregação com este ${field}`);
       }
     }
 
-    return this.prisma.client.congregation.update({
+    const congregation = await this.prisma.client.congregation.update({
       where: { id },
       data: {
         ...(dto.code !== undefined && { code: dto.code }),
@@ -110,6 +120,9 @@ export class CongregationsService {
         ...(dto.city !== undefined && { city: dto.city }),
       },
     });
+
+    this.logger.log(`Congregação atualizada — id=${id}`);
+    return congregation;
   }
 
   async remove(id: string): Promise<void> {
@@ -119,6 +132,8 @@ export class CongregationsService {
       where: { id },
       data: { isActive: false },
     });
+
+    this.logger.log(`Congregação desativada (soft-delete) — id=${id}`);
   }
 
   private async ensureCircuitExists(circuitId: string): Promise<void> {
@@ -127,6 +142,7 @@ export class CongregationsService {
     });
 
     if (!circuit) {
+      this.logger.warn(`Circuito não encontrado ao validar dependência — circuitId=${circuitId}`);
       throw new NotFoundException('Circuito não encontrado');
     }
   }
