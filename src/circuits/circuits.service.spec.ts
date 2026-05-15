@@ -195,4 +195,26 @@ describe('CircuitsService', () => {
       });
     });
   });
+
+  // ── remove ────────────────────────────────────────────────────
+  describe('remove', () => {
+    it('deve deletar o circuito quando ele existe', async () => {
+      const existing = buildCircuit();
+
+      prismaMock.circuit.findUnique.mockResolvedValue(existing);
+      prismaMock.circuit.delete.mockResolvedValue(existing);
+
+      await service.remove(existing.id);
+
+      expect(prismaMock.circuit.delete).toHaveBeenCalledWith({
+        where: { id: existing.id },
+      });
+    });
+
+    it('deve lançar NotFoundException quando o circuito não existe', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(null);
+
+      await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+    });
+  });
 });
