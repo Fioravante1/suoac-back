@@ -11,6 +11,7 @@ Este documento define as regras, padrões arquiteturais e boas práticas estrita
 - **Adapter HTTP**: `Fastify` (Prioridade máxima de performance; não utilizar tipagens ou imports do Express)
 - **Banco de Dados**: `PostgreSQL 16`
 - **ORM**: `Prisma v7` (usando adapter `@prisma/adapter-pg` e `pg` driver nativo)
+- **Logging**: `Pino` via `nestjs-pino` (JSON estruturado em prod, `pino-pretty` em dev)
 - **Linguagem**: `TypeScript` (strict mode: ON)
 - **Documentação do Projeto**: Pasta `docs/` na raiz do repositório, contendo:
   - `SUOAC_REQUISITOS_v2.md` — Requisitos funcionais e regras de negócio
@@ -228,7 +229,45 @@ O projeto utiliza `@nestjs/swagger` para gerar documentação interativa OpenAPI
 
 ---
 
-## 7. Testes
+## 7. Logging (Pino)
+
+O projeto utiliza **Pino** via `nestjs-pino` para logging estruturado, integrado nativamente com Fastify.
+
+### Configuração
+
+- **Arquivo central:** `src/common/logger/logger.config.ts` — exporta `getLoggerConfig()` com toda a configuração do `pino-http`.
+- **`AppModule`:** Importa `LoggerModule.forRoot(getLoggerConfig())`.
+- **`main.ts`:** Usa `bufferLogs: true` e `app.useLogger(app.get(Logger))` para substituir o logger padrão do NestJS.
+
+### Níveis de Log
+
+Controlado pela variável de ambiente `LOG_LEVEL`. Valores possíveis (Pino): `fatal`, `error`, `warn`, `info`, `debug`, `trace`.
+
+| Ambiente | Nível padrão | Formato |
+|----------|-------------|---------|
+| Dev | `debug` | `pino-pretty` (colorido, single-line) |
+| Prod | `info` | JSON puro (stdout) |
+
+### Redaction (Dados Sensíveis)
+
+Os seguintes caminhos são automaticamente censurados como `[REDACTED]` nos logs:
+
+- `req.headers.authorization`, `req.headers.cookie`
+- `*.password`, `*.passwordHash`, `*.token`
+- `*.rg`, `*.cpf`
+
+### Request ID (Correlation)
+
+Cada request recebe um ID único (`X-Request-ID` do header ou `crypto.randomUUID()`) disponível em todos os logs daquele request.
+
+### Regras
+
+- **Nunca use `console.log`**: Sempre use o logger do NestJS (`Logger` de `@nestjs/common`) ou `PinoLogger` de `nestjs-pino`.
+- **Não logar dados sensíveis**: A redaction cuida dos caminhos configurados, mas evite logar payloads completos de request/response.
+
+---
+
+## 8. Testes
 
 O projeto utiliza **Jest** como framework de testes. Todo código de negócio implementado **DEVE** ter testes correspondentes. A ausência de testes é considerada *technical debt* e não será aceita.
 
@@ -294,7 +333,7 @@ npm run test:e2e       # Testes end-to-end
 
 ---
 
-## 8. Padrões de Versionamento (Conventional Commits)
+## 9. Padrões de Versionamento (Conventional Commits)
 
 Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Commits** em **Português**, usando o modo imperativo:
 
@@ -306,7 +345,7 @@ Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Co
 
 ---
 
-## 9. Fluxo de Trabalho e AI Assistant
+## 10. Fluxo de Trabalho e AI Assistant
 
 Quando solicitado para implementar uma nova funcionalidade:
 1. **Pense na Arquitetura:** Verifique em qual módulo a nova lógica pertence. Se não existe, crie o módulo.

@@ -13,6 +13,7 @@ Este projeto é construído com tecnologias modernas para garantir alta performa
 - **Banco de Dados**: [PostgreSQL 16](https://www.postgresql.org/)
 - **Infraestrutura**: Docker & Docker Compose
 - **Documentação da API**: [Swagger / OpenAPI 3.0](https://swagger.io/) via `@nestjs/swagger`
+- **Logging**: [Pino](https://getpino.io/) via `nestjs-pino` (JSON estruturado em prod, `pino-pretty` em dev)
 - **Qualidade de Código**: ESLint (Flat Config com regras strict) + Prettier + EditorConfig
 
 ## 🛠 Pré-requisitos

@@ -1,0 +1,59 @@
+import type { IncomingMessage } from 'http';
+import * as crypto from 'crypto';
+import type { Params } from 'nestjs-pino';
+
+export function getLoggerConfig(): Params {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const level = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
+
+  return {
+    pinoHttp: {
+      level,
+      ...(isProduction
+        ? {}
+        : {
+            transport: {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                singleLine: true,
+                translateTime: 'SYS:HH:MM:ss.l',
+                ignore: 'pid,hostname',
+              },
+            },
+          }),
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          '*.password',
+          '*.passwordHash',
+          '*.token',
+          '*.rg',
+          '*.cpf',
+        ],
+        censor: '[REDACTED]',
+      },
+      genReqId: (req: IncomingMessage): string => {
+        const existing = req.headers['x-request-id'];
+        if (typeof existing === 'string' && existing.length > 0) {
+          return existing;
+        }
+        return crypto.randomUUID();
+      },
+      serializers: {
+        req: (req: { id?: string; method?: string; url?: string }) => ({
+          id: req.id,
+          method: req.method,
+          url: req.url,
+        }),
+        res: (res: { statusCode?: number }) => ({
+          statusCode: res.statusCode,
+        }),
+      },
+      autoLogging: {
+        ignore: (req: IncomingMessage) => req.url === '/health',
+      },
+    },
+  };
+}
