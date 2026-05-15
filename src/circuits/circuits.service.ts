@@ -64,4 +64,12 @@ export class CircuitsService {
       },
     });
   }
+
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+
+    await this.prisma.client.circuit.delete({
+      where: { id },
+    });
+  }
 }
