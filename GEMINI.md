@@ -72,6 +72,15 @@ O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui
 - O Prisma deve ser acessado **exclusivamente** pelo `PrismaService`.
 - Evite passar o objeto do Prisma diretamente para funções privadas. Mantenha as consultas encapsuladas no service de repositório da respectiva entidade.
 
+### Seed
+- O seed é configurado em `prisma.config.ts` (campo `migrations.seed`), **não** no `package.json`.
+- O arquivo de seed fica em `prisma/seed.ts` e usa `PrismaClient` + `@prisma/adapter-pg` diretamente (sem NestJS).
+- A URL de conexão usa `DIRECT_URL ?? DATABASE_URL`, consistente com `prisma.config.ts` — em ambiente Neon, isso garante conexão direta (sem pooler).
+- Todos os upserts utilizam chaves naturais únicas (ex: `Circuit.name`, `Congregation.code`) em vez de IDs fixos, garantindo idempotência e UUIDs aleatórios.
+- Para executar:
+  - **Dev (Docker):** `npx prisma db seed` (ou `docker compose exec api npx prisma db seed`)
+  - **Prod (Neon):** `npm run seed:prod`
+
 ---
 
 ## 4. Estilo de Código, Tipagem e Lint
@@ -202,7 +211,24 @@ Resposta paginada:
 
 ---
 
-## 6. Testes
+## 6. Documentação da API (Swagger / OpenAPI)
+
+O projeto utiliza `@nestjs/swagger` para gerar documentação interativa OpenAPI 3.0 automaticamente.
+
+- **URL:** `http://localhost:8080/api/docs` (disponível apenas quando `NODE_ENV !== 'production'`).
+- **CLI Plugin:** Configurado em `nest-cli.json` com `classValidatorShim: true` e `introspectComments: true`. Isso significa que os decorators `@ApiProperty()` **não precisam ser adicionados manualmente** nos DTOs — o plugin infere os tipos automaticamente a partir do TypeScript e dos decorators do `class-validator`.
+- **`@ApiTags()`:** Todo controller **deve** ter o decorator `@ApiTags('NomeDoRecurso')` para agrupar endpoints na UI do Swagger.
+- **`PartialType`:** Em DTOs de update que usam `PartialType`, o import **deve** vir de `@nestjs/swagger` (não de `@nestjs/mapped-types`), para que os metadados OpenAPI sejam propagados corretamente.
+  ```typescript
+  // ✅ Correto
+  import { PartialType } from '@nestjs/swagger';
+  // 🚫 Errado
+  import { PartialType } from '@nestjs/mapped-types';
+  ```
+
+---
+
+## 7. Testes
 
 O projeto utiliza **Jest** como framework de testes. Todo código de negócio implementado **DEVE** ter testes correspondentes. A ausência de testes é considerada *technical debt* e não será aceita.
 
@@ -268,7 +294,7 @@ npm run test:e2e       # Testes end-to-end
 
 ---
 
-## 7. Padrões de Versionamento (Conventional Commits)
+## 8. Padrões de Versionamento (Conventional Commits)
 
 Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Commits** em **Português**, usando o modo imperativo:
 
@@ -280,12 +306,14 @@ Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Co
 
 ---
 
-## 8. Fluxo de Trabalho e AI Assistant
+## 9. Fluxo de Trabalho e AI Assistant
 
 Quando solicitado para implementar uma nova funcionalidade:
 1. **Pense na Arquitetura:** Verifique em qual módulo a nova lógica pertence. Se não existe, crie o módulo.
 2. **SOLID Primeiro:** Separe DTOs, crie o Controller lidando só com a requisição, e o Service para a lógica.
 3. **Type Safety:** Garanta que todas as interfaces, retornos e payloads tenham tipagem completa. NUNCA sugira a desabilitação de regras do ESLint com `// eslint-disable-next-line` (apenas em exceções justificáveis de integração com bibliotecas untyped antigas).
 4. **Testes:** Ao implementar qualquer lógica de negócio, crie os testes unitários correspondentes no mesmo PR. Testes E2E devem ser adicionados para os fluxos críticos.
-5. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
+5. **Postman:** Atualize sempre o arquivo `docs/suoac_postman_collection.json` com os novos endpoints criados, e se necessário, o arquivo `docs/suoac_postman_environment.json` com novas variáveis.
+6. **README:** Sempre que houver mudança relevante no setup do projeto, dependências, scripts, variáveis de ambiente ou instruções de desenvolvimento/deploy, atualize o `README.md` na raiz do repositório para refletir o estado atual.
+7. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
 
