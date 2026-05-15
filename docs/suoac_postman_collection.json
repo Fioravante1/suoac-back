@@ -92,6 +92,161 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Congregations",
+      "item": [
+        {
+          "name": "Create Congregation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"80275\",\n  \"name\": \"Águas de Março\",\n  \"email\": \"CONG09480275@jwpub.org\",\n  \"city\": \"São Paulo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/congregations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "congregations"
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Congregations by Circuit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/congregations?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "congregations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Congregation by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Congregation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nome Atualizado da Congregação\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Congregation (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "substituir-por-um-uuid-valido"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
