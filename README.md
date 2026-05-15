@@ -12,6 +12,7 @@ Este projeto é construído com tecnologias modernas para garantir alta performa
 - **ORM**: [Prisma](https://www.prisma.io/) `v7` (utilizando a nova arquitetura com Driver Adapters)
 - **Banco de Dados**: [PostgreSQL 16](https://www.postgresql.org/)
 - **Infraestrutura**: Docker & Docker Compose
+- **Documentação da API**: [Swagger / OpenAPI 3.0](https://swagger.io/) via `@nestjs/swagger`
 - **Qualidade de Código**: ESLint (Flat Config com regras strict) + Prettier + EditorConfig
 
 ## 🛠 Pré-requisitos
@@ -47,7 +48,7 @@ Isso fará o seguinte:
 - Rodará `npx prisma generate` dentro do container (gerando o client em `src/generated/prisma`).
 - Iniciará o servidor NestJS em modo `watch` (hot-reload habilitado via bind mount).
 
-A API estará disponível em: `http://localhost:3000`
+A API estará disponível em: `http://localhost:8080`
 
 ### 3. Rodar as Migrations do Banco de Dados
 
@@ -58,6 +59,33 @@ docker compose exec api npx prisma migrate dev
 ```
 
 *(Nota: como estamos na versão 7 do Prisma, o comando lê as credenciais diretamente do `prisma.config.ts` através da variável `DATABASE_URL`)*
+
+### 4. Rodar o Seed (dados iniciais)
+
+```bash
+docker compose exec api npx prisma db seed
+```
+
+### 5. Produção (Neon)
+
+Para aplicar migrations e seed no banco Neon (produção), utilize os scripts dedicados. Eles carregam automaticamente o `.env.production` com as URLs do Neon:
+
+```bash
+npm run migrate:prod   # aplica migrations pendentes
+npm run seed:prod      # roda o seed
+```
+
+## 📖 Documentação da API (Swagger)
+
+Em ambiente de desenvolvimento, a documentação interativa da API está disponível em:
+
+```
+http://localhost:8080/api/docs
+```
+
+A documentação é gerada automaticamente a partir dos DTOs e controllers via CLI plugin do `@nestjs/swagger` — não é necessário adicionar `@ApiProperty()` manualmente nos DTOs.
+
+> **Nota:** O Swagger é desabilitado automaticamente quando `NODE_ENV=production`.
 
 ## 📦 Estrutura do Projeto e Padrões Adotados
 
