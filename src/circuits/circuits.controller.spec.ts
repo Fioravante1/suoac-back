@@ -27,6 +27,7 @@ describe('CircuitsController', () => {
       create: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
+      remove: jest.fn(),
     } as unknown as jest.Mocked<CircuitsService>;
 
     const module = await Test.createTestingModule({
@@ -122,6 +123,23 @@ describe('CircuitsController', () => {
       serviceMock.update.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
       await expect(controller.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── remove ────────────────────────────────────────────────────
+  describe('remove', () => {
+    it('deve delegar a remoção ao service', async () => {
+      serviceMock.remove.mockResolvedValue(undefined);
+
+      await controller.remove('a1b2c3d4-0000-0000-0000-000000000001');
+
+      expect(serviceMock.remove).toHaveBeenCalledWith('a1b2c3d4-0000-0000-0000-000000000001');
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      serviceMock.remove.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
+
+      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
     });
   });
 });
