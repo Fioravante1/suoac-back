@@ -23,6 +23,7 @@ describe('CircuitsController', () => {
 
   beforeEach(async () => {
     serviceMock = {
+      findAll: jest.fn(),
       create: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
@@ -34,6 +35,37 @@ describe('CircuitsController', () => {
     }).compile();
 
     controller = module.get(CircuitsController);
+  });
+
+  // ── findAll ──────────────────────────────────────────────────
+  describe('findAll', () => {
+    it('deve delegar a listagem ao service com paginação padrão', async () => {
+      const expected = {
+        data: [buildCircuit()],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      };
+
+      serviceMock.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll({});
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(1, 20);
+    });
+
+    it('deve passar parâmetros de paginação customizados', async () => {
+      const expected = {
+        data: [],
+        meta: { total: 0, page: 3, limit: 10, totalPages: 0 },
+      };
+
+      serviceMock.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll({ page: 3, limit: 10 });
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(3, 10);
+    });
   });
 
   // ── create ────────────────────────────────────────────────────
