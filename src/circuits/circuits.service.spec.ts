@@ -123,6 +123,21 @@ describe('CircuitsService', () => {
       await expect(service.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
     });
 
+    it('deve aceitar body vazio sem alterar campos', async () => {
+      const existing = buildCircuit();
+
+      prismaMock.circuit.findUnique.mockResolvedValue(existing);
+      prismaMock.circuit.update.mockResolvedValue(existing);
+
+      const result = await service.update(existing.id, {});
+
+      expect(result).toEqual(existing);
+      expect(prismaMock.circuit.update).toHaveBeenCalledWith({
+        where: { id: existing.id },
+        data: {},
+      });
+    });
+
     it('deve converter state para uppercase na atualização', async () => {
       const existing = buildCircuit();
       const updated = buildCircuit({ state: 'RJ' });
