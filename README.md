@@ -28,11 +28,19 @@ O projeto está totalmente dockerizado para facilitar o setup inicial. Siga os p
 
 ### 1. Configurar Variáveis de Ambiente
 
-Copie o arquivo de exemplo para criar o seu `.env` local:
+Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.example` (inclui geração do `PASSWORD_PEPPER`):
 
 ```bash
-cp .env.example .env
+npm run setup:env
 ```
+
+O `.env` deve conter ao menos as seguintes variáveis:
+- `DATABASE_URL` — URL de conexão com o PostgreSQL
+- `PORT` — Porta da API (default: `8080`)
+- `NODE_ENV` — Ambiente (`development` / `production`)
+- `LOG_LEVEL` — Nível de log do Pino (`debug`, `info`, etc.)
+- `PASSWORD_PEPPER` — Pepper para hashing de senhas (Argon2). Gerado automaticamente pelo `setup:env`.
+
 *(Opcional) Verifique se a porta `5432` ou `3000` já estão em uso na sua máquina. Se estiverem, altere no `.env` e no `docker-compose.yml`.*
 
 ### 2. Subir os Containers
