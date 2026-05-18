@@ -26,11 +26,22 @@ export function getLoggerConfig(): Params {
         paths: [
           'req.headers.authorization',
           'req.headers.cookie',
+          // Top-level (logs manuais: this.logger.debug({ pepper }, 'msg'))
+          'password',
+          'passwordHash',
+          'token',
+          'rg',
+          'cpf',
+          'pepper',
+          'secret',
+          // Nested (logs com objetos: this.logger.debug({ data: { pepper } }, 'msg'))
           '*.password',
           '*.passwordHash',
           '*.token',
           '*.rg',
           '*.cpf',
+          '*.pepper',
+          '*.secret',
         ],
         censor: '[REDACTED]',
       },
