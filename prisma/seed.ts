@@ -1,3 +1,4 @@
+import * as argon2 from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 
@@ -55,6 +56,71 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nSeed completed: ${congregations.length} congregations for circuit ${circuit.name}`);
+
+  // ── Users ──────────────────────────────────────────────────────
+  const pepper = Buffer.from(process.env.PASSWORD_PEPPER ?? 'dev-pepper-insecure-do-not-use-in-production-ok', 'utf-8');
+  const passwordHash = await argon2.hash('Senha@123', {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 1,
+    hashLength: 32,
+    secret: pepper,
+  });
+
+  // Busca congregações para vincular aos usuários
+  const allCongregations = await prisma.congregation.findMany({
+    where: { circuitId: circuit.id },
+    orderBy: { name: 'asc' },
+    take: 2,
+  });
+
+  const firstCongregation = allCongregations[0];
+  const secondCongregation = allCongregations[1] ?? firstCongregation;
+
+  if (firstCongregation && secondCongregation) {
+    const coordCircuit = await prisma.user.upsert({
+      where: { email: 'coordenador@suoac.dev' },
+      update: {
+        name: 'Coordenador de Circuito',
+        passwordHash,
+        role: 'CIRCUIT_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: firstCongregation.id,
+      },
+      create: {
+        name: 'Coordenador de Circuito',
+        email: 'coordenador@suoac.dev',
+        passwordHash,
+        role: 'CIRCUIT_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: firstCongregation.id,
+      },
+    });
+    console.log(`  User upserted: ${coordCircuit.name} (${coordCircuit.email})`);
+
+    const coordCong = await prisma.user.upsert({
+      where: { email: 'congregacao@suoac.dev' },
+      update: {
+        name: 'Coordenador de Congregação',
+        passwordHash,
+        role: 'CONGREGATION_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: secondCongregation.id,
+      },
+      create: {
+        name: 'Coordenador de Congregação',
+        email: 'congregacao@suoac.dev',
+        passwordHash,
+        role: 'CONGREGATION_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: secondCongregation.id,
+      },
+    });
+    console.log(`  User upserted: ${coordCong.name} (${coordCong.email})`);
+  }
+
+  console.log(`\nSeed completed: users created for circuit ${circuit.name}`);
 }
 
 main()
