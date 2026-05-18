@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { CircuitsModule } from './circuits/circuits.module';
+import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
 import { CongregationsModule } from './congregations/congregations.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -14,8 +16,10 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     LoggerModule.forRoot(getLoggerConfig()),
     PrismaModule,
+    HashingModule,
     CircuitsModule,
     CongregationsModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
