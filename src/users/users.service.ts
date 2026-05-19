@@ -117,6 +117,40 @@ export class UsersService {
     this.logger.log(`Usuario desativado (soft-delete) — id=${id}`);
   }
 
+  async findByEmailForAuth(email: string): Promise<{
+    id: string;
+    name: string;
+    email: string;
+    passwordHash: string | null;
+    role: string;
+    isActive: boolean;
+    circuitId: string;
+    congregationId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    const user = await this.prisma.client.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      isActive: user.isActive,
+      circuitId: user.circuitId,
+      congregationId: user.congregationId,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
   async findByEmail(email: string): Promise<UserResponse | null> {
     const user = await this.prisma.client.user.findUnique({
       where: { email },
