@@ -28,7 +28,7 @@ O projeto está totalmente dockerizado para facilitar o setup inicial. Siga os p
 
 ### 1. Configurar Variáveis de Ambiente
 
-Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.example` (inclui geração do `PASSWORD_PEPPER`):
+Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.example` (inclui geração do `PASSWORD_PEPPER`, `JWT_SECRET` e `JWT_REFRESH_SECRET`):
 
 ```bash
 npm run setup:env
@@ -40,6 +40,10 @@ O `.env` deve conter ao menos as seguintes variáveis:
 - `NODE_ENV` — Ambiente (`development` / `production`)
 - `LOG_LEVEL` — Nível de log do Pino (`debug`, `info`, etc.)
 - `PASSWORD_PEPPER` — Pepper para hashing de senhas (Argon2). Gerado automaticamente pelo `setup:env`.
+- `JWT_SECRET` — Chave secreta para assinar access tokens JWT. Gerado automaticamente pelo `setup:env`.
+- `JWT_REFRESH_SECRET` — Chave secreta para assinar refresh tokens JWT. Gerado automaticamente pelo `setup:env`.
+- `JWT_EXPIRATION` — Tempo de vida do access token em segundos (default: `900` = 15min).
+- `JWT_REFRESH_EXPIRATION` — Tempo de vida do refresh token em segundos (default: `604800` = 7d).
 
 *(Opcional) Verifique se a porta `5432` ou `3000` já estão em uso na sua máquina. Se estiverem, altere no `.env` e no `docker-compose.yml`.*
 

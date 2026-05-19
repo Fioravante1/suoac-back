@@ -310,6 +310,45 @@ Cada request recebe um ID único (`X-Request-ID` do header ou `crypto.randomUUID
 
 ---
 
+## 7.6. Autenticacao (JWT)
+
+### Stack
+- **Modulo**: `@nestjs/jwt` com guard customizado (`CanActivate`) — sem Passport
+- **Tokens**: Access token (15min) + Refresh token (7d) com rotation
+- **Hash do refresh token**: SHA-256 armazenado no campo `User.refreshTokenHash`
+
+### Fluxo
+1. `POST /auth/login` — valida email/senha, retorna `{ accessToken, refreshToken, user }`
+2. Requests autenticados enviam `Authorization: Bearer <accessToken>`
+3. `POST /auth/refresh` — valida refresh token, gera novos tokens (rotation), invalida o anterior
+4. `POST /auth/logout` — limpa `refreshTokenHash` do usuario (requer autenticacao)
+
+### Guards Globais
+- **`JwtAuthGuard`** — registrado como `APP_GUARD` global. Verifica Bearer token em TODAS as rotas.
+  - Rotas publicas: decorar com `@Public()` para skip (ex: `/auth/login`, `/auth/refresh`)
+- **`RolesGuard`** — registrado como `APP_GUARD` global. Verifica role do usuario.
+  - Usar `@Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')` no controller/handler
+  - Sem `@Roles()` definido → permite qualquer usuario autenticado
+
+### Decorators
+- `@Public()` — marca rota como publica (skip JWT guard)
+- `@Roles(...roles)` — define roles permitidas para o endpoint
+- `@CurrentUser()` — extrai `JwtPayload` do request (ex: `@CurrentUser('sub')` retorna userId)
+
+### Env Vars
+- `JWT_SECRET` — chave para assinar access tokens (fail-fast se ausente)
+- `JWT_REFRESH_SECRET` — chave para assinar refresh tokens (fail-fast se ausente)
+- `JWT_EXPIRATION` — tempo de vida do access token em segundos (default: 900)
+- `JWT_REFRESH_EXPIRATION` — tempo de vida do refresh token em segundos (default: 604800)
+
+### Regras
+- **Nunca use Passport** — o projeto usa guards nativos do NestJS com Fastify
+- **Novas rotas sao protegidas por default** — so adicione `@Public()` quando necessario
+- **Mensagens de erro genericas** — nunca revele se email existe ou nao (sempre "Credenciais invalidas")
+- **Redaction** — `accessToken`, `refreshToken`, `refreshTokenHash` sao censurados nos logs do Pino
+
+---
+
 ## 8. Testes
 
 O projeto utiliza **Jest** como framework de testes. Todo código de negócio implementado **DEVE** ter testes correspondentes. A ausência de testes é considerada *technical debt* e não será aceita.
