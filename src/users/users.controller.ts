@@ -47,10 +47,7 @@ export class UsersController {
   }
 
   @Patch('users/:id')
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateUserDto,
-  ): Promise<UserResponse> {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto): Promise<UserResponse> {
     return this.usersService.update(id, dto);
   }
 

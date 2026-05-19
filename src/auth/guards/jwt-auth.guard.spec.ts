@@ -7,10 +7,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import type { JwtPayload } from '../interfaces/jwt-payload.interface';
 
 // ── Helpers ──────────────────────────────────────────────────────
-function buildExecutionContext(overrides: {
-  authorization?: string;
-  isPublic?: boolean;
-}): {
+function buildExecutionContext(overrides: { authorization?: string; isPublic?: boolean }): {
   context: ReturnType<typeof createMockContext>;
   request: { headers: { authorization?: string }; user?: JwtPayload };
 } {

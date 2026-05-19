@@ -112,9 +112,7 @@ describe('AuthService', () => {
       const user = buildUserForAuth();
       usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
       hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce(FAKE_ACCESS_TOKEN)
-        .mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
       prismaMock.user.update.mockResolvedValue(user as never);
 
       const result = await service.login(loginDto);
@@ -154,9 +152,7 @@ describe('AuthService', () => {
       const user = buildUserForAuth();
       usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
       hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce(FAKE_ACCESS_TOKEN)
-        .mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
       prismaMock.user.update.mockResolvedValue(user as never);
 
       await service.login(loginDto);
@@ -168,9 +164,7 @@ describe('AuthService', () => {
       const user = buildUserForAuth();
       usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
       hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce(FAKE_ACCESS_TOKEN)
-        .mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
       prismaMock.user.update.mockResolvedValue(user as never);
 
       await service.login(loginDto);
@@ -196,9 +190,7 @@ describe('AuthService', () => {
 
       jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
       prismaMock.user.findUnique.mockResolvedValue(user as never);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce('new-access-token')
-        .mockResolvedValueOnce('new-refresh-token');
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
       prismaMock.user.update.mockResolvedValue(user as never);
 
       const result = await service.refreshTokens(refreshDto);
@@ -243,9 +235,7 @@ describe('AuthService', () => {
 
       jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
       prismaMock.user.findUnique.mockResolvedValue(user as never);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce('new-access-token')
-        .mockResolvedValueOnce('new-refresh-token');
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
       prismaMock.user.update.mockResolvedValue(user as never);
 
       await service.refreshTokens(refreshDto);
@@ -283,9 +273,7 @@ describe('AuthService', () => {
       const user = buildUserForAuth();
       usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
       hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce(FAKE_ACCESS_TOKEN)
-        .mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
       prismaMock.user.update.mockResolvedValue(user as never);
 
       await service.login({ email: 'joao@example.com', password: 'Senh@123!' });
@@ -306,9 +294,7 @@ describe('AuthService', () => {
       const user = buildUserForAuth();
       usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
       hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync
-        .mockResolvedValueOnce(FAKE_ACCESS_TOKEN)
-        .mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
       prismaMock.user.update.mockResolvedValue(user as never);
 
       await service.login({ email: 'joao@example.com', password: 'Senh@123!' });

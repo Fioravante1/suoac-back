@@ -48,7 +48,13 @@ describe('UsersController', () => {
 
   // ── create ────────────────────────────────────────────────────
   describe('create', () => {
-    const dto = { name: 'João Silva', email: 'joao@example.com', password: 'Senh@123!', role: 'CIRCUIT_COORDINATOR' as const, congregationId: CIRCUIT_ID };
+    const dto = {
+      name: 'João Silva',
+      email: 'joao@example.com',
+      password: 'Senh@123!',
+      role: 'CIRCUIT_COORDINATOR' as const,
+      congregationId: CIRCUIT_ID,
+    };
 
     it('deve delegar a criacao ao service e retornar o resultado', async () => {
       const expected = buildUserResponse();
@@ -71,7 +77,6 @@ describe('UsersController', () => {
 
       await expect(controller.create(CIRCUIT_ID, dto)).rejects.toThrow(ConflictException);
     });
-
   });
 
   // ── findByCircuit ─────────────────────────────────────────────

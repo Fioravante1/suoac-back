@@ -41,10 +41,7 @@ describe('CongregationsService', () => {
     prismaMock = mockDeep<PrismaClientType>();
 
     const module = await Test.createTestingModule({
-      providers: [
-        CongregationsService,
-        { provide: PrismaService, useValue: { client: prismaMock } },
-      ],
+      providers: [CongregationsService, { provide: PrismaService, useValue: { client: prismaMock } }],
     }).compile();
 
     service = module.get(CongregationsService);
@@ -104,7 +101,10 @@ describe('CongregationsService', () => {
     const circuitId = 'a1b2c3d4-0000-0000-0000-000000000001';
 
     it('deve retornar lista paginada de congregações', async () => {
-      const congregations = [buildCongregation(), buildCongregation({ id: 'c1c2c3c4-0000-0000-0000-000000000002', code: '87577' })];
+      const congregations = [
+        buildCongregation(),
+        buildCongregation({ id: 'c1c2c3c4-0000-0000-0000-000000000002', code: '87577' }),
+      ];
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.congregation.findMany.mockResolvedValue(congregations);

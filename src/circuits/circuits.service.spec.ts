@@ -44,7 +44,10 @@ describe('CircuitsService', () => {
   // ── findAll ──────────────────────────────────────────────────
   describe('findAll', () => {
     it('deve retornar lista paginada de circuitos', async () => {
-      const circuits = [buildCircuit(), buildCircuit({ id: 'a1b2c3d4-0000-0000-0000-000000000002', name: 'Circuito RJ-01' })];
+      const circuits = [
+        buildCircuit(),
+        buildCircuit({ id: 'a1b2c3d4-0000-0000-0000-000000000002', name: 'Circuito RJ-01' }),
+      ];
 
       prismaMock.circuit.findMany.mockResolvedValue(circuits);
       prismaMock.circuit.count.mockResolvedValue(2);

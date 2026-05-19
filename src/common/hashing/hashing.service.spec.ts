@@ -58,7 +58,10 @@ describe('HashingService', () => {
 
       // Cria outro service com pepper diferente
       const module = await Test.createTestingModule({
-        providers: [HashingService, { provide: ConfigService, useValue: buildConfigService('outro-pepper-totalmente-diferente') }],
+        providers: [
+          HashingService,
+          { provide: ConfigService, useValue: buildConfigService('outro-pepper-totalmente-diferente') },
+        ],
       }).compile();
 
       const otherService = module.get(HashingService);

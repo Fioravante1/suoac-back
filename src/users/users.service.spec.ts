@@ -26,9 +26,7 @@ function buildCircuit(): { id: string; name: string; city: string; state: string
   };
 }
 
-function buildCongregation(
-  overrides: Partial<{ id: string; circuitId: string }> = {},
-): {
+function buildCongregation(overrides: Partial<{ id: string; circuitId: string }> = {}): {
   id: string;
   code: string;
   name: string;
