@@ -4,11 +4,11 @@
 
 /**
  * Gera o arquivo .env a partir do .env.example,
- * substituindo o placeholder do PASSWORD_PEPPER por um valor aleatorio.
+ * substituindo placeholders de seguranca por valores aleatorios.
  *
  * Uso: npm run setup:env
  *
- * Seguranca: nao sobrescreve .env existente (protege contra perda de pepper em uso).
+ * Seguranca: nao sobrescreve .env existente (protege contra perda de secrets em uso).
  */
 
 const fs = require('fs');
@@ -18,7 +18,13 @@ const crypto = require('crypto');
 const ROOT = path.resolve(__dirname, '..');
 const ENV_EXAMPLE = path.join(ROOT, '.env.example');
 const ENV_TARGET = path.join(ROOT, '.env');
-const PLACEHOLDER = 'gerar-um-valor-aleatorio-de-64-caracteres-hex';
+
+/** @type {Array<{ placeholder: string; bytes: number; label: string }>} */
+const SECRETS = [
+  { placeholder: 'gerar-um-valor-aleatorio-de-64-caracteres-hex', bytes: 32, label: 'PASSWORD_PEPPER' },
+  { placeholder: 'gerar-um-valor-aleatorio-para-jwt-secret', bytes: 64, label: 'JWT_SECRET' },
+  { placeholder: 'gerar-um-valor-aleatorio-para-jwt-refresh-secret', bytes: 64, label: 'JWT_REFRESH_SECRET' },
+];
 
 function main() {
   if (fs.existsSync(ENV_TARGET)) {
@@ -32,12 +38,16 @@ function main() {
     process.exit(1);
   }
 
-  const pepper = crypto.randomBytes(32).toString('hex');
-  const content = fs.readFileSync(ENV_EXAMPLE, 'utf-8').replace(PLACEHOLDER, pepper);
+  let content = fs.readFileSync(ENV_EXAMPLE, 'utf-8');
+
+  for (const { placeholder, bytes, label } of SECRETS) {
+    const value = crypto.randomBytes(bytes).toString('hex');
+    content = content.replace(placeholder, value);
+    console.log(`${label} gerado automaticamente (${bytes * 2} chars hex).`);
+  }
 
   fs.writeFileSync(ENV_TARGET, content, 'utf-8');
   console.log('.env criado com sucesso!');
-  console.log('PASSWORD_PEPPER gerado automaticamente (64 chars hex).');
 }
 
 main();
