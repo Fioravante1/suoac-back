@@ -88,6 +88,55 @@ npm run migrate:prod   # aplica migrations pendentes
 npm run seed:prod      # roda o seed
 ```
 
+## 🚂 Deploy (Railway)
+
+O projeto roda no [Railway](https://railway.app/) com dois environments conectados a branches do Git:
+
+| Environment | Branch | `NODE_ENV` | Swagger | Logs |
+|-------------|--------|------------|---------|------|
+| **production** | `main` | `production` | Desabilitado | JSON (stdout) |
+| **homologacao** | `develop` | `staging` | Habilitado (`/api/docs`) | JSON (stdout) |
+
+### Workflow de branches
+
+```
+develop  ← desenvolvimento e homologação
+  │
+  └──▶ main  ← produção (merge via PR)
+```
+
+1. Desenvolva na branch `develop` (ou feature branches mergeadas em `develop`)
+2. O Railway faz deploy automático de `develop` no environment de homologação
+3. Após validação, abra PR de `develop` → `main`
+4. O merge dispara deploy automático em produção
+
+### Scripts de migration/seed por ambiente
+
+```bash
+# Dev local (Docker)
+npm run migrate:dev
+docker compose exec api npx prisma db seed
+
+# Staging (homologação Railway)
+npm run migrate:staging
+npm run seed:staging
+
+# Produção (Railway)
+npm run migrate:prod
+npm run seed:prod
+```
+
+### Configuração no Railway
+
+Cada environment deve ter suas próprias env vars configuradas no dashboard:
+- `DATABASE_URL`, `DIRECT_URL` — URLs do banco (Neon ou outro PostgreSQL)
+- `NODE_ENV` — `staging` ou `production`
+- `PORT` — porta da API (Railway injeta automaticamente)
+- `PASSWORD_PEPPER`, `JWT_SECRET`, `JWT_REFRESH_SECRET` — secrets (gerar valores únicos por environment)
+- `LOG_LEVEL` — nível de log (recomendado: `info` para ambos)
+
+O arquivo `railway.toml` na raiz configura health check (`/health`), política de restart e timeout.
+
 ## 📖 Documentação da API (Swagger)
 
 Em ambiente de desenvolvimento, a documentação interativa da API está disponível em:

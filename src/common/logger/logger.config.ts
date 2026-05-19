@@ -3,15 +3,14 @@ import * as crypto from 'crypto';
 import type { Params } from 'nestjs-pino';
 
 export function getLoggerConfig(): Params {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const level = process.env.LOG_LEVEL ?? (isProduction ? 'info' : 'debug');
+  const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+  const level = process.env.LOG_LEVEL ?? (isDevelopment ? 'debug' : 'info');
 
   return {
     pinoHttp: {
       level,
-      ...(isProduction
-        ? {}
-        : {
+      ...(isDevelopment
+        ? {
             transport: {
               target: 'pino-pretty',
               options: {
@@ -21,7 +20,8 @@ export function getLoggerConfig(): Params {
                 ignore: 'pid,hostname',
               },
             },
-          }),
+          }
+        : {}),
       redact: {
         paths: [
           'req.headers.authorization',
