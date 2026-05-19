@@ -58,6 +58,7 @@ function buildUserRaw(
     name: string;
     email: string;
     passwordHash: string | null;
+    refreshTokenHash: string | null;
     role: UserRole;
     isActive: boolean;
     circuitId: string;
@@ -68,6 +69,7 @@ function buildUserRaw(
   name: string;
   email: string;
   passwordHash: string | null;
+  refreshTokenHash: string | null;
   role: UserRole;
   isActive: boolean;
   circuitId: string;
@@ -80,6 +82,7 @@ function buildUserRaw(
     name: overrides.name ?? 'João Silva',
     email: overrides.email ?? 'joao@example.com',
     passwordHash: overrides.passwordHash ?? FAKE_HASH,
+    refreshTokenHash: overrides.refreshTokenHash ?? null,
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
@@ -381,6 +384,29 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
       await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── findByEmailForAuth ───────────────────────────────────────
+  describe('findByEmailForAuth', () => {
+    it('deve retornar usuario com passwordHash quando existe', async () => {
+      const raw = buildUserRaw();
+      prismaMock.user.findUnique.mockResolvedValue(raw);
+
+      const result = await service.findByEmailForAuth('joao@example.com');
+
+      expect(result).not.toBeNull();
+      expect(result!.passwordHash).toBe(FAKE_HASH);
+      expect(result!.id).toBe(USER_ID);
+      expect(result!.email).toBe('joao@example.com');
+    });
+
+    it('deve retornar null quando nao existe', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.findByEmailForAuth('naoexiste@example.com');
+
+      expect(result).toBeNull();
     });
   });
 
