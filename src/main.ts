@@ -26,6 +26,7 @@ async function bootstrap(): Promise<void> {
       .setTitle('SUOAC API')
       .setDescription('API do Sistema Unificado de Ônibus para Assembleias de Circuito')
       .setVersion('0.1')
+      .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
