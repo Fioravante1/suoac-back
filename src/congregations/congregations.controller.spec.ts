@@ -12,7 +12,6 @@ function buildCongregation(overrides: Partial<CongregationResponse> = {}): Congr
     name: overrides.name ?? 'Águas de Março',
     email: overrides.email ?? 'CONG09480275@jwpub.org',
     city: overrides.city ?? null,
-    isActive: overrides.isActive ?? true,
     circuitId: overrides.circuitId ?? 'a1b2c3d4-0000-0000-0000-000000000001',
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),

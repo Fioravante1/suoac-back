@@ -37,7 +37,7 @@ export class CongregationsService {
     });
 
     this.logger.log(`Congregação criada — id=${congregation.id}, code="${congregation.code}", circuitId=${circuitId}`);
-    return congregation;
+    return this.toResponse(congregation);
   }
 
   async findByCircuit(
@@ -62,7 +62,7 @@ export class CongregationsService {
     ]);
 
     return {
-      data,
+      data: data.map((c) => this.toResponse(c)),
       meta: {
         total,
         page,
@@ -73,8 +73,8 @@ export class CongregationsService {
   }
 
   async findOne(id: string): Promise<CongregationResponse> {
-    const congregation = await this.prisma.client.congregation.findUnique({
-      where: { id },
+    const congregation = await this.prisma.client.congregation.findFirst({
+      where: { id, isActive: true },
     });
 
     if (!congregation) {
@@ -82,7 +82,7 @@ export class CongregationsService {
       throw new NotFoundException('Congregação não encontrada');
     }
 
-    return congregation;
+    return this.toResponse(congregation);
   }
 
   async update(id: string, dto: UpdateCongregationDto): Promise<CongregationResponse> {
@@ -122,7 +122,7 @@ export class CongregationsService {
     });
 
     this.logger.log(`Congregação atualizada — id=${id}`);
-    return congregation;
+    return this.toResponse(congregation);
   }
 
   async remove(id: string): Promise<void> {
@@ -134,6 +134,28 @@ export class CongregationsService {
     });
 
     this.logger.log(`Congregação desativada (soft-delete) — id=${id}`);
+  }
+
+  private toResponse(congregation: {
+    id: string;
+    code: string;
+    name: string;
+    email: string;
+    city: string | null;
+    circuitId: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }): CongregationResponse {
+    return {
+      id: congregation.id,
+      code: congregation.code,
+      name: congregation.name,
+      email: congregation.email,
+      city: congregation.city,
+      circuitId: congregation.circuitId,
+      createdAt: congregation.createdAt,
+      updatedAt: congregation.updatedAt,
+    };
   }
 
   private async ensureCircuitExists(circuitId: string): Promise<void> {
