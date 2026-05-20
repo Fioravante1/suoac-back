@@ -231,9 +231,7 @@ describe('CongregationsService', () => {
       const existing = buildPrismaCongregation();
       const conflict = buildPrismaCongregation({ id: 'outro-id', code: '99999' });
 
-      prismaMock.congregation.findFirst
-        .mockResolvedValueOnce(existing)
-        .mockResolvedValueOnce(conflict);
+      prismaMock.congregation.findFirst.mockResolvedValueOnce(existing).mockResolvedValueOnce(conflict);
 
       await expect(service.update(existing.id, { code: '99999' })).rejects.toThrow(ConflictException);
     });
@@ -242,9 +240,7 @@ describe('CongregationsService', () => {
       const existing = buildPrismaCongregation();
       const conflict = buildPrismaCongregation({ id: 'outro-id', email: 'outro@email.com' });
 
-      prismaMock.congregation.findFirst
-        .mockResolvedValueOnce(existing)
-        .mockResolvedValueOnce(conflict);
+      prismaMock.congregation.findFirst.mockResolvedValueOnce(existing).mockResolvedValueOnce(conflict);
 
       await expect(service.update(existing.id, { email: 'outro@email.com' })).rejects.toThrow(ConflictException);
     });
