@@ -1,6 +1,8 @@
-# SUOAC Backend - System Prompts & Guidelines
+# SUOAC Backend - Regras & Diretrizes para Agentes de IA
 
-Este documento define as regras, padrões arquiteturais e boas práticas estritas que devem ser seguidas ao interagir com o código do backend do projeto SUOAC.
+Este documento e a **fonte unica de verdade** para todas as regras, padroes arquiteturais e boas praticas que qualquer agente de IA (Claude, Gemini, etc.) **deve** seguir ao interagir com o codigo do backend do projeto SUOAC.
+
+> **Importante:** Os arquivos `CLAUDE.md` e `GEMINI.md` apenas referenciam este arquivo. Toda regra nova ou alteracao deve ser feita **aqui**.
 
 ---
 
@@ -24,7 +26,6 @@ Este documento define as regras, padrões arquiteturais e boas práticas estrita
 O projeto deve seguir princípios **SOLID** e **Clean Architecture**, organizados por domínios da aplicação (Feature-Based) em vez de organização técnica.
 
 ### Estrutura de Diretórios
-
 - **NÃO FAÇA:** Organizar por camada técnica na raiz (ex: `src/controllers`, `src/services`).
 - **FAÇA:** Organizar por feature/domínio de negócio:
   ```text
@@ -41,18 +42,15 @@ O projeto deve seguir princípios **SOLID** e **Clean Architecture**, organizado
   ```
 
 ### Padrões de Injeção de Dependência (DI) e Encapsulamento
-
 - Cada domínio (ex: `UsersModule`) deve exportar apenas aquilo que deve ser público para outros módulos.
 - Nunca injete um provider (ex: `UsersService`) de outro módulo diretamente sem importar o `UsersModule` no módulo atual.
 - Use **Interfaces** ou Abstract Classes para injetar dependências (Dependency Inversion Principle) sempre que houver lógica de infraestrutura (ex: APIs externas, Mailers, Storage), permitindo fácil "mock" nos testes.
 
 ### Controllers e Services (Responsabilidade Única - SRP)
-
 - **Controllers devem ser anêmicos:** Devem lidar APENAS com a camada HTTP (receber request, validar input com pipes, chamar UseCase/Service, mapear resposta).
 - **Services/UseCases são o coração:** Toda a lógica de negócio deve residir aqui, totalmente agnóstica ao protocolo HTTP (sem acessar `req`, `res`, ou headers diretamente).
 
 ### Interfaces de Resposta (DRY)
-
 - **Nunca repita tipos de retorno inline.** Quando o mesmo tipo de retorno aparece em mais de um lugar (controller, service, testes), ele **DEVE** ser extraído para uma interface na pasta `interfaces/` do módulo.
   ```text
   src/circuits/
@@ -68,20 +66,16 @@ O projeto deve seguir princípios **SOLID** e **Clean Architecture**, organizado
 ## 3. Diretrizes do Prisma 7 e Banco de Dados
 
 ### Adapter Boundary (Restrição de Tipagem)
-
 O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui a inferência de tipos em `strict mode`.
-
 - **Regra:** *NUNCA* exporte o tipo `PrismaClient` (classe) instanciado. O `PrismaService` deve atuar como uma barreira arquitetural.
 - Exponha os tipos reais usando a interface exportada (`type PrismaClientType`) do client gerado (`src/generated/prisma/client.ts`).
 - Modificações no `schema.prisma` exigem rodar `npx prisma generate` em seguida (o docker-compose faz isso automaticamente no boot).
 
 ### Queries
-
 - O Prisma deve ser acessado **exclusivamente** pelo `PrismaService`.
 - Evite passar o objeto do Prisma diretamente para funções privadas. Mantenha as consultas encapsuladas no service de repositório da respectiva entidade.
 
 ### Seed
-
 - O seed é configurado em `prisma.config.ts` (campo `migrations.seed`), **não** no `package.json`.
 - O arquivo de seed fica em `prisma/seed.ts` e usa `PrismaClient` + `@prisma/adapter-pg` diretamente (sem NestJS).
 - A URL de conexão usa `DIRECT_URL ?? DATABASE_URL`, consistente com `prisma.config.ts` — em ambiente Neon, isso garante conexão direta (sem pooler).
@@ -108,6 +102,20 @@ O projeto está configurado com regras severas de qualidade (`ESLint Flat Config
   - **Return Types**: Toda função exportada (controllers, services) *DEVE* ter o tipo de retorno explicitamente anotado (ex: `async findAll(): Promise<User[]> { ... }`).
   - **Type Imports**: Use `import type` para importar apenas tipos, mantendo o bundle limpo (o ESLint conserta isso sozinho se usar `npm run lint:fix`).
   - **Async Safety**: Toda Promise *deve* ter um `await`, um `.catch()`, ou retornar o valor. Promises pendentes na raiz (ex: entrypoints) devem ser marcadas com `void` (`void bootstrap();`).
+  - **Nunca aninhe `if`s**: Use early returns (guard clauses) com condições combinadas em vez de `if` dentro de `if`. Cada validação deve ser um bloco independente no nível raiz da função.
+    ```typescript
+    // Errado — ifs aninhados
+    if (condA) {
+      if (condB) {
+        throw new Error('...');
+      }
+    }
+
+    // Correto — guard clause com condição combinada
+    if (condA && condB) {
+      throw new Error('...');
+    }
+    ```
 
 ---
 
@@ -193,12 +201,11 @@ Todas as respostas de erro devem seguir um padrão uniforme:
 
 Endpoints que retornam listas **devem** suportar paginação para evitar retornar dados ilimitados:
 
-```text
+```
 GET /circuits/:circuitId/congregations?page=1&limit=20&sort=name:asc
 ```
 
 Resposta paginada:
-
 ```json
 {
   "data": [...],
@@ -430,7 +437,6 @@ Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Co
 ## 10. Fluxo de Trabalho e AI Assistant
 
 Quando solicitado para implementar uma nova funcionalidade:
-
 1. **Pense na Arquitetura:** Verifique em qual módulo a nova lógica pertence. Se não existe, crie o módulo.
 2. **SOLID Primeiro:** Separe DTOs, crie o Controller lidando só com a requisição, e o Service para a lógica.
 3. **Type Safety:** Garanta que todas as interfaces, retornos e payloads tenham tipagem completa. NUNCA sugira a desabilitação de regras do ESLint com `// eslint-disable-next-line` (apenas em exceções justificáveis de integração com bibliotecas untyped antigas).
