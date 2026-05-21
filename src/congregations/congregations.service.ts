@@ -21,7 +21,7 @@ export class CongregationsService {
     });
 
     if (existing) {
-      const field = existing.code === dto.code ? 'code' : 'email';
+      const field = existing.code === dto.code ? 'código' : 'E-mail';
       this.logger.warn(`Conflito ao criar congregação — ${field} duplicado, circuitId=${circuitId}`);
       throw new ConflictException(`Já existe uma congregação com este ${field}`);
     }
@@ -105,7 +105,7 @@ export class CongregationsService {
       });
 
       if (existing) {
-        const field = dto.code !== undefined && existing.code === dto.code ? 'code' : 'email';
+        const field = dto.code !== undefined && existing.code === dto.code ? 'Código' : 'E-mail';
         this.logger.warn(`Conflito ao atualizar congregação — id=${id}, ${field} duplicado`);
         throw new ConflictException(`Já existe uma congregação com este ${field}`);
       }

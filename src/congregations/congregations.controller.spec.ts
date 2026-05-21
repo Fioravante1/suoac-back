@@ -67,7 +67,7 @@ describe('CongregationsController', () => {
     it('deve propagar ConflictException do service', async () => {
       const dto = { code: '80275', name: 'Águas de Março', email: 'CONG09480275@jwpub.org' };
 
-      serviceMock.create.mockRejectedValue(new ConflictException('Já existe uma congregação com este code'));
+      serviceMock.create.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
       await expect(controller.create(circuitId, dto)).rejects.toThrow(ConflictException);
     });
@@ -141,7 +141,7 @@ describe('CongregationsController', () => {
     });
 
     it('deve propagar ConflictException do service', async () => {
-      serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este code'));
+      serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
       await expect(controller.update('id', { code: 'duplicado' })).rejects.toThrow(ConflictException);
     });
