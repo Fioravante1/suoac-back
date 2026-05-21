@@ -11,8 +11,14 @@ export class EventDaysService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByEvent(eventId: string): Promise<EventDayResponse[]> {
-    await this.ensureEventExists(eventId);
+  async findByEvent(eventId: string, role: string): Promise<EventDayResponse[]> {
+    const event = await this.ensureEventExists(eventId);
+
+    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
+    if (isRestricted && event.status === 'DRAFT') {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — eventId=${eventId}, role=${role}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
 
     this.logger.debug(`Listando dias do evento — eventId=${eventId}`);
 
@@ -24,13 +30,20 @@ export class EventDaysService {
     return days.map((d) => this.toResponse(d));
   }
 
-  async findOne(id: string): Promise<EventDayResponse> {
+  async findOne(id: string, role: string): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
+      include: { event: true },
     });
 
     if (!day) {
       this.logger.warn(`Dia do evento não encontrado — id=${id}`);
+      throw new NotFoundException('Dia do evento não encontrado');
+    }
+
+    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
+    if (isRestricted && day.event.status === 'DRAFT') {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, eventId=${day.eventId}, role=${role}`);
       throw new NotFoundException('Dia do evento não encontrado');
     }
 
@@ -121,14 +134,17 @@ export class EventDaysService {
     };
   }
 
-  private async ensureEventExists(eventId: string): Promise<void> {
+  private async ensureEventExists(eventId: string): Promise<{ id: string; status: string }> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
+      select: { id: true, status: true },
     });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado ao validar dependência — eventId=${eventId}`);
       throw new NotFoundException('Evento não encontrado');
     }
+
+    return event;
   }
 }

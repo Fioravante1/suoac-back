@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateEventDayDto } from './dto/update-event-day.dto';
 import { EventDaysService } from './event-days.service';
@@ -11,13 +12,19 @@ export class EventDaysController {
   constructor(private readonly eventDaysService: EventDaysService) {}
 
   @Get('events/:eventId/days')
-  async findByEvent(@Param('eventId', ParseUUIDPipe) eventId: string): Promise<EventDayResponse[]> {
-    return this.eventDaysService.findByEvent(eventId);
+  async findByEvent(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser('role') role: string,
+  ): Promise<EventDayResponse[]> {
+    return this.eventDaysService.findByEvent(eventId, role);
   }
 
   @Get('event-days/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<EventDayResponse> {
-    return this.eventDaysService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('role') role: string,
+  ): Promise<EventDayResponse> {
+    return this.eventDaysService.findOne(id, role);
   }
 
   @Patch('event-days/:id')

@@ -89,12 +89,21 @@ export class EventsService {
     return this.toResponse(event, true);
   }
 
-  async findByCircuit(circuitId: string, page: number, limit: number): Promise<PaginatedResponse<EventResponse>> {
+  async findByCircuit(
+    circuitId: string,
+    page: number,
+    limit: number,
+    role: string,
+  ): Promise<PaginatedResponse<EventResponse>> {
     await this.ensureCircuitExists(circuitId);
 
-    this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}`);
+    this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${role}`);
 
-    const where = { circuitId };
+    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
+    const where = {
+      circuitId,
+      ...(isRestricted && { status: { not: EventStatus.DRAFT } }),
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.client.event.findMany({
@@ -117,7 +126,7 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string): Promise<EventResponse> {
+  async findOne(id: string, role: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
@@ -125,6 +134,12 @@ export class EventsService {
 
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
+    if (isRestricted && event.status === EventStatus.DRAFT) {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, role=${role}`);
       throw new NotFoundException('Evento não encontrado');
     }
 

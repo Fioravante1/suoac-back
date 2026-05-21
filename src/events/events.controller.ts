@@ -42,13 +42,17 @@ export class EventsController {
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Query() query: PaginationQueryDto,
+    @CurrentUser('role') role: string,
   ): Promise<PaginatedResponse<EventResponse>> {
-    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20);
+    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, role);
   }
 
   @Get('events/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<EventResponse> {
-    return this.eventsService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('role') role: string,
+  ): Promise<EventResponse> {
+    return this.eventsService.findOne(id, role);
   }
 
   @Patch('events/:id')

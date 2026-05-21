@@ -48,16 +48,16 @@ describe('EventDaysController', () => {
       const expected = [buildDay(), buildDay({ id: 'd2', dayNumber: 2 })];
       serviceMock.findByEvent.mockResolvedValue(expected);
 
-      const result = await controller.findByEvent(eventId);
+      const result = await controller.findByEvent(eventId, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByEvent).toHaveBeenCalledWith(eventId);
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findByEvent.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findByEvent('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findByEvent('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -67,16 +67,16 @@ describe('EventDaysController', () => {
       const expected = buildDay();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(dayId);
+      const result = await controller.findOne(dayId, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(dayId);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(dayId, 'CIRCUIT_COORDINATOR');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Dia do evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 

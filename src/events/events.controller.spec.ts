@@ -102,10 +102,10 @@ describe('EventsController', () => {
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);
 
-      const result = await controller.findByCircuit(circuitId, {});
+      const result = await controller.findByCircuit(circuitId, {}, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 1, 20);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 1, 20, 'CIRCUIT_COORDINATOR');
     });
 
     it('deve passar parâmetros de paginação customizados', async () => {
@@ -115,10 +115,10 @@ describe('EventsController', () => {
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);
 
-      const result = await controller.findByCircuit(circuitId, { page: 2, limit: 10 });
+      const result = await controller.findByCircuit(circuitId, { page: 2, limit: 10 }, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 2, 10);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 2, 10, 'CIRCUIT_COORDINATOR');
     });
   });
 
@@ -128,16 +128,16 @@ describe('EventsController', () => {
       const expected = buildEvent();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(eventId);
+      const result = await controller.findOne(eventId, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(eventId);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 
