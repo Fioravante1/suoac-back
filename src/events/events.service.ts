@@ -8,7 +8,15 @@ import type { TransitionEventStatusDto } from './dto/transition-event-status.dto
 import type { UpdateEventDto } from './dto/update-event.dto';
 import type { EventResponse } from './interfaces/event-response.interface';
 
-const WEEKDAYS_PT = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const WEEKDAYS_PT = [
+  'Domingo',
+  'Segunda-feira',
+  'Terça-feira',
+  'Quarta-feira',
+  'Quinta-feira',
+  'Sexta-feira',
+  'Sábado',
+];
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN'],
@@ -18,7 +26,17 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
-  DRAFT: ['title', 'ticketPrice', 'registrationDeadline', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
+  DRAFT: [
+    'title',
+    'ticketPrice',
+    'registrationDeadline',
+    'paymentDeadline',
+    'venue',
+    'address',
+    'city',
+    'state',
+    'observations',
+  ],
   OPEN: ['title', 'ticketPrice', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
   CLOSED: ['observations'],
   FINISHED: [],
@@ -163,9 +181,7 @@ export class EventsService {
 
     const validNext = VALID_TRANSITIONS[event.status] ?? [];
     if (!validNext.includes(dto.status)) {
-      throw new UnprocessableEntityException(
-        `Transição inválida: ${event.status} → ${dto.status}`,
-      );
+      throw new UnprocessableEntityException(`Transição inválida: ${event.status} → ${dto.status}`);
     }
 
     const isOpeningEvent = event.status === EventStatus.DRAFT && dto.status === EventStatus.OPEN;

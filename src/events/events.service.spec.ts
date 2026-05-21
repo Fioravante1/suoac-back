@@ -489,9 +489,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve rejeitar DRAFT → OPEN sem dias ativos', async () => {
@@ -499,17 +497,13 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.transitionStatus('id-inexistente', { status: 'OPEN' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.transitionStatus('id-inexistente', { status: 'OPEN' })).rejects.toThrow(NotFoundException);
     });
   });
 

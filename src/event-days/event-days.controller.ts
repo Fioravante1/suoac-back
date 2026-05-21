@@ -22,10 +22,7 @@ export class EventDaysController {
 
   @Patch('event-days/:id')
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateEventDayDto,
-  ): Promise<EventDayResponse> {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDayDto): Promise<EventDayResponse> {
     return this.eventDaysService.update(id, dto);
   }
 

@@ -97,9 +97,7 @@ describe('EventDaysController', () => {
         new UnprocessableEntityException('Não é possível editar dias de um evento com status CLOSED'),
       );
 
-      await expect(controller.update(dayId, { departureTime: '07:00' })).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(controller.update(dayId, { departureTime: '07:00' })).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve propagar NotFoundException do service', async () => {

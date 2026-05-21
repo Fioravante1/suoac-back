@@ -53,10 +53,7 @@ export class EventsController {
 
   @Patch('events/:id')
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateEventDto,
-  ): Promise<EventResponse> {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDto): Promise<EventResponse> {
     return this.eventsService.update(id, dto);
   }
 

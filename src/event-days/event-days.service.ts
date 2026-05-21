@@ -49,9 +49,7 @@ export class EventDaysService {
     }
 
     if (!EDITABLE_EVENT_STATUSES.includes(day.event.status)) {
-      throw new UnprocessableEntityException(
-        `Não é possível editar dias de um evento com status ${day.event.status}`,
-      );
+      throw new UnprocessableEntityException(`Não é possível editar dias de um evento com status ${day.event.status}`);
     }
 
     if (day.status === 'CANCELLED') {
