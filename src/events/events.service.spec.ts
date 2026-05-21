@@ -293,7 +293,7 @@ describe('EventsService', () => {
       prismaMock.event.findMany.mockResolvedValue(events as never);
       prismaMock.event.count.mockResolvedValue(2);
 
-      const result = await service.findByCircuit(circuitId, 1, 20);
+      const result = await service.findByCircuit(circuitId, 1, 20, 'CIRCUIT_COORDINATOR');
 
       expect(result.data).toHaveLength(2);
       expect(result.meta).toEqual({ total: 2, page: 1, limit: 20, totalPages: 1 });
@@ -305,7 +305,7 @@ describe('EventsService', () => {
       prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent()] as never);
       prismaMock.event.count.mockResolvedValue(45);
 
-      const result = await service.findByCircuit(circuitId, 1, 20);
+      const result = await service.findByCircuit(circuitId, 1, 20, 'CIRCUIT_COORDINATOR');
 
       expect(result.meta.totalPages).toBe(3);
     });
@@ -313,7 +313,7 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByCircuit(circuitId, 1, 20)).rejects.toThrow(NotFoundException);
+      await expect(service.findByCircuit(circuitId, 1, 20, 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -322,7 +322,7 @@ describe('EventsService', () => {
     it('deve retornar o evento com dias', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays() as never);
 
-      const result = await service.findOne(eventId);
+      const result = await service.findOne(eventId, 'CIRCUIT_COORDINATOR');
 
       expect(result.id).toBe(eventId);
       expect(result.days).toHaveLength(1);
@@ -332,7 +332,7 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 

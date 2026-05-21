@@ -98,7 +98,7 @@ describe('EventDaysService', () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
       prismaMock.eventDay.findMany.mockResolvedValue(days as never);
 
-      const result = await service.findByEvent(eventId);
+      const result = await service.findByEvent(eventId, 'CIRCUIT_COORDINATOR');
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual(buildExpectedDayResponse());
@@ -108,7 +108,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByEvent('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findByEvent('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -117,7 +117,7 @@ describe('EventDaysService', () => {
     it('deve retornar o dia do evento', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(buildEventDay() as never);
 
-      const result = await service.findOne(dayId);
+      const result = await service.findOne(dayId, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(buildExpectedDayResponse());
     });
@@ -125,7 +125,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o dia não existe', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
     });
   });
 
