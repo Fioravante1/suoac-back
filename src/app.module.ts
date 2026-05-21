@@ -9,6 +9,8 @@ import { CircuitsModule } from './circuits/circuits.module';
 import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
 import { CongregationsModule } from './congregations/congregations.module';
+import { EventDaysModule } from './event-days/event-days.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
@@ -25,6 +27,8 @@ import { UsersModule } from './users/users.module';
     HashingModule,
     CircuitsModule,
     CongregationsModule,
+    EventsModule,
+    EventDaysModule,
     UsersModule,
     AuthModule,
   ],
