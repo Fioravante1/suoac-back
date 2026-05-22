@@ -45,6 +45,7 @@ const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
 const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
   OPEN: {
     registrationDeadline: 'CIRCUIT_COORDINATOR',
+    paymentDeadline: 'CIRCUIT_COORDINATOR',
   },
 };
 

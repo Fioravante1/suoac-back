@@ -539,7 +539,7 @@
           "name": "Update Event",
           "request": {
             "method": "PATCH",
-            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline, venue, address, city, state, observations\n  * registrationDeadline só pode ser alterado por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.",
+            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.",
             "header": [
               {
                 "key": "Content-Type",

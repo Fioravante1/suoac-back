@@ -107,7 +107,7 @@ Para cada dia do evento, o sistema deve armazenar:
 #### 2.2.4 Ciclo de Vida do Evento
 
 1. **Rascunho:** Evento criado mas não visível para congregações. Coordenador do circuito pode editar livremente
-2. **Aberto para inscrições:** Evento publicado. Congregações podem cadastrar passageiros. Edições limitadas (não pode alterar datas já com inscrições). O prazo de inscrição (`registrationDeadline`) só pode ser alterado pelo coordenador do circuito
+2. **Aberto para inscrições:** Evento publicado. Congregações podem cadastrar passageiros. Edições limitadas (não pode alterar datas já com inscrições). Os prazos de inscrição (`registrationDeadline`) e de pagamento (`paymentDeadline`) só podem ser alterados pelo coordenador do circuito
 3. **Inscrições encerradas:** Prazo de inscrição expirou ou foi encerrado manualmente. Apenas coordenador do circuito pode adicionar/remover passageiros
 4. **Finalizado:** Evento concluído. Dados em modo somente leitura para consulta e relatórios
 
@@ -389,7 +389,7 @@ Permite que coordenadores e assistentes (tanto do circuito quanto das congregaç
 10. **Dias do evento:** Cada dia do evento tem controle independente de ocupação. Um ônibus pode estar lotado na sexta mas ter vagas no domingo
 11. **Consistência financeira:** O valor pago nunca pode exceder o valor calculado. Se os dias forem reduzidos e o valor pago for maior que o novo valor calculado, o sistema deve alertar sobre crédito/reembolso
 12. **Permissões hierárquicas:** Coordenador do circuito pode fazer tudo que o coordenador da congregação faz, mas não o contrário
-13. **Prazo de inscrição:** Com o evento aberto, apenas o coordenador do circuito pode prorrogar ou alterar o prazo de inscrição (`registrationDeadline`). Assistentes do circuito não têm essa permissão
+13. **Prazos do evento:** Com o evento aberto, apenas o coordenador do circuito pode alterar o prazo de inscrição (`registrationDeadline`) e o prazo de pagamento (`paymentDeadline`). Assistentes do circuito não têm essa permissão
 
 ---
 

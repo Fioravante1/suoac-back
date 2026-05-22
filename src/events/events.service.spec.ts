@@ -406,6 +406,28 @@ describe('EventsService', () => {
       ).rejects.toThrow(ForbiddenException);
     });
 
+    it('deve permitir CIRCUIT_COORDINATOR editar paymentDeadline em OPEN', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+      const updated = buildPrismaEvent({ status: 'OPEN' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.event.update.mockResolvedValue(updated as never);
+
+      await expect(
+        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_COORDINATOR'),
+      ).resolves.toBeDefined();
+    });
+
+    it('deve rejeitar CIRCUIT_ASSISTANT de editar paymentDeadline em OPEN', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(
+        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_ASSISTANT'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('deve aceitar body vazio sem alterar campos', async () => {
       const event = buildPrismaEvent({ status: 'DRAFT' });
 
