@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
@@ -345,7 +345,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { title: 'Novo Título' });
+      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
 
       expect(result.title).toBe('Novo Título');
     });
@@ -357,7 +357,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { title: 'Novo Título' });
+      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
 
       expect(result.title).toBe('Novo Título');
     });
@@ -369,7 +369,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { observations: 'Nota atualizada' });
+      const result = await service.update(eventId, { observations: 'Nota atualizada' }, 'CIRCUIT_COORDINATOR');
 
       expect(result.observations).toBe('Nota atualizada');
     });
@@ -379,17 +379,31 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.update(eventId, { title: 'Teste' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
-    it('deve rejeitar campo proibido em OPEN (registrationDeadline)', async () => {
+    it('deve permitir CIRCUIT_COORDINATOR editar registrationDeadline em OPEN', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+      const updated = buildPrismaEvent({ status: 'OPEN' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.event.update.mockResolvedValue(updated as never);
+
+      await expect(
+        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_COORDINATOR'),
+      ).resolves.toBeDefined();
+    });
+
+    it('deve rejeitar CIRCUIT_ASSISTANT de editar registrationDeadline em OPEN', async () => {
       const event = buildPrismaEvent({ status: 'OPEN' });
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.update(eventId, { registrationDeadline: '2026-08-01' })).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_ASSISTANT'),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {
@@ -398,7 +412,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(event as never);
 
-      const result = await service.update(eventId, {});
+      const result = await service.update(eventId, {}, 'CIRCUIT_COORDINATOR');
 
       expect(result).toBeDefined();
       expect(prismaMock.event.update).toHaveBeenCalledWith({
@@ -413,7 +427,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ state: 'RJ' }) as never);
 
-      await service.update(eventId, { state: 'rj' });
+      await service.update(eventId, { state: 'rj' }, 'CIRCUIT_COORDINATOR');
 
       expect(prismaMock.event.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -425,7 +439,9 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { title: 'Teste' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

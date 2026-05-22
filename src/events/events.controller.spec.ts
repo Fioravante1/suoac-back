@@ -147,10 +147,10 @@ describe('EventsController', () => {
       const updated = buildEvent({ title: 'Novo Título' });
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(eventId, { title: 'Novo Título' });
+      const result = await controller.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(eventId, { title: 'Novo Título' });
+      expect(serviceMock.update).toHaveBeenCalledWith(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -158,7 +158,9 @@ describe('EventsController', () => {
         new UnprocessableEntityException('Campos não editáveis no status FINISHED: title'),
       );
 
-      await expect(controller.update(eventId, { title: 'Teste' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 

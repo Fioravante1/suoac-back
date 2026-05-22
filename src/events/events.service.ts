@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { EventStatus, EventType } from '../generated/prisma/enums';
@@ -37,9 +37,15 @@ const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
     'state',
     'observations',
   ],
-  OPEN: ['title', 'ticketPrice', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
+  OPEN: ['title', 'ticketPrice', 'registrationDeadline', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
   CLOSED: ['observations'],
   FINISHED: [],
+};
+
+const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
+  OPEN: {
+    registrationDeadline: 'CIRCUIT_COORDINATOR',
+  },
 };
 
 @Injectable()
@@ -146,7 +152,7 @@ export class EventsService {
     return this.toResponse(event, true);
   }
 
-  async update(id: string, dto: UpdateEventDto): Promise<EventResponse> {
+  async update(id: string, dto: UpdateEventDto, role: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
@@ -162,6 +168,16 @@ export class EventsService {
       throw new UnprocessableEntityException(
         `Campos não editáveis no status ${event.status}: ${forbiddenFields.join(', ')}`,
       );
+    }
+
+    const restrictions = ROLE_RESTRICTED_FIELDS[event.status];
+    if (restrictions) {
+      const restrictedFields = sentFields.filter((f) => restrictions[f] && restrictions[f] !== role);
+      if (restrictedFields.length > 0) {
+        throw new ForbiddenException(
+          `Apenas ${restrictions[restrictedFields[0]!]!} pode editar: ${restrictedFields.join(', ')}`,
+        );
+      }
     }
 
     const updated = await this.prisma.client.event.update({
