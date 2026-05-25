@@ -604,6 +604,31 @@
           "response": []
         },
         {
+          "name": "Cancel Event",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Delete Event",
           "request": {
             "method": "DELETE",

@@ -74,6 +74,12 @@ export class EventsController {
     return this.eventsService.transitionStatus(id, dto);
   }
 
+  @Patch('events/:id/cancel')
+  @Roles('CIRCUIT_COORDINATOR')
+  async cancel(@Param('id', ParseUUIDPipe) id: string): Promise<EventResponse> {
+    return this.eventsService.cancel(id);
+  }
+
   @Delete('events/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')

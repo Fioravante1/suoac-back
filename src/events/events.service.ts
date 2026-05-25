@@ -1,4 +1,10 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { EventStatus, EventType } from '../generated/prisma/enums';
@@ -20,7 +26,7 @@ const WEEKDAYS_PT = [
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN'],
-  OPEN: ['CLOSED'],
+  OPEN: ['CLOSED', 'CANCELLED'],
   CLOSED: ['FINISHED'],
   FINISHED: [],
   CANCELLED: [],
@@ -38,7 +44,17 @@ const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
     'state',
     'observations',
   ],
-  OPEN: ['title', 'ticketPrice', 'registrationDeadline', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
+  OPEN: [
+    'title',
+    'ticketPrice',
+    'registrationDeadline',
+    'paymentDeadline',
+    'venue',
+    'address',
+    'city',
+    'state',
+    'observations',
+  ],
   CLOSED: ['observations'],
   FINISHED: [],
   CANCELLED: [],
@@ -249,6 +265,44 @@ export class EventsService {
     await this.prisma.client.event.delete({ where: { id } });
 
     this.logger.warn(`Evento removido (hard-delete) — id=${id}`);
+  }
+
+  async cancel(id: string): Promise<EventResponse> {
+    const event = await this.prisma.client.event.findUnique({ where: { id } });
+
+    if (!event) {
+      this.logger.warn(`Evento não encontrado — id=${id}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (event.status === EventStatus.CANCELLED) {
+      this.logger.debug(`Evento já cancelado (idempotente) — id=${id}`);
+      return this.toResponse(event);
+    }
+
+    if (event.status !== EventStatus.OPEN) {
+      throw new UnprocessableEntityException(
+        `Apenas eventos em OPEN podem ser cancelados. Status atual: ${event.status}`,
+      );
+    }
+
+    const [updatedEvent] = await this.prisma.client.$transaction([
+      this.prisma.client.event.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+      }),
+      this.prisma.client.eventDay.updateMany({
+        where: { eventId: id, status: 'ACTIVE' },
+        data: { status: 'CANCELLED' },
+      }),
+      this.prisma.client.congregationEventStatus.updateMany({
+        where: { eventId: id },
+        data: { status: 'PENDING', finalizedById: null, finalizedAt: null },
+      }),
+    ]);
+
+    this.logger.log(`Evento cancelado — id=${id}. Dias ativos, status de congregações resetados`);
+    return this.toResponse(updatedEvent);
   }
 
   private generateDays(dto: CreateEventDto): Array<{

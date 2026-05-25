@@ -545,6 +545,78 @@ describe('EventsService', () => {
     });
   });
 
+  // ── cancel ──────────────────────────────────────────────────
+  describe('cancel', () => {
+    it('deve cancelar evento em OPEN com cascata em dias e congregações', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+      const cancelledEvent = buildPrismaEvent({ status: 'CANCELLED' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.$transaction.mockResolvedValue([cancelledEvent, { count: 2 }, { count: 3 }] as never);
+
+      const result = await service.cancel(eventId);
+
+      expect(result.status).toBe('CANCELLED');
+      expect(prismaMock.$transaction).toHaveBeenCalled();
+    });
+
+    it('deve ser idempotente quando evento já está CANCELLED', async () => {
+      const event = buildPrismaEvent({ status: 'CANCELLED' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      const result = await service.cancel(eventId);
+
+      expect(result.status).toBe('CANCELLED');
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('deve rejeitar cancelamento de evento em DRAFT', async () => {
+      const event = buildPrismaEvent({ status: 'DRAFT' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve rejeitar cancelamento de evento em CLOSED', async () => {
+      const event = buildPrismaEvent({ status: 'CLOSED' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve rejeitar cancelamento de evento em FINISHED', async () => {
+      const event = buildPrismaEvent({ status: 'FINISHED' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve lançar NotFoundException quando o evento não existe', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.cancel('id-inexistente')).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve usar $transaction para atomicidade', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+      const cancelledEvent = buildPrismaEvent({ status: 'CANCELLED' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.$transaction.mockResolvedValue([cancelledEvent, { count: 1 }, { count: 1 }] as never);
+
+      await service.cancel(eventId);
+
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.event.update).toHaveBeenCalled();
+      expect(prismaMock.eventDay.updateMany).toHaveBeenCalled();
+      expect(prismaMock.congregationEventStatus.updateMany).toHaveBeenCalled();
+    });
+  });
+
   // ── remove ────────────────────────────────────────────────────
   describe('remove', () => {
     it('deve remover evento em DRAFT', async () => {

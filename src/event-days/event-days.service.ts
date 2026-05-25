@@ -117,10 +117,14 @@ export class EventDaysService {
           where: { id: day.eventId },
           data: { status: 'CANCELLED' },
         }),
+        this.prisma.client.congregationEventStatus.updateMany({
+          where: { eventId: day.eventId },
+          data: { status: 'PENDING', finalizedById: null, finalizedAt: null },
+        }),
       ]);
 
       this.logger.log(
-        `Último dia ativo cancelado — id=${id}, eventId=${day.eventId}. Evento transicionado para CANCELLED`,
+        `Último dia ativo cancelado — id=${id}, eventId=${day.eventId}. Evento transicionado para CANCELLED, status de congregações resetados`,
       );
       return this.toResponse(updatedDay);
     }
