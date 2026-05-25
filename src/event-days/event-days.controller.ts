@@ -34,7 +34,7 @@ export class EventDaysController {
   }
 
   @Patch('event-days/:id/cancel')
-  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
+  @Roles('CIRCUIT_COORDINATOR')
   async cancel(@Param('id', ParseUUIDPipe) id: string): Promise<EventDayResponse> {
     return this.eventDaysService.cancel(id);
   }

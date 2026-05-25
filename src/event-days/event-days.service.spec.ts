@@ -204,11 +204,12 @@ describe('EventDaysService', () => {
 
   // ── cancel ────────────────────────────────────────────────────
   describe('cancel', () => {
-    it('deve cancelar um dia ativo', async () => {
+    it('deve cancelar um dia ativo quando não é o último', async () => {
       const dayWithEvent = buildEventDayWithEvent({ status: 'ACTIVE' }, { status: 'DRAFT' });
       const cancelled = buildEventDay({ status: 'CANCELLED' });
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
+      prismaMock.eventDay.count.mockResolvedValue(2);
       prismaMock.eventDay.update.mockResolvedValue(cancelled as never);
 
       const result = await service.cancel(dayId);
@@ -218,6 +219,20 @@ describe('EventDaysService', () => {
         where: { id: dayId },
         data: { status: 'CANCELLED' },
       });
+    });
+
+    it('deve cancelar o último dia ativo e definir evento como CANCELLED quando CIRCUIT_COORDINATOR', async () => {
+      const dayWithEvent = buildEventDayWithEvent({ status: 'ACTIVE' }, { status: 'OPEN' });
+      const cancelledDay = buildEventDay({ status: 'CANCELLED' });
+
+      prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
+      prismaMock.eventDay.count.mockResolvedValue(1);
+      prismaMock.$transaction.mockResolvedValue([cancelledDay, {}] as never);
+
+      const result = await service.cancel(dayId);
+
+      expect(result.status).toBe('CANCELLED');
+      expect(prismaMock.$transaction).toHaveBeenCalled();
     });
 
     it('deve retornar idempotentemente quando dia já está cancelado', async () => {

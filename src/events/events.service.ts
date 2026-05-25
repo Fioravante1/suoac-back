@@ -23,6 +23,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   OPEN: ['CLOSED'],
   CLOSED: ['FINISHED'],
   FINISHED: [],
+  CANCELLED: [],
 };
 
 const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
@@ -40,6 +41,7 @@ const EDITABLE_FIELDS_BY_STATUS: Record<string, string[]> = {
   OPEN: ['title', 'ticketPrice', 'registrationDeadline', 'paymentDeadline', 'venue', 'address', 'city', 'state', 'observations'],
   CLOSED: ['observations'],
   FINISHED: [],
+  CANCELLED: [],
 };
 
 const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {

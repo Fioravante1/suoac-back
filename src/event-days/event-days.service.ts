@@ -103,6 +103,28 @@ export class EventDaysService {
       return this.toResponse(day);
     }
 
+    const activeDaysCount = await this.prisma.client.eventDay.count({
+      where: { eventId: day.eventId, status: 'ACTIVE' },
+    });
+
+    if (activeDaysCount <= 1) {
+      const [updatedDay] = await this.prisma.client.$transaction([
+        this.prisma.client.eventDay.update({
+          where: { id },
+          data: { status: 'CANCELLED' },
+        }),
+        this.prisma.client.event.update({
+          where: { id: day.eventId },
+          data: { status: 'CANCELLED' },
+        }),
+      ]);
+
+      this.logger.log(
+        `Último dia ativo cancelado — id=${id}, eventId=${day.eventId}. Evento transicionado para CANCELLED`,
+      );
+      return this.toResponse(updatedDay);
+    }
+
     const updated = await this.prisma.client.eventDay.update({
       where: { id },
       data: { status: 'CANCELLED' },
