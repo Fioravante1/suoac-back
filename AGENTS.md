@@ -422,15 +422,37 @@ npm run test:e2e       # Testes end-to-end
 
 ---
 
-## 9. Padrões de Versionamento (Conventional Commits)
+## 9. Padrão de Commits (Conventional Commits)
 
-Ao gerar mensagens de commit, respeite rigorosamente o padrão **Conventional Commits** em **Português**, usando o modo imperativo:
+- Use mensagens no formato: `tipo(escopo opcional): descrição breve no imperativo`
+- Tipos permitidos: `feat`, `fix`, `chore`, `refactor`, `perf`, `docs`, `test`, `build`, `ci`, `style`, `revert`
+- Utilize `!` para mudanças incompatíveis e/ou adicione `BREAKING CHANGE:` no corpo
+- Cabeçalho até 50 caracteres; corpo e rodapé com linhas até 72 caracteres
+- Escreva a descrição no imperativo e em português
+- `escopo` é opcional e em `kebab-case` (ex.: `user-form`, `segments-api`)
 
-- `feat(scope): adiciona nova funcionalidade X`
-- `fix(scope): corrige erro de validação Y`
-- `chore(deps): atualiza pacote Z`
-- `refactor(scope): refatora service W para remover código duplicado`
-- `test(scope): adiciona testes unitários para o service X`
+### Exemplos
+
+```
+feat(segments-table): adicionar coluna de permissões por segmento
+
+Adicionar exibição das permissões do usuário diretamente na tabela de
+segmentos para melhorar a visibilidade do acesso.
+```
+
+```
+fix(login): corrigir redirecionamento após autenticação
+
+Ajustar rota de retorno para `/app/home` quando o provider retornar
+`redirectTo` vazio.
+```
+
+```
+refactor(user-service)!: unificar métodos de busca por id e email
+
+BREAKING CHANGE: `getByEmail` removido; usar `getByIdOrEmail`.
+Atualizar chamadas nas features de cadastro e perfis.
+```
 
 ---
 

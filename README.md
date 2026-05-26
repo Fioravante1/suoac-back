@@ -28,7 +28,7 @@ O projeto está totalmente dockerizado para facilitar o setup inicial. Siga os p
 
 ### 1. Configurar Variáveis de Ambiente
 
-Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.example` (inclui geração do `PASSWORD_PEPPER`, `JWT_SECRET` e `JWT_REFRESH_SECRET`):
+Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.example` (inclui geração do `PASSWORD_PEPPER`, `JWT_SECRET`, `JWT_REFRESH_SECRET` e `ENCRYPTION_KEY`):
 
 ```bash
 npm run setup:env
@@ -44,6 +44,7 @@ O `.env` deve conter ao menos as seguintes variáveis:
 - `JWT_REFRESH_SECRET` — Chave secreta para assinar refresh tokens JWT. Gerado automaticamente pelo `setup:env`.
 - `JWT_EXPIRATION` — Tempo de vida do access token em segundos (default: `900` = 15min).
 - `JWT_REFRESH_EXPIRATION` — Tempo de vida do refresh token em segundos (default: `604800` = 7d).
+- `ENCRYPTION_KEY` — Chave AES-256-GCM para criptografia de dados sensíveis (RG). 32 bytes hex. Gerado automaticamente pelo `setup:env`.
 
 *(Opcional) Verifique se a porta `5432` ou `3000` já estão em uso na sua máquina. Se estiverem, altere no `.env` e no `docker-compose.yml`.*
 
@@ -132,7 +133,7 @@ Cada environment deve ter suas próprias env vars configuradas no dashboard:
 - `DATABASE_URL`, `DIRECT_URL` — URLs do banco (Neon ou outro PostgreSQL)
 - `NODE_ENV` — `staging` ou `production`
 - `PORT` — porta da API (Railway injeta automaticamente)
-- `PASSWORD_PEPPER`, `JWT_SECRET`, `JWT_REFRESH_SECRET` — secrets (gerar valores únicos por environment)
+- `PASSWORD_PEPPER`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY` — secrets (gerar valores únicos por environment)
 - `LOG_LEVEL` — nível de log (recomendado: `info` para ambos)
 
 O arquivo `railway.toml` na raiz configura health check (`/health`), política de restart e timeout.

@@ -920,6 +920,215 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Passengers",
+      "item": [
+        {
+          "name": "Create Passenger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('passengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"João Silva\",\n  \"rg\": \"12.345.678-X\",\n  \"phone\": \"11999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Passengers by Congregation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Passengers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers/search?q=João&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "João"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Passenger by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Passenger",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nome Atualizado do Passageiro\",\n  \"phone\": \"11988888888\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Passenger (hard-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -945,6 +1154,16 @@
     },
     {
       "key": "eventDayId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "congregationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "passengerId",
       "value": "",
       "type": "string"
     }

@@ -24,6 +24,7 @@ const SECRETS = [
   { placeholder: 'gerar-um-valor-aleatorio-de-64-caracteres-hex', bytes: 32, label: 'PASSWORD_PEPPER' },
   { placeholder: 'gerar-um-valor-aleatorio-para-jwt-secret', bytes: 64, label: 'JWT_SECRET' },
   { placeholder: 'gerar-um-valor-aleatorio-para-jwt-refresh-secret', bytes: 64, label: 'JWT_REFRESH_SECRET' },
+  { placeholder: 'gerar-um-valor-aleatorio-para-encryption-key', bytes: 32, label: 'ENCRYPTION_KEY' },
 ];
 
 function main() {
