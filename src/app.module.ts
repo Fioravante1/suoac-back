@@ -11,6 +11,7 @@ import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
 import { CongregationsModule } from './congregations/congregations.module';
 import { EventDaysModule } from './event-days/event-days.module';
+import { EventPassengersModule } from './event-passengers/event-passengers.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PassengersModule } from './passengers/passengers.module';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     CongregationsModule,
     EventsModule,
     EventDaysModule,
+    EventPassengersModule,
     UsersModule,
     AuthModule,
     PassengersModule,

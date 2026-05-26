@@ -1129,6 +1129,224 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "EventPassengers",
+      "item": [
+        {
+          "name": "Create EventPassenger (by passengerId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Observação opcional\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create EventPassenger (inline)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List EventPassengers by Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get EventPassenger by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update EventPassenger Days",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dayIds\": [\"substituir-por-uuid-do-dia-1\", \"substituir-por-uuid-do-dia-2\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id/days",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id",
+                "days"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete EventPassenger",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -1164,6 +1382,11 @@
     },
     {
       "key": "passengerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventPassengerId",
       "value": "",
       "type": "string"
     }
