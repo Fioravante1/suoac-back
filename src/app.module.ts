@@ -15,6 +15,7 @@ import { EventPassengersModule } from './event-passengers/event-passengers.modul
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PassengersModule } from './passengers/passengers.module';
+import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     PassengersModule,
+    PaymentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

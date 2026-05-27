@@ -1347,6 +1347,76 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 25.00,\n  \"paidAt\": \"2026-01-15T10:00:00Z\",\n  \"observations\": \"Pagamento parcial via Pix\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/{{eventPassengerId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                "{{eventPassengerId}}",
+                "payments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Payments by EventPassenger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/{{eventPassengerId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                "{{eventPassengerId}}",
+                "payments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Payment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -1387,6 +1457,11 @@
     },
     {
       "key": "eventPassengerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
       "value": "",
       "type": "string"
     }
