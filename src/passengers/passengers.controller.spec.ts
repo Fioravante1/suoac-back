@@ -204,9 +204,7 @@ describe('PassengersController', () => {
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
-      serviceMock.remove.mockRejectedValue(
-        new UnprocessableEntityException('Passageiro possui inscrições em eventos'),
-      );
+      serviceMock.remove.mockRejectedValue(new UnprocessableEntityException('Passageiro possui inscrições em eventos'));
 
       await expect(controller.remove('id')).rejects.toThrow(UnprocessableEntityException);
     });

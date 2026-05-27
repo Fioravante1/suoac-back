@@ -39,7 +39,10 @@ export class EncryptionService {
     const data = Buffer.from(ciphertext, 'base64');
 
     const iv = data.subarray(0, ENCRYPTION_CONFIG.IV_LENGTH);
-    const authTag = data.subarray(ENCRYPTION_CONFIG.IV_LENGTH, ENCRYPTION_CONFIG.IV_LENGTH + ENCRYPTION_CONFIG.AUTH_TAG_LENGTH);
+    const authTag = data.subarray(
+      ENCRYPTION_CONFIG.IV_LENGTH,
+      ENCRYPTION_CONFIG.IV_LENGTH + ENCRYPTION_CONFIG.AUTH_TAG_LENGTH,
+    );
     const encrypted = data.subarray(ENCRYPTION_CONFIG.IV_LENGTH + ENCRYPTION_CONFIG.AUTH_TAG_LENGTH);
 
     const decipher = createDecipheriv(ENCRYPTION_CONFIG.ALGORITHM, this.key, iv, {

@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { EventPassengerResponse } from './interfaces/event-passenger-response.interface';

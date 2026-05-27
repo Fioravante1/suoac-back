@@ -1,10 +1,4 @@
-import {
-  ConflictException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -219,10 +213,10 @@ export class PassengersService {
     });
 
     if (eventCount > 0) {
-      this.logger.warn(`Tentativa de remover passageiro com inscrições em eventos — id=${id}, eventCount=${eventCount}`);
-      throw new UnprocessableEntityException(
-        'Não é possível remover um passageiro que possui inscrições em eventos',
+      this.logger.warn(
+        `Tentativa de remover passageiro com inscrições em eventos — id=${id}, eventCount=${eventCount}`,
       );
+      throw new UnprocessableEntityException('Não é possível remover um passageiro que possui inscrições em eventos');
     }
 
     await this.prisma.client.passenger.delete({

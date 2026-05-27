@@ -61,10 +61,7 @@ export class EventPassengersController {
 
   @Delete('event-passengers/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
     return this.eventPassengersService.remove(id, user);
   }
 }

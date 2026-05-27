@@ -423,9 +423,9 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(
-        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_ASSISTANT'),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_ASSISTANT')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {

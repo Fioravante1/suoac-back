@@ -48,10 +48,7 @@ export class EventsController {
   }
 
   @Get('events/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('role') role: string,
-  ): Promise<EventResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string): Promise<EventResponse> {
     return this.eventsService.findOne(id, role);
   }
 

@@ -56,10 +56,7 @@ export class PassengersController {
   }
 
   @Patch('passengers/:id')
-  async update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdatePassengerDto,
-  ): Promise<PassengerResponse> {
+  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePassengerDto): Promise<PassengerResponse> {
     return this.passengersService.update(id, dto);
   }
 

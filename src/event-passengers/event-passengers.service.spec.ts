@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { EncryptionService } from '../common/encryption/encryption.service';
@@ -372,18 +367,18 @@ describe('EventPassengersService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando o evento não está OPEN', async () => {
       const event = buildEvent({ status: 'DRAFT' });
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(
-        service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando prazo expirou para role de congregação', async () => {
@@ -421,9 +416,7 @@ describe('EventPassengersService', () => {
       prismaMock.passenger.findUnique.mockResolvedValue(passenger);
       prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEventPassenger() as never);
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(ConflictException);
     });
 
     it('deve lançar ConflictException quando RG duplicado cross-congregation', async () => {
@@ -438,9 +431,7 @@ describe('EventPassengersService', () => {
         buildEventPassenger({ passengerId: 'other-passenger' }) as never,
       );
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(ConflictException);
     });
 
     it('deve lançar NotFoundException quando passengerId não existe', async () => {
@@ -450,9 +441,7 @@ describe('EventPassengersService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.passenger.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: 'non-existent' }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.create(EVENT_ID, user, { passengerId: 'non-existent' })).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ForbiddenException quando congregação do passageiro é diferente', async () => {
@@ -463,9 +452,7 @@ describe('EventPassengersService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.passenger.findUnique.mockResolvedValue(passenger);
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(ForbiddenException);
     });
 
     it('deve lançar UnprocessableEntityException quando dia cancelado para congresso', async () => {
@@ -484,9 +471,9 @@ describe('EventPassengersService', () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
       prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: PASSENGER_ID, dayIds: [DAY_ID_1] }),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID, dayIds: [DAY_ID_1] })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando dayIds ausente para congresso regional', async () => {
@@ -502,9 +489,9 @@ describe('EventPassengersService', () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
       prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.create(EVENT_ID, user, { passengerId: PASSENGER_ID }),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando nem passengerId nem name+rg enviados', async () => {
@@ -604,9 +591,7 @@ describe('EventPassengersService', () => {
 
   // ── updateDays ────────────────────────────────────────────────
   describe('updateDays', () => {
-    function buildEpWithEvent(
-      overrides: { paidAmount?: number; paymentStatus?: string; event?: PrismaEvent } = {},
-    ): {
+    function buildEpWithEvent(overrides: { paidAmount?: number; paymentStatus?: string; event?: PrismaEvent } = {}): {
       id: string;
       totalAmount: number;
       paidAmount: number;
@@ -636,15 +621,17 @@ describe('EventPassengersService', () => {
         createdAt: new Date('2026-01-01T00:00:00Z'),
         updatedAt: new Date('2026-01-01T00:00:00Z'),
         passenger: buildPassenger(),
-        event: overrides.event ?? buildEvent({
-          type: 'REGIONAL_CONVENTION',
-          ticketPrice: 30.0,
-          eventDays: [
-            buildEventDay({ id: DAY_ID_1 }),
-            buildEventDay({ id: DAY_ID_2, dayNumber: 2 }),
-            buildEventDay({ id: DAY_ID_3, dayNumber: 3 }),
-          ],
-        }),
+        event:
+          overrides.event ??
+          buildEvent({
+            type: 'REGIONAL_CONVENTION',
+            ticketPrice: 30.0,
+            eventDays: [
+              buildEventDay({ id: DAY_ID_1 }),
+              buildEventDay({ id: DAY_ID_2, dayNumber: 2 }),
+              buildEventDay({ id: DAY_ID_3, dayNumber: 3 }),
+            ],
+          }),
       };
     }
 
@@ -697,9 +684,9 @@ describe('EventPassengersService', () => {
     it('deve lançar NotFoundException quando inscrição não existe', async () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.updateDays('non-existent', { dayIds: [DAY_ID_1] }, buildUser()),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.updateDays('non-existent', { dayIds: [DAY_ID_1] }, buildUser())).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando evento não está OPEN', async () => {
@@ -707,27 +694,25 @@ describe('EventPassengersService', () => {
 
       prismaMock.eventPassenger.findUnique.mockResolvedValue(epWithEvent as never);
 
-      await expect(
-        service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, buildUser()),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, buildUser())).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando dia inválido', async () => {
       const user = buildUser();
       prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEpWithEvent() as never);
 
-      await expect(
-        service.updateDays(EP_ID, { dayIds: ['non-existent-day'] }, user),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.updateDays(EP_ID, { dayIds: ['non-existent-day'] }, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar ForbiddenException quando congregação diferente', async () => {
       const user = buildUser({ congregationId: 'other-congregation' });
       prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEpWithEvent() as never);
 
-      await expect(
-        service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, user),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, user)).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -770,9 +755,7 @@ describe('EventPassengersService', () => {
     });
 
     it('deve lançar UnprocessableEntityException quando evento não está OPEN', async () => {
-      prismaMock.eventPassenger.findUnique.mockResolvedValue(
-        buildEpWithEventForRemove({ status: 'CLOSED' }) as never,
-      );
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEpWithEventForRemove({ status: 'CLOSED' }) as never);
 
       await expect(service.remove(EP_ID, buildUser())).rejects.toThrow(UnprocessableEntityException);
     });
@@ -782,9 +765,9 @@ describe('EventPassengersService', () => {
         buildEpWithEventForRemove({ registrationDeadline: PAST_DEADLINE }) as never,
       );
 
-      await expect(
-        service.remove(EP_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' })),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.remove(EP_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' }))).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve permitir remoção após prazo para role de circuito', async () => {

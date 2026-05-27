@@ -20,10 +20,7 @@ export class EventDaysController {
   }
 
   @Get('event-days/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('role') role: string,
-  ): Promise<EventDayResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string): Promise<EventDayResponse> {
     return this.eventDaysService.findOne(id, role);
   }
 

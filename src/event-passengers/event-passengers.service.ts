@@ -69,9 +69,7 @@ export class EventPassengersService {
     });
 
     if (crossCongregation) {
-      this.logger.warn(
-        `RG duplicado cross-congregation — eventId=${eventId}, passengerId=${resolved.passengerId}`,
-      );
+      this.logger.warn(`RG duplicado cross-congregation — eventId=${eventId}, passengerId=${resolved.passengerId}`);
       throw new ConflictException('Já existe um passageiro com este RG inscrito neste evento');
     }
 
@@ -101,7 +99,9 @@ export class EventPassengersService {
       },
     });
 
-    this.logger.log(`Passageiro inscrito no evento — id=${created.id}, eventId=${eventId}, passengerId=${resolved.passengerId}`);
+    this.logger.log(
+      `Passageiro inscrito no evento — id=${created.id}, eventId=${eventId}, passengerId=${resolved.passengerId}`,
+    );
     return this.toResponse(created);
   }
 
@@ -169,11 +169,7 @@ export class EventPassengersService {
     return this.toResponse(ep);
   }
 
-  async updateDays(
-    id: string,
-    dto: UpdateEventPassengerDaysDto,
-    user: JwtPayload,
-  ): Promise<EventPassengerResponse> {
+  async updateDays(id: string, dto: UpdateEventPassengerDaysDto, user: JwtPayload): Promise<EventPassengerResponse> {
     const ep = await this.prisma.client.eventPassenger.findUnique({
       where: { id },
       include: {
@@ -262,7 +258,9 @@ export class EventPassengersService {
 
     await this.prisma.client.eventPassenger.delete({ where: { id } });
 
-    this.logger.warn(`Inscrição removida (hard-delete) — id=${id}, eventId=${ep.eventId}, passengerId=${ep.passengerId}`);
+    this.logger.warn(
+      `Inscrição removida (hard-delete) — id=${id}, eventId=${ep.eventId}, passengerId=${ep.passengerId}`,
+    );
   }
 
   private validateCreateInput(dto: CreateEventPassengerDto): void {
@@ -447,7 +445,9 @@ export class EventPassengersService {
 
   private ensureEventOpen(status: string): void {
     if (status !== EventStatus.OPEN) {
-      throw new UnprocessableEntityException(`Operação permitida apenas para eventos com status OPEN. Status atual: ${status}`);
+      throw new UnprocessableEntityException(
+        `Operação permitida apenas para eventos com status OPEN. Status atual: ${status}`,
+      );
     }
   }
 
