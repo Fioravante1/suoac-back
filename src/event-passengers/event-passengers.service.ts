@@ -1,12 +1,10 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  checkCircuitOwnership,
+  checkCongregationPermission,
+  isCircuitRole,
+} from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
@@ -42,6 +40,7 @@ export class EventPassengersService {
       throw new NotFoundException('Evento não encontrado');
     }
 
+    checkCircuitOwnership(user, event.circuitId);
     this.ensureEventOpen(event.status);
     this.checkDeadlinePermission(event.registrationDeadline, user.role);
 
@@ -49,7 +48,7 @@ export class EventPassengersService {
       ? await this.resolveExistingPassenger(dto.passengerId)
       : await this.resolveInlinePassenger(user, dto);
 
-    this.checkCongregationPermission(user, resolved.congregationId);
+    checkCongregationPermission(user, resolved.congregationId, 'passageiros');
 
     const existingEnrollment = await this.prisma.client.eventPassenger.findUnique({
       where: { eventId_passengerId: { eventId, passengerId: resolved.passengerId } },
@@ -118,9 +117,11 @@ export class EventPassengersService {
       throw new NotFoundException('Evento não encontrado');
     }
 
+    checkCircuitOwnership(user, event.circuitId);
+
     this.logger.debug(`Listando inscrições — eventId=${eventId}, page=${page}, limit=${limit}`);
 
-    const isCongregationRole = !this.isCircuitRole(user.role);
+    const isCongregationRole = !isCircuitRole(user.role);
 
     const where = {
       eventId,
@@ -152,10 +153,11 @@ export class EventPassengersService {
     };
   }
 
-  async findOne(id: string): Promise<EventPassengerResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<EventPassengerResponse> {
     const ep = await this.prisma.client.eventPassenger.findUnique({
       where: { id },
       include: {
+        event: { select: { circuitId: true } },
         passenger: true,
         eventPassengerDays: { include: { eventDay: true } },
       },
@@ -165,6 +167,8 @@ export class EventPassengersService {
       this.logger.warn(`Inscrição não encontrada — id=${id}`);
       throw new NotFoundException('Inscrição não encontrada');
     }
+
+    checkCircuitOwnership(user, ep.event.circuitId);
 
     return this.toResponse(ep);
   }
@@ -183,8 +187,9 @@ export class EventPassengersService {
       throw new NotFoundException('Inscrição não encontrada');
     }
 
+    checkCircuitOwnership(user, ep.event.circuitId);
     this.ensureEventOpen(ep.event.status);
-    this.checkCongregationPermission(user, ep.congregationId);
+    checkCongregationPermission(user, ep.congregationId, 'passageiros');
 
     const activeDays = ep.event.eventDays.filter((d) => d.status === EventDayStatus.ACTIVE);
     const activeDayIds = new Set(activeDays.map((d) => d.id));
@@ -252,9 +257,10 @@ export class EventPassengersService {
       throw new NotFoundException('Inscrição não encontrada');
     }
 
+    checkCircuitOwnership(user, ep.event.circuitId);
     this.ensureEventOpen(ep.event.status);
     this.checkDeadlinePermission(ep.event.registrationDeadline, user.role);
-    this.checkCongregationPermission(user, ep.congregationId);
+    checkCongregationPermission(user, ep.congregationId, 'passageiros');
 
     await this.prisma.client.eventPassenger.delete({ where: { id } });
 
@@ -299,7 +305,7 @@ export class EventPassengersService {
     user: JwtPayload,
     dto: CreateEventPassengerDto,
   ): Promise<{ passengerId: string; congregationId: string; rgHash: string }> {
-    if (!this.isCircuitRole(user.role) && !user.congregationId) {
+    if (!isCircuitRole(user.role) && !user.congregationId) {
       throw new UnprocessableEntityException(
         'Roles de circuito sem congregação devem usar passengerId para inscrever passageiros',
       );
@@ -439,10 +445,6 @@ export class EventPassengersService {
     };
   }
 
-  private isCircuitRole(role: string): boolean {
-    return role === 'CIRCUIT_COORDINATOR' || role === 'CIRCUIT_ASSISTANT';
-  }
-
   private ensureEventOpen(status: string): void {
     if (status !== EventStatus.OPEN) {
       throw new UnprocessableEntityException(
@@ -452,14 +454,8 @@ export class EventPassengersService {
   }
 
   private checkDeadlinePermission(registrationDeadline: Date, role: string): void {
-    if (new Date() > registrationDeadline && !this.isCircuitRole(role)) {
+    if (new Date() > registrationDeadline && !isCircuitRole(role)) {
       throw new UnprocessableEntityException('O prazo de inscrição expirou');
-    }
-  }
-
-  private checkCongregationPermission(user: JwtPayload, congregationId: string): void {
-    if (!this.isCircuitRole(user.role) && user.congregationId !== congregationId) {
-      throw new ForbiddenException('Sem permissão para operar passageiros de outra congregação');
     }
   }
 

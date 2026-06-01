@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
@@ -7,10 +7,11 @@ import { CircuitsService } from './circuits.service';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
 
 // ── Helpers ──────────────────────────────────────────────────────
-// Factory para gerar dados de teste dinâmicos (evita fixtures estáticas)
+const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
 function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse {
   return {
-    id: overrides.id ?? 'a1b2c3d4-0000-0000-0000-000000000001',
+    id: overrides.id ?? CIRCUIT_ID,
     name: overrides.name ?? 'Circuito SP-01',
     city: overrides.city ?? 'São Paulo',
     state: overrides.state ?? 'SP',
@@ -32,7 +33,6 @@ describe('CircuitsService', () => {
         CircuitsService,
         {
           provide: PrismaService,
-          // Simula o PrismaService com o getter `client` apontando para o mock
           useValue: { client: prismaMock },
         },
       ],
@@ -44,19 +44,16 @@ describe('CircuitsService', () => {
   // ── findAll ──────────────────────────────────────────────────
   describe('findAll', () => {
     it('deve retornar lista paginada de circuitos', async () => {
-      const circuits = [
-        buildCircuit(),
-        buildCircuit({ id: 'a1b2c3d4-0000-0000-0000-000000000002', name: 'Circuito RJ-01' }),
-      ];
+      const circuits = [buildCircuit()];
 
       prismaMock.circuit.findMany.mockResolvedValue(circuits);
-      prismaMock.circuit.count.mockResolvedValue(2);
+      prismaMock.circuit.count.mockResolvedValue(1);
 
-      const result = await service.findAll(1, 20);
+      const result = await service.findAll(1, 20, CIRCUIT_ID);
 
-      expect(result.data).toHaveLength(2);
+      expect(result.data).toHaveLength(1);
       expect(result.meta).toEqual({
-        total: 2,
+        total: 1,
         page: 1,
         limit: 20,
         totalPages: 1,
@@ -67,18 +64,19 @@ describe('CircuitsService', () => {
       prismaMock.circuit.findMany.mockResolvedValue([buildCircuit()]);
       prismaMock.circuit.count.mockResolvedValue(45);
 
-      const result = await service.findAll(1, 20);
+      const result = await service.findAll(1, 20, CIRCUIT_ID);
 
       expect(result.meta.totalPages).toBe(3);
     });
 
-    it('deve aplicar skip e take para paginação', async () => {
+    it('deve filtrar por userCircuitId e aplicar paginação', async () => {
       prismaMock.circuit.findMany.mockResolvedValue([]);
       prismaMock.circuit.count.mockResolvedValue(0);
 
-      await service.findAll(3, 10);
+      await service.findAll(3, 10, CIRCUIT_ID);
 
       expect(prismaMock.circuit.findMany).toHaveBeenCalledWith({
+        where: { id: CIRCUIT_ID },
         orderBy: { name: 'asc' },
         skip: 20,
         take: 10,
@@ -94,14 +92,14 @@ describe('CircuitsService', () => {
 
       prismaMock.circuit.create.mockResolvedValue(expected);
 
-      const result = await service.create(dto);
+      const result = await service.create(CIRCUIT_ID, dto);
 
       expect(result).toEqual(expected);
       expect(prismaMock.circuit.create).toHaveBeenCalledWith({
         data: {
           name: 'Circuito RJ-01',
           city: 'Rio de Janeiro',
-          state: 'RJ', // Deve converter para uppercase
+          state: 'RJ',
         },
       });
     });
@@ -112,7 +110,7 @@ describe('CircuitsService', () => {
 
       prismaMock.circuit.create.mockResolvedValue(expected);
 
-      await service.create(dto);
+      await service.create(CIRCUIT_ID, dto);
 
       expect(prismaMock.circuit.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -124,12 +122,12 @@ describe('CircuitsService', () => {
 
   // ── findOne ───────────────────────────────────────────────────
   describe('findOne', () => {
-    it('deve retornar o circuito quando ele existe', async () => {
+    it('deve retornar o circuito quando ele existe e pertence ao circuito do usuário', async () => {
       const expected = buildCircuit();
 
       prismaMock.circuit.findUnique.mockResolvedValue(expected);
 
-      const result = await service.findOne(expected.id);
+      const result = await service.findOne(expected.id, CIRCUIT_ID);
 
       expect(result).toEqual(expected);
       expect(prismaMock.circuit.findUnique).toHaveBeenCalledWith({
@@ -140,7 +138,14 @@ describe('CircuitsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const circuit = buildCircuit();
+      prismaMock.circuit.findUnique.mockResolvedValue(circuit);
+
+      await expect(service.findOne(circuit.id, 'outro-circuito')).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -153,7 +158,7 @@ describe('CircuitsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(updated);
 
-      const result = await service.update(existing.id, { name: 'Circuito SP-02' });
+      const result = await service.update(existing.id, { name: 'Circuito SP-02' }, CIRCUIT_ID);
 
       expect(result.name).toBe('Circuito SP-02');
       expect(prismaMock.circuit.update).toHaveBeenCalledWith({
@@ -165,7 +170,7 @@ describe('CircuitsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { name: 'Novo' }, CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {
@@ -174,7 +179,7 @@ describe('CircuitsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(existing);
 
-      const result = await service.update(existing.id, {});
+      const result = await service.update(existing.id, {}, CIRCUIT_ID);
 
       expect(result).toEqual(existing);
       expect(prismaMock.circuit.update).toHaveBeenCalledWith({
@@ -190,7 +195,7 @@ describe('CircuitsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(updated);
 
-      await service.update(existing.id, { state: 'rj' });
+      await service.update(existing.id, { state: 'rj' }, CIRCUIT_ID);
 
       expect(prismaMock.circuit.update).toHaveBeenCalledWith({
         where: { id: existing.id },
@@ -207,7 +212,7 @@ describe('CircuitsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.delete.mockResolvedValue(existing);
 
-      await service.remove(existing.id);
+      await service.remove(existing.id, CIRCUIT_ID);
 
       expect(prismaMock.circuit.delete).toHaveBeenCalledWith({
         where: { id: existing.id },
@@ -217,7 +222,7 @@ describe('CircuitsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 });

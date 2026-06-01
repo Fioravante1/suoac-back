@@ -48,8 +48,12 @@ export class EventsController {
   }
 
   @Get('events/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string): Promise<EventResponse> {
-    return this.eventsService.findOne(id, role);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<EventResponse> {
+    return this.eventsService.findOne(id, role, userCircuitId);
   }
 
   @Patch('events/:id')
@@ -58,8 +62,9 @@ export class EventsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEventDto,
     @CurrentUser('role') role: string,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<EventResponse> {
-    return this.eventsService.update(id, dto, role);
+    return this.eventsService.update(id, dto, role, userCircuitId);
   }
 
   @Patch('events/:id/status')
@@ -67,20 +72,24 @@ export class EventsController {
   async transitionStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionEventStatusDto,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<EventResponse> {
-    return this.eventsService.transitionStatus(id, dto);
+    return this.eventsService.transitionStatus(id, dto, userCircuitId);
   }
 
   @Patch('events/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
-  async cancel(@Param('id', ParseUUIDPipe) id: string): Promise<EventResponse> {
-    return this.eventsService.cancel(id);
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<EventResponse> {
+    return this.eventsService.cancel(id, userCircuitId);
   }
 
   @Delete('events/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.eventsService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
+    return this.eventsService.remove(id, userCircuitId);
   }
 }

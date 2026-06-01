@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CongregationsService } from './congregations.service';
@@ -42,21 +43,25 @@ export class CongregationsController {
   }
 
   @Get('congregations/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<CongregationResponse> {
-    return this.congregationsService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<CongregationResponse> {
+    return this.congregationsService.findOne(id, userCircuitId);
   }
 
   @Patch('congregations/:id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCongregationDto,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<CongregationResponse> {
-    return this.congregationsService.update(id, dto);
+    return this.congregationsService.update(id, dto, userCircuitId);
   }
 
   @Delete('congregations/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.congregationsService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
+    return this.congregationsService.remove(id, userCircuitId);
   }
 }

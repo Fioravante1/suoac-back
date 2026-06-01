@@ -106,16 +106,16 @@ describe('EventPassengersController', () => {
       const expected = buildResponse();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne('ep-1');
+      const result = await controller.findOne('ep-1', USER);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith('ep-1');
+      expect(serviceMock.findOne).toHaveBeenCalledWith('ep-1', USER);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Inscrição não encontrada'));
 
-      await expect(controller.findOne('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('non-existent', USER)).rejects.toThrow(NotFoundException);
     });
   });
 

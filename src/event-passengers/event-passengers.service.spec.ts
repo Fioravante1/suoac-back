@@ -570,10 +570,10 @@ describe('EventPassengersService', () => {
   // ── findOne ────────────────────────────────────────────────────
   describe('findOne', () => {
     it('deve retornar inscrição com dias e passageiro', async () => {
-      const ep = buildEventPassenger();
+      const ep = { ...buildEventPassenger(), event: { circuitId: 'circuit-1' } };
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
 
-      const result = await service.findOne(EP_ID);
+      const result = await service.findOne(EP_ID, buildUser());
 
       expect(result.id).toBe(EP_ID);
       expect(result.passenger.name).toBe('João Silva');
@@ -585,7 +585,14 @@ describe('EventPassengersService', () => {
     it('deve lançar NotFoundException quando inscrição não existe', async () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('non-existent', buildUser())).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const ep = { ...buildEventPassenger(), event: { circuitId: 'outro-circuito' } };
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
+
+      await expect(service.findOne(EP_ID, buildUser())).rejects.toThrow(ForbiddenException);
     });
   });
 

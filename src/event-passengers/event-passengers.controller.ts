@@ -46,8 +46,11 @@ export class EventPassengersController {
   }
 
   @Get('event-passengers/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<EventPassengerResponse> {
-    return this.eventPassengersService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EventPassengerResponse> {
+    return this.eventPassengersService.findOne(id, user);
   }
 
   @Patch('event-passengers/:id/days')

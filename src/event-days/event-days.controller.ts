@@ -15,24 +15,36 @@ export class EventDaysController {
   async findByEvent(
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser('role') role: string,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<EventDayResponse[]> {
-    return this.eventDaysService.findByEvent(eventId, role);
+    return this.eventDaysService.findByEvent(eventId, role, userCircuitId);
   }
 
   @Get('event-days/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('role') role: string): Promise<EventDayResponse> {
-    return this.eventDaysService.findOne(id, role);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('role') role: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<EventDayResponse> {
+    return this.eventDaysService.findOne(id, role, userCircuitId);
   }
 
   @Patch('event-days/:id')
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDayDto): Promise<EventDayResponse> {
-    return this.eventDaysService.update(id, dto);
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEventDayDto,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<EventDayResponse> {
+    return this.eventDaysService.update(id, dto, userCircuitId);
   }
 
   @Patch('event-days/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
-  async cancel(@Param('id', ParseUUIDPipe) id: string): Promise<EventDayResponse> {
-    return this.eventDaysService.cancel(id);
+  async cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<EventDayResponse> {
+    return this.eventDaysService.cancel(id, userCircuitId);
   }
 }

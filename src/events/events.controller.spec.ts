@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
@@ -6,6 +6,7 @@ import type { EventResponse } from './interfaces/event-response.interface';
 
 // ── Helpers ──────────────────────────────────────────────────────
 const circuitId = 'a1b2c3d4-0000-0000-0000-000000000001';
+const CIRCUIT_ID = circuitId;
 const userId = 'u1u2u3u4-0000-0000-0000-000000000001';
 const eventId = 'e1e2e3e4-0000-0000-0000-000000000001';
 
@@ -42,6 +43,7 @@ describe('EventsController', () => {
       findOne: jest.fn(),
       update: jest.fn(),
       transitionStatus: jest.fn(),
+      cancel: jest.fn(),
       remove: jest.fn(),
     } as unknown as jest.Mocked<EventsService>;
 
@@ -128,16 +130,28 @@ describe('EventsController', () => {
       const expected = buildEvent();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(eventId, 'CIRCUIT_COORDINATOR');
+      const result = await controller.findOne(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR');
+      expect(serviceMock.findOne).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve propagar ForbiddenException do service', async () => {
+      serviceMock.findOne.mockRejectedValue(
+        new ForbiddenException('Sem permissão para acessar recursos de outro circuito'),
+      );
+
+      await expect(controller.findOne(eventId, 'CIRCUIT_COORDINATOR', 'outro-circuito')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -147,10 +161,15 @@ describe('EventsController', () => {
       const updated = buildEvent({ title: 'Novo Título' });
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
+      const result = await controller.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
+      expect(serviceMock.update).toHaveBeenCalledWith(
+        eventId,
+        { title: 'Novo Título' },
+        'CIRCUIT_COORDINATOR',
+        CIRCUIT_ID,
+      );
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -158,7 +177,7 @@ describe('EventsController', () => {
         new UnprocessableEntityException('Campos não editáveis no status FINISHED: title'),
       );
 
-      await expect(controller.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
+      await expect(controller.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -170,10 +189,10 @@ describe('EventsController', () => {
       const updated = buildEvent({ status: 'OPEN' });
       serviceMock.transitionStatus.mockResolvedValue(updated);
 
-      const result = await controller.transitionStatus(eventId, { status: 'OPEN' });
+      const result = await controller.transitionStatus(eventId, { status: 'OPEN' }, CIRCUIT_ID);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.transitionStatus).toHaveBeenCalledWith(eventId, { status: 'OPEN' });
+      expect(serviceMock.transitionStatus).toHaveBeenCalledWith(eventId, { status: 'OPEN' }, CIRCUIT_ID);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -181,9 +200,28 @@ describe('EventsController', () => {
         new UnprocessableEntityException('Transição inválida: DRAFT → CLOSED'),
       );
 
-      await expect(controller.transitionStatus(eventId, { status: 'CLOSED' })).rejects.toThrow(
+      await expect(controller.transitionStatus(eventId, { status: 'CLOSED' }, CIRCUIT_ID)).rejects.toThrow(
         UnprocessableEntityException,
       );
+    });
+  });
+
+  // ── cancel ───────────────────────────────────────────────────
+  describe('cancel', () => {
+    it('deve delegar o cancelamento ao service e retornar o resultado', async () => {
+      const expected = buildEvent({ status: 'CANCELLED' });
+      serviceMock.cancel.mockResolvedValue(expected);
+
+      const result = await controller.cancel(eventId, CIRCUIT_ID);
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.cancel).toHaveBeenCalledWith(eventId, CIRCUIT_ID);
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      serviceMock.cancel.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+
+      await expect(controller.cancel('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -192,15 +230,15 @@ describe('EventsController', () => {
     it('deve delegar a remoção ao service', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove(eventId);
+      await controller.remove(eventId, CIRCUIT_ID);
 
-      expect(serviceMock.remove).toHaveBeenCalledWith(eventId);
+      expect(serviceMock.remove).toHaveBeenCalledWith(eventId, CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -208,7 +246,7 @@ describe('EventsController', () => {
         new UnprocessableEntityException('Apenas eventos em rascunho podem ser removidos'),
       );
 
-      await expect(controller.remove(eventId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.remove(eventId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

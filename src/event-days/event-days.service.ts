@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateEventDayDto } from './dto/update-event-day.dto';
 import type { EventDayResponse } from './interfaces/event-day-response.interface';
@@ -11,8 +17,8 @@ export class EventDaysService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByEvent(eventId: string, role: string): Promise<EventDayResponse[]> {
-    const event = await this.ensureEventExists(eventId);
+  async findByEvent(eventId: string, role: string, userCircuitId?: string): Promise<EventDayResponse[]> {
+    const event = await this.ensureEventExists(eventId, userCircuitId);
 
     const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
     if (isRestricted && event.status === 'DRAFT') {
@@ -30,7 +36,7 @@ export class EventDaysService {
     return days.map((d) => this.toResponse(d));
   }
 
-  async findOne(id: string, role: string): Promise<EventDayResponse> {
+  async findOne(id: string, role: string, userCircuitId?: string): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -39,6 +45,10 @@ export class EventDaysService {
     if (!day) {
       this.logger.warn(`Dia do evento não encontrado — id=${id}`);
       throw new NotFoundException('Dia do evento não encontrado');
+    }
+
+    if (userCircuitId && day.event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
@@ -50,7 +60,7 @@ export class EventDaysService {
     return this.toResponse(day);
   }
 
-  async update(id: string, dto: UpdateEventDayDto): Promise<EventDayResponse> {
+  async update(id: string, dto: UpdateEventDayDto, userCircuitId?: string): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -59,6 +69,10 @@ export class EventDaysService {
     if (!day) {
       this.logger.warn(`Dia do evento não encontrado — id=${id}`);
       throw new NotFoundException('Dia do evento não encontrado');
+    }
+
+    if (userCircuitId && day.event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     if (!EDITABLE_EVENT_STATUSES.includes(day.event.status)) {
@@ -81,7 +95,7 @@ export class EventDaysService {
     return this.toResponse(updated);
   }
 
-  async cancel(id: string): Promise<EventDayResponse> {
+  async cancel(id: string, userCircuitId?: string): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -90,6 +104,10 @@ export class EventDaysService {
     if (!day) {
       this.logger.warn(`Dia do evento não encontrado — id=${id}`);
       throw new NotFoundException('Dia do evento não encontrado');
+    }
+
+    if (userCircuitId && day.event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     if (!EDITABLE_EVENT_STATUSES.includes(day.event.status)) {
@@ -160,15 +178,22 @@ export class EventDaysService {
     };
   }
 
-  private async ensureEventExists(eventId: string): Promise<{ id: string; status: string }> {
+  private async ensureEventExists(
+    eventId: string,
+    userCircuitId?: string,
+  ): Promise<{ id: string; status: string; circuitId: string }> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, circuitId: true },
     });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado ao validar dependência — eventId=${eventId}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     return event;

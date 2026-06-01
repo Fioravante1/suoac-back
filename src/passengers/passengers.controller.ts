@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreatePassengerDto } from './dto/create-passenger.dto';
@@ -29,40 +30,50 @@ export class PassengersController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Param('congregationId', ParseUUIDPipe) congregationId: string,
+    @CurrentUser('circuitId') userCircuitId: string,
     @Body() dto: CreatePassengerDto,
   ): Promise<PassengerResponse> {
-    return this.passengersService.create(congregationId, dto);
+    return this.passengersService.create(congregationId, dto, userCircuitId);
   }
 
   @Get('congregations/:congregationId/passengers')
   async findByCongregation(
     @Param('congregationId', ParseUUIDPipe) congregationId: string,
     @Query() query: PaginationQueryDto,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    return this.passengersService.findByCongregation(congregationId, query.page ?? 1, query.limit ?? 20);
+    return this.passengersService.findByCongregation(congregationId, query.page ?? 1, query.limit ?? 20, userCircuitId);
   }
 
   @Get('congregations/:congregationId/passengers/search')
   async search(
     @Param('congregationId', ParseUUIDPipe) congregationId: string,
     @Query() query: SearchPassengerQueryDto,
+    @CurrentUser('circuitId') userCircuitId: string,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    return this.passengersService.search(congregationId, query.q, query.page ?? 1, query.limit ?? 20);
+    return this.passengersService.search(congregationId, query.q, query.page ?? 1, query.limit ?? 20, userCircuitId);
   }
 
   @Get('passengers/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<PassengerResponse> {
-    return this.passengersService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<PassengerResponse> {
+    return this.passengersService.findOne(id, userCircuitId);
   }
 
   @Patch('passengers/:id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePassengerDto): Promise<PassengerResponse> {
-    return this.passengersService.update(id, dto);
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePassengerDto,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<PassengerResponse> {
+    return this.passengersService.update(id, dto, userCircuitId);
   }
 
   @Delete('passengers/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.passengersService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
+    return this.passengersService.remove(id, userCircuitId);
   }
 }

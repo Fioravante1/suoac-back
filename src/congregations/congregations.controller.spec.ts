@@ -18,6 +18,8 @@ function buildCongregation(overrides: Partial<CongregationResponse> = {}): Congr
   };
 }
 
+const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
 // ── Test Suite ───────────────────────────────────────────────────
 describe('CongregationsController', () => {
   let controller: CongregationsController;
@@ -113,16 +115,16 @@ describe('CongregationsController', () => {
 
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(expected.id);
+      const result = await controller.findOne(expected.id, CIRCUIT_ID);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -134,16 +136,16 @@ describe('CongregationsController', () => {
 
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(existing.id, { name: 'Novo Nome' });
+      const result = await controller.update(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' });
+      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
     });
 
     it('deve propagar ConflictException do service', async () => {
       serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
-      await expect(controller.update('id', { code: 'duplicado' })).rejects.toThrow(ConflictException);
+      await expect(controller.update('id', { code: 'duplicado' }, CIRCUIT_ID)).rejects.toThrow(ConflictException);
     });
   });
 
@@ -152,15 +154,15 @@ describe('CongregationsController', () => {
     it('deve delegar a remoção ao service', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001');
+      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001', CIRCUIT_ID);
 
-      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001');
+      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001', CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 });

@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,8 +24,8 @@ export class PassengersService {
     private readonly encryption: EncryptionService,
   ) {}
 
-  async create(congregationId: string, dto: CreatePassengerDto): Promise<PassengerResponse> {
-    await this.ensureCongregationExists(congregationId);
+  async create(congregationId: string, dto: CreatePassengerDto, userCircuitId?: string): Promise<PassengerResponse> {
+    await this.ensureCongregationExists(congregationId, userCircuitId);
 
     const normalizedRg = this.normalizeRg(dto.rg);
     const rgHash = this.encryption.hash(normalizedRg);
@@ -53,8 +60,9 @@ export class PassengersService {
     congregationId: string,
     page: number,
     limit: number,
+    userCircuitId?: string,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    await this.ensureCongregationExists(congregationId);
+    await this.ensureCongregationExists(congregationId, userCircuitId);
 
     this.logger.debug(`Listando passageiros — congregationId=${congregationId}, page=${page}, limit=${limit}`);
 
@@ -86,8 +94,9 @@ export class PassengersService {
     q: string,
     page: number,
     limit: number,
+    userCircuitId?: string,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    await this.ensureCongregationExists(congregationId);
+    await this.ensureCongregationExists(congregationId, userCircuitId);
 
     this.logger.debug(`Buscando passageiros — congregationId=${congregationId}, q="${q}"`);
 
@@ -139,9 +148,10 @@ export class PassengersService {
     };
   }
 
-  async findOne(id: string): Promise<PassengerResponse> {
+  async findOne(id: string, userCircuitId?: string): Promise<PassengerResponse> {
     const passenger = await this.prisma.client.passenger.findUnique({
       where: { id },
+      include: { congregation: { select: { circuitId: true } } },
     });
 
     if (!passenger) {
@@ -149,12 +159,17 @@ export class PassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
+    if (userCircuitId && passenger.congregation.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
+    }
+
     return this.toResponse(passenger);
   }
 
-  async update(id: string, dto: UpdatePassengerDto): Promise<PassengerResponse> {
+  async update(id: string, dto: UpdatePassengerDto, userCircuitId?: string): Promise<PassengerResponse> {
     const existing = await this.prisma.client.passenger.findUnique({
       where: { id },
+      include: { congregation: { select: { circuitId: true } } },
     });
 
     if (!existing) {
@@ -162,25 +177,24 @@ export class PassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
-    let rgEncrypted: string | undefined;
-    let rgHash: string | undefined;
+    if (userCircuitId && existing.congregation.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
+    }
 
-    if (dto.rg !== undefined) {
-      const normalizedRg = this.normalizeRg(dto.rg);
-      rgHash = this.encryption.hash(normalizedRg);
+    const normalizedRg = dto.rg !== undefined ? this.normalizeRg(dto.rg) : undefined;
+    const rgHash = normalizedRg !== undefined ? this.encryption.hash(normalizedRg) : undefined;
+    const rgEncrypted = normalizedRg !== undefined ? this.encryption.encrypt(normalizedRg) : undefined;
 
-      if (rgHash !== existing.rgHash) {
-        const conflict = await this.prisma.client.passenger.findUnique({
-          where: { congregationId_rgHash: { congregationId: existing.congregationId, rgHash } },
-        });
+    const rgConflict =
+      rgHash !== undefined && rgHash !== existing.rgHash
+        ? await this.prisma.client.passenger.findUnique({
+            where: { congregationId_rgHash: { congregationId: existing.congregationId, rgHash } },
+          })
+        : null;
 
-        if (conflict) {
-          this.logger.warn(`Conflito ao atualizar passageiro — RG duplicado, id=${id}`);
-          throw new ConflictException('Já existe um passageiro com este RG nesta congregação');
-        }
-      }
-
-      rgEncrypted = this.encryption.encrypt(normalizedRg);
+    if (rgConflict) {
+      this.logger.warn(`Conflito ao atualizar passageiro — RG duplicado, id=${id}`);
+      throw new ConflictException('Já existe um passageiro com este RG nesta congregação');
     }
 
     const passenger = await this.prisma.client.passenger.update({
@@ -198,14 +212,19 @@ export class PassengersService {
     return this.toResponse(passenger);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, userCircuitId?: string): Promise<void> {
     const existing = await this.prisma.client.passenger.findUnique({
       where: { id },
+      include: { congregation: { select: { circuitId: true } } },
     });
 
     if (!existing) {
       this.logger.warn(`Passageiro não encontrado para remoção — id=${id}`);
       throw new NotFoundException('Passageiro não encontrado');
+    }
+
+    if (userCircuitId && existing.congregation.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     const eventCount = await this.prisma.client.eventPassenger.count({
@@ -252,14 +271,19 @@ export class PassengersService {
     };
   }
 
-  private async ensureCongregationExists(congregationId: string): Promise<void> {
+  private async ensureCongregationExists(congregationId: string, userCircuitId?: string): Promise<void> {
     const congregation = await this.prisma.client.congregation.findFirst({
       where: { id: congregationId, isActive: true },
+      select: { id: true, circuitId: true },
     });
 
     if (!congregation) {
       this.logger.warn(`Congregação não encontrada ao validar dependência — congregationId=${congregationId}`);
       throw new NotFoundException('Congregação não encontrada');
+    }
+
+    if (userCircuitId && congregation.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
   }
 }

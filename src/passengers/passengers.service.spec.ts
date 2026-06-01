@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { EncryptionService } from '../common/encryption/encryption.service';
@@ -23,6 +23,7 @@ interface PrismaPassenger {
 // ── Helpers ──────────────────────────────────────────────────────
 const CONGREGATION_ID = 'c1c2c3c4-0000-0000-0000-000000000001';
 const PASSENGER_ID = 'p1p2p3p4-0000-0000-0000-000000000001';
+const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 const ENCRYPTED_RG = 'base64-encrypted-rg';
 const RG_HASH = 'a'.repeat(64);
 const DECRYPTED_RG = '12345678X';
@@ -114,7 +115,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findUnique.mockResolvedValue(null);
       prismaMock.passenger.create.mockResolvedValue(prismaRow);
 
-      const result = await service.create(CONGREGATION_ID, dto);
+      const result = await service.create(CONGREGATION_ID, dto, CIRCUIT_ID);
 
       expect(result).toEqual(buildExpectedResponse());
       expect(result).not.toHaveProperty('rgEncrypted');
@@ -128,7 +129,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findUnique.mockResolvedValue(null);
       prismaMock.passenger.create.mockResolvedValue(buildPrismaPassenger());
 
-      await service.create(CONGREGATION_ID, { ...dto, rg: '12.345.678-x' });
+      await service.create(CONGREGATION_ID, { ...dto, rg: '12.345.678-x' }, CIRCUIT_ID);
 
       expect(encryptionMock.hash).toHaveBeenCalledWith('12345678X');
       expect(encryptionMock.encrypt).toHaveBeenCalledWith('12345678X');
@@ -137,14 +138,14 @@ describe('PassengersService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.create(CONGREGATION_ID, dto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(CONGREGATION_ID, dto, CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ConflictException quando o RG já existe na congregação', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
       prismaMock.passenger.findUnique.mockResolvedValue(buildPrismaPassenger());
 
-      await expect(service.create(CONGREGATION_ID, dto)).rejects.toThrow(ConflictException);
+      await expect(service.create(CONGREGATION_ID, dto, CIRCUIT_ID)).rejects.toThrow(ConflictException);
     });
 
     it('deve salvar rgEncrypted e rgHash no banco', async () => {
@@ -152,7 +153,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findUnique.mockResolvedValue(null);
       prismaMock.passenger.create.mockResolvedValue(buildPrismaPassenger());
 
-      await service.create(CONGREGATION_ID, dto);
+      await service.create(CONGREGATION_ID, dto, CIRCUIT_ID);
 
       expect(prismaMock.passenger.create).toHaveBeenCalledWith({
         data: {
@@ -179,7 +180,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findMany.mockResolvedValue(prismaRows);
       prismaMock.passenger.count.mockResolvedValue(2);
 
-      const result = await service.findByCongregation(CONGREGATION_ID, 1, 20);
+      const result = await service.findByCongregation(CONGREGATION_ID, 1, 20, CIRCUIT_ID);
 
       expect(result.data).toHaveLength(2);
       expect(result.data[0]).not.toHaveProperty('rgEncrypted');
@@ -198,7 +199,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findMany.mockResolvedValue([buildPrismaPassenger()]);
       prismaMock.passenger.count.mockResolvedValue(45);
 
-      const result = await service.findByCongregation(CONGREGATION_ID, 1, 20);
+      const result = await service.findByCongregation(CONGREGATION_ID, 1, 20, CIRCUIT_ID);
 
       expect(result.meta.totalPages).toBe(3);
     });
@@ -206,7 +207,7 @@ describe('PassengersService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.findByCongregation(CONGREGATION_ID, 1, 20)).rejects.toThrow(NotFoundException);
+      await expect(service.findByCongregation(CONGREGATION_ID, 1, 20, CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -219,7 +220,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findMany.mockResolvedValue(prismaRows);
       prismaMock.passenger.count.mockResolvedValue(1);
 
-      const result = await service.search(CONGREGATION_ID, 'João', 1, 20);
+      const result = await service.search(CONGREGATION_ID, 'João', 1, 20, CIRCUIT_ID);
 
       expect(result.data).toHaveLength(1);
       expect(prismaMock.passenger.findMany).toHaveBeenCalledWith({
@@ -237,7 +238,7 @@ describe('PassengersService', () => {
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
       prismaMock.passenger.findUnique.mockResolvedValue(buildPrismaPassenger());
 
-      const result = await service.search(CONGREGATION_ID, '12.345.678-X', 1, 20);
+      const result = await service.search(CONGREGATION_ID, '12.345.678-X', 1, 20, CIRCUIT_ID);
 
       expect(result.data).toHaveLength(1);
       expect(encryptionMock.hash).toHaveBeenCalledWith('12345678X');
@@ -250,7 +251,7 @@ describe('PassengersService', () => {
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
       prismaMock.passenger.findUnique.mockResolvedValue(null);
 
-      const result = await service.search(CONGREGATION_ID, '99999999X', 1, 20);
+      const result = await service.search(CONGREGATION_ID, '99999999X', 1, 20, CIRCUIT_ID);
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -259,7 +260,7 @@ describe('PassengersService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.search(CONGREGATION_ID, 'João', 1, 20)).rejects.toThrow(NotFoundException);
+      await expect(service.search(CONGREGATION_ID, 'João', 1, 20, CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve retornar lista vazia quando busca por nome não encontra resultados', async () => {
@@ -267,7 +268,7 @@ describe('PassengersService', () => {
       prismaMock.passenger.findMany.mockResolvedValue([]);
       prismaMock.passenger.count.mockResolvedValue(0);
 
-      const result = await service.search(CONGREGATION_ID, 'NomeInexistente', 1, 20);
+      const result = await service.search(CONGREGATION_ID, 'NomeInexistente', 1, 20, CIRCUIT_ID);
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -277,9 +278,12 @@ describe('PassengersService', () => {
   // ── findOne ───────────────────────────────────────────────────
   describe('findOne', () => {
     it('deve retornar o passageiro com RG descriptografado', async () => {
-      prismaMock.passenger.findUnique.mockResolvedValue(buildPrismaPassenger());
+      prismaMock.passenger.findUnique.mockResolvedValue({
+        ...buildPrismaPassenger(),
+        congregation: { circuitId: CIRCUIT_ID },
+      } as never);
 
-      const result = await service.findOne(PASSENGER_ID);
+      const result = await service.findOne(PASSENGER_ID, CIRCUIT_ID);
 
       expect(result).toEqual(buildExpectedResponse());
       expect(result).not.toHaveProperty('rgEncrypted');
@@ -290,20 +294,29 @@ describe('PassengersService', () => {
     it('deve lançar NotFoundException quando o passageiro não existe', async () => {
       prismaMock.passenger.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      prismaMock.passenger.findUnique.mockResolvedValue({
+        ...buildPrismaPassenger(),
+        congregation: { circuitId: 'outro-circuito' },
+      } as never);
+
+      await expect(service.findOne(PASSENGER_ID, CIRCUIT_ID)).rejects.toThrow(ForbiddenException);
     });
   });
 
   // ── update ────────────────────────────────────────────────────
   describe('update', () => {
     it('deve atualizar apenas os campos enviados (sem RG)', async () => {
-      const existing = buildPrismaPassenger();
+      const existing = { ...buildPrismaPassenger(), congregation: { circuitId: CIRCUIT_ID } };
       const updated = buildPrismaPassenger({ name: 'Novo Nome' });
 
       prismaMock.passenger.findUnique.mockResolvedValue(existing);
       prismaMock.passenger.update.mockResolvedValue(updated);
 
-      const result = await service.update(PASSENGER_ID, { name: 'Novo Nome' });
+      const result = await service.update(PASSENGER_ID, { name: 'Novo Nome' }, CIRCUIT_ID);
 
       expect(result.name).toBe('Novo Nome');
       expect(prismaMock.passenger.update).toHaveBeenCalledWith({
@@ -313,12 +326,12 @@ describe('PassengersService', () => {
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {
-      const existing = buildPrismaPassenger();
+      const existing = { ...buildPrismaPassenger(), congregation: { circuitId: CIRCUIT_ID } };
 
       prismaMock.passenger.findUnique.mockResolvedValue(existing);
-      prismaMock.passenger.update.mockResolvedValue(existing);
+      prismaMock.passenger.update.mockResolvedValue(buildPrismaPassenger());
 
-      const result = await service.update(PASSENGER_ID, {});
+      const result = await service.update(PASSENGER_ID, {}, CIRCUIT_ID);
 
       expect(result).toEqual(buildExpectedResponse());
       expect(prismaMock.passenger.update).toHaveBeenCalledWith({
@@ -328,7 +341,7 @@ describe('PassengersService', () => {
     });
 
     it('deve atualizar rgEncrypted e rgHash quando RG é enviado', async () => {
-      const existing = buildPrismaPassenger();
+      const existing = { ...buildPrismaPassenger(), congregation: { circuitId: CIRCUIT_ID } };
       const newRgHash = 'b'.repeat(64);
       const newEncrypted = 'new-encrypted-rg';
 
@@ -344,7 +357,7 @@ describe('PassengersService', () => {
         rgHash: newRgHash,
       });
 
-      await service.update(PASSENGER_ID, { rg: '98.765.432-Y' });
+      await service.update(PASSENGER_ID, { rg: '98.765.432-Y' }, CIRCUIT_ID);
 
       expect(encryptionMock.hash).toHaveBeenCalledWith('98765432Y');
       expect(encryptionMock.encrypt).toHaveBeenCalledWith('98765432Y');

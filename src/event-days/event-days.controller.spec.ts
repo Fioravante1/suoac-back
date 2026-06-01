@@ -7,6 +7,7 @@ import type { EventDayResponse } from './interfaces/event-day-response.interface
 // ── Helpers ──────────────────────────────────────────────────────
 const eventId = 'e1e2e3e4-0000-0000-0000-000000000001';
 const dayId = 'd1d2d3d4-0000-0000-0000-000000000001';
+const CIRCUIT_ID = 'circuit-a';
 
 function buildDay(overrides: Partial<EventDayResponse> = {}): EventDayResponse {
   return {
@@ -48,16 +49,18 @@ describe('EventDaysController', () => {
       const expected = [buildDay(), buildDay({ id: 'd2', dayNumber: 2 })];
       serviceMock.findByEvent.mockResolvedValue(expected);
 
-      const result = await controller.findByEvent(eventId, 'CIRCUIT_COORDINATOR');
+      const result = await controller.findByEvent(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByEvent).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR');
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findByEvent.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findByEvent('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
+      await expect(controller.findByEvent('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -67,16 +70,18 @@ describe('EventDaysController', () => {
       const expected = buildDay();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(dayId, 'CIRCUIT_COORDINATOR');
+      const result = await controller.findOne(dayId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(dayId, 'CIRCUIT_COORDINATOR');
+      expect(serviceMock.findOne).toHaveBeenCalledWith(dayId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Dia do evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -86,10 +91,10 @@ describe('EventDaysController', () => {
       const updated = buildDay({ departureTime: '07:00' });
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(dayId, { departureTime: '07:00' });
+      const result = await controller.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(dayId, { departureTime: '07:00' });
+      expect(serviceMock.update).toHaveBeenCalledWith(dayId, { departureTime: '07:00' }, CIRCUIT_ID);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -97,13 +102,17 @@ describe('EventDaysController', () => {
         new UnprocessableEntityException('Não é possível editar dias de um evento com status CLOSED'),
       );
 
-      await expect(controller.update(dayId, { departureTime: '07:00' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.update.mockRejectedValue(new NotFoundException('Dia do evento não encontrado'));
 
-      await expect(controller.update('id-inexistente', { departureTime: '07:00' })).rejects.toThrow(NotFoundException);
+      await expect(controller.update('id-inexistente', { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -113,10 +122,10 @@ describe('EventDaysController', () => {
       const cancelled = buildDay({ status: 'CANCELLED' });
       serviceMock.cancel.mockResolvedValue(cancelled);
 
-      const result = await controller.cancel(dayId);
+      const result = await controller.cancel(dayId, CIRCUIT_ID);
 
       expect(result).toEqual(cancelled);
-      expect(serviceMock.cancel).toHaveBeenCalledWith(dayId);
+      expect(serviceMock.cancel).toHaveBeenCalledWith(dayId, CIRCUIT_ID);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
@@ -124,13 +133,13 @@ describe('EventDaysController', () => {
         new UnprocessableEntityException('Não é possível cancelar dias de um evento com status CLOSED'),
       );
 
-      await expect(controller.cancel(dayId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.cancel(dayId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.cancel.mockRejectedValue(new NotFoundException('Dia do evento não encontrado'));
 
-      await expect(controller.cancel('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.cancel('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 });

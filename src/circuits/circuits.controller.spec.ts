@@ -48,10 +48,10 @@ describe('CircuitsController', () => {
 
       serviceMock.findAll.mockResolvedValue(expected);
 
-      const result = await controller.findAll({});
+      const result = await controller.findAll({}, 'circuit-a');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findAll).toHaveBeenCalledWith(1, 20);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(1, 20, 'circuit-a');
     });
 
     it('deve passar parâmetros de paginação customizados', async () => {
@@ -62,10 +62,10 @@ describe('CircuitsController', () => {
 
       serviceMock.findAll.mockResolvedValue(expected);
 
-      const result = await controller.findAll({ page: 3, limit: 10 });
+      const result = await controller.findAll({ page: 3, limit: 10 }, 'circuit-a');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findAll).toHaveBeenCalledWith(3, 10);
+      expect(serviceMock.findAll).toHaveBeenCalledWith(3, 10, 'circuit-a');
     });
   });
 
@@ -77,10 +77,10 @@ describe('CircuitsController', () => {
 
       serviceMock.create.mockResolvedValue(expected);
 
-      const result = await controller.create(dto);
+      const result = await controller.create('circuit-a', dto);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.create).toHaveBeenCalledWith(dto);
+      expect(serviceMock.create).toHaveBeenCalledWith('circuit-a', dto);
     });
   });
 
@@ -91,16 +91,16 @@ describe('CircuitsController', () => {
 
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(expected.id);
+      const result = await controller.findOne(expected.id, 'circuit-a');
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, 'circuit-a');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', 'circuit-a')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -113,16 +113,18 @@ describe('CircuitsController', () => {
 
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(existing.id, dto);
+      const result = await controller.update(existing.id, dto, 'circuit-a');
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, dto);
+      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, dto, 'circuit-a');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.update.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
+      await expect(controller.update('id-inexistente', { name: 'Novo' }, 'circuit-a')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -131,15 +133,15 @@ describe('CircuitsController', () => {
     it('deve delegar a remoção ao service', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove('a1b2c3d4-0000-0000-0000-000000000001');
+      await controller.remove('a1b2c3d4-0000-0000-0000-000000000001', 'circuit-a');
 
-      expect(serviceMock.remove).toHaveBeenCalledWith('a1b2c3d4-0000-0000-0000-000000000001');
+      expect(serviceMock.remove).toHaveBeenCalledWith('a1b2c3d4-0000-0000-0000-000000000001', 'circuit-a');
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', 'circuit-a')).rejects.toThrow(NotFoundException);
     });
   });
 });

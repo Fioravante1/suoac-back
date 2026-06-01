@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -42,18 +43,25 @@ export class UsersController {
   }
 
   @Get('users/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponse> {
-    return this.usersService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<UserResponse> {
+    return this.usersService.findOne(id, userCircuitId);
   }
 
   @Patch('users/:id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto): Promise<UserResponse> {
-    return this.usersService.update(id, dto);
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<UserResponse> {
+    return this.usersService.update(id, dto, userCircuitId);
   }
 
   @Delete('users/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.usersService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
+    return this.usersService.remove(id, userCircuitId);
   }
 }

@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,7 +72,7 @@ export class UsersService {
     };
   }
 
-  async findOne(id: string): Promise<UserResponse> {
+  async findOne(id: string, userCircuitId?: string): Promise<UserResponse> {
     const user = await this.prisma.client.user.findUnique({
       where: { id },
     });
@@ -75,11 +82,15 @@ export class UsersService {
       throw new NotFoundException('Usuario nao encontrado');
     }
 
+    if (userCircuitId && user.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
+    }
+
     return this.toUserResponse(user);
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponse> {
-    const existing = await this.findOneRaw(id);
+  async update(id: string, dto: UpdateUserDto, userCircuitId?: string): Promise<UserResponse> {
+    const existing = await this.findOneRaw(id, userCircuitId);
 
     if (dto.email !== undefined) {
       await this.ensureEmailUnique(dto.email, id);
@@ -106,8 +117,8 @@ export class UsersService {
     return this.toUserResponse(user);
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
+  async remove(id: string, userCircuitId?: string): Promise<void> {
+    await this.findOne(id, userCircuitId);
 
     await this.prisma.client.user.update({
       where: { id },
@@ -207,6 +218,7 @@ export class UsersService {
 
   private async findOneRaw(
     id: string,
+    userCircuitId?: string,
   ): Promise<{ id: string; role: string; circuitId: string; congregationId: string | null }> {
     const user = await this.prisma.client.user.findUnique({
       where: { id },
@@ -215,6 +227,10 @@ export class UsersService {
     if (!user) {
       this.logger.warn(`Usuario nao encontrado — id=${id}`);
       throw new NotFoundException('Usuario nao encontrado');
+    }
+
+    if (userCircuitId && user.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     return user;

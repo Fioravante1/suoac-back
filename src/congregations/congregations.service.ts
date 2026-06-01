@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCongregationDto } from './dto/create-congregation.dto';
@@ -72,7 +72,7 @@ export class CongregationsService {
     };
   }
 
-  async findOne(id: string): Promise<CongregationResponse> {
+  async findOne(id: string, userCircuitId?: string): Promise<CongregationResponse> {
     const congregation = await this.prisma.client.congregation.findFirst({
       where: { id, isActive: true },
     });
@@ -82,21 +82,27 @@ export class CongregationsService {
       throw new NotFoundException('Congregação não encontrada');
     }
 
+    if (userCircuitId && congregation.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
+    }
+
     return this.toResponse(congregation);
   }
 
-  async update(id: string, dto: UpdateCongregationDto): Promise<CongregationResponse> {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateCongregationDto, userCircuitId?: string): Promise<CongregationResponse> {
+    await this.findOne(id, userCircuitId);
 
-    if (dto.code !== undefined || dto.email !== undefined) {
-      const conditions: Array<{ code: string } | { email: string }> = [];
-      if (dto.code !== undefined) {
-        conditions.push({ code: dto.code });
-      }
-      if (dto.email !== undefined) {
-        conditions.push({ email: dto.email });
-      }
+    const conditions: Array<{ code: string } | { email: string }> = [];
 
+    if (dto.code !== undefined) {
+      conditions.push({ code: dto.code });
+    }
+
+    if (dto.email !== undefined) {
+      conditions.push({ email: dto.email });
+    }
+
+    if (conditions.length > 0) {
       const existing = await this.prisma.client.congregation.findFirst({
         where: {
           OR: conditions,
@@ -125,8 +131,8 @@ export class CongregationsService {
     return this.toResponse(congregation);
   }
 
-  async remove(id: string): Promise<void> {
-    await this.findOne(id);
+  async remove(id: string, userCircuitId?: string): Promise<void> {
+    await this.findOne(id, userCircuitId);
 
     await this.prisma.client.congregation.update({
       where: { id },

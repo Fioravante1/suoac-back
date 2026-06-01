@@ -151,7 +151,7 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string, role: string): Promise<EventResponse> {
+  async findOne(id: string, role: string, userCircuitId?: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
@@ -160,6 +160,10 @@ export class EventsService {
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
@@ -171,12 +175,16 @@ export class EventsService {
     return this.toResponse(event, true);
   }
 
-  async update(id: string, dto: UpdateEventDto, role: string): Promise<EventResponse> {
+  async update(id: string, dto: UpdateEventDto, role: string, userCircuitId?: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     const allowedFields = EDITABLE_FIELDS_BY_STATUS[event.status] ?? [];
@@ -218,7 +226,7 @@ export class EventsService {
     return this.toResponse(updated);
   }
 
-  async transitionStatus(id: string, dto: TransitionEventStatusDto): Promise<EventResponse> {
+  async transitionStatus(id: string, dto: TransitionEventStatusDto, userCircuitId?: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: true },
@@ -227,6 +235,10 @@ export class EventsService {
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     const validNext = VALID_TRANSITIONS[event.status] ?? [];
@@ -250,12 +262,16 @@ export class EventsService {
     return this.toResponse(updated);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, userCircuitId?: string): Promise<void> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     if (event.status !== EventStatus.DRAFT) {
@@ -267,12 +283,16 @@ export class EventsService {
     this.logger.warn(`Evento removido (hard-delete) — id=${id}`);
   }
 
-  async cancel(id: string): Promise<EventResponse> {
+  async cancel(id: string, userCircuitId?: string): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
+    }
+
+    if (userCircuitId && event.circuitId !== userCircuitId) {
+      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
     }
 
     if (event.status === EventStatus.CANCELLED) {

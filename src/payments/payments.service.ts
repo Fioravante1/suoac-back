@@ -1,11 +1,10 @@
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import {
+  checkCircuitOwnership,
+  checkCongregationPermission,
+  isCircuitRole,
+} from '../common/authorization/circuit-ownership.util';
 import { EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
@@ -28,9 +27,10 @@ export class PaymentsService {
       throw new NotFoundException('Inscrição não encontrada');
     }
 
+    checkCircuitOwnership(user, ep.event.circuitId);
     this.ensureEventOpen(ep.event.status);
     this.checkPaymentDeadlinePermission(ep.event.paymentDeadline, user.role);
-    this.checkCongregationPermission(user, ep.congregationId);
+    checkCongregationPermission(user, ep.congregationId, 'pagamentos');
 
     if (ep.paymentStatus === PaymentStatus.EXEMPT) {
       throw new UnprocessableEntityException('Passageiro isento de pagamento');
@@ -84,6 +84,7 @@ export class PaymentsService {
   async findByEventPassenger(eventPassengerId: string, user: JwtPayload): Promise<PaymentResponse[]> {
     const ep = await this.prisma.client.eventPassenger.findUnique({
       where: { id: eventPassengerId },
+      include: { event: { select: { circuitId: true } } },
     });
 
     if (!ep) {
@@ -91,7 +92,8 @@ export class PaymentsService {
       throw new NotFoundException('Inscrição não encontrada');
     }
 
-    this.checkCongregationPermission(user, ep.congregationId);
+    checkCircuitOwnership(user, ep.event.circuitId);
+    checkCongregationPermission(user, ep.congregationId, 'pagamentos');
 
     this.logger.debug(`Listando pagamentos — eventPassengerId=${eventPassengerId}`);
 
@@ -114,9 +116,10 @@ export class PaymentsService {
       throw new NotFoundException('Pagamento não encontrado');
     }
 
+    checkCircuitOwnership(user, payment.eventPassenger.event.circuitId);
     this.ensureEventOpen(payment.eventPassenger.event.status);
     this.checkPaymentDeadlinePermission(payment.eventPassenger.event.paymentDeadline, user.role);
-    this.checkCongregationPermission(user, payment.eventPassenger.congregationId);
+    checkCongregationPermission(user, payment.eventPassenger.congregationId, 'pagamentos');
 
     const paidAmount = Number(payment.eventPassenger.paidAmount);
     const totalAmount = Number(payment.eventPassenger.totalAmount);
@@ -173,10 +176,6 @@ export class PaymentsService {
     return PaymentStatus.PAID;
   }
 
-  private isCircuitRole(role: string): boolean {
-    return role === 'CIRCUIT_COORDINATOR' || role === 'CIRCUIT_ASSISTANT';
-  }
-
   private ensureEventOpen(status: string): void {
     if (status !== EventStatus.OPEN) {
       throw new UnprocessableEntityException(
@@ -186,14 +185,8 @@ export class PaymentsService {
   }
 
   private checkPaymentDeadlinePermission(deadline: Date, role: string): void {
-    if (new Date() > deadline && !this.isCircuitRole(role)) {
+    if (new Date() > deadline && !isCircuitRole(role)) {
       throw new UnprocessableEntityException('O prazo de pagamento expirou');
-    }
-  }
-
-  private checkCongregationPermission(user: JwtPayload, congregationId: string): void {
-    if (!this.isCircuitRole(user.role) && user.congregationId !== congregationId) {
-      throw new ForbiddenException('Sem permissão para operar pagamentos de outra congregação');
     }
   }
 }

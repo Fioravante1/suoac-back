@@ -41,6 +41,7 @@ type PrismaEventWithDays = PrismaEvent & { eventDays: PrismaEventDay[] };
 
 // ── Helpers ──────────────────────────────────────────────────────
 const circuitId = 'a1b2c3d4-0000-0000-0000-000000000001';
+const CIRCUIT_ID = circuitId;
 const userId = 'u1u2u3u4-0000-0000-0000-000000000001';
 const eventId = 'e1e2e3e4-0000-0000-0000-000000000001';
 
@@ -322,7 +323,7 @@ describe('EventsService', () => {
     it('deve retornar o evento com dias', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays() as never);
 
-      const result = await service.findOne(eventId, 'CIRCUIT_COORDINATOR');
+      const result = await service.findOne(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result.id).toBe(eventId);
       expect(result.days).toHaveLength(1);
@@ -332,7 +333,18 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente', 'CIRCUIT_COORDINATOR')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const event = buildPrismaEventWithDays();
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.findOne(event.id, 'CIRCUIT_COORDINATOR', 'outro-circuito')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -345,7 +357,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
+      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result.title).toBe('Novo Título');
     });
@@ -357,7 +369,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR');
+      const result = await service.update(eventId, { title: 'Novo Título' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result.title).toBe('Novo Título');
     });
@@ -369,7 +381,12 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(eventId, { observations: 'Nota atualizada' }, 'CIRCUIT_COORDINATOR');
+      const result = await service.update(
+        eventId,
+        { observations: 'Nota atualizada' },
+        'CIRCUIT_COORDINATOR',
+        CIRCUIT_ID,
+      );
 
       expect(result.observations).toBe('Nota atualizada');
     });
@@ -379,7 +396,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
+      await expect(service.update(eventId, { title: 'Teste' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -392,7 +409,7 @@ describe('EventsService', () => {
       prismaMock.event.update.mockResolvedValue(updated as never);
 
       await expect(
-        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_COORDINATOR'),
+        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID),
       ).resolves.toBeDefined();
     });
 
@@ -402,7 +419,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
       await expect(
-        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_ASSISTANT'),
+        service.update(eventId, { registrationDeadline: '2026-08-01' }, 'CIRCUIT_ASSISTANT', CIRCUIT_ID),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -414,7 +431,7 @@ describe('EventsService', () => {
       prismaMock.event.update.mockResolvedValue(updated as never);
 
       await expect(
-        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_COORDINATOR'),
+        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID),
       ).resolves.toBeDefined();
     });
 
@@ -423,9 +440,9 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_ASSISTANT')).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.update(eventId, { paymentDeadline: '2026-09-01' }, 'CIRCUIT_ASSISTANT', CIRCUIT_ID),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {
@@ -434,7 +451,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(event as never);
 
-      const result = await service.update(eventId, {}, 'CIRCUIT_COORDINATOR');
+      const result = await service.update(eventId, {}, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(result).toBeDefined();
       expect(prismaMock.event.update).toHaveBeenCalledWith({
@@ -449,7 +466,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ state: 'RJ' }) as never);
 
-      await service.update(eventId, { state: 'rj' }, 'CIRCUIT_COORDINATOR');
+      await service.update(eventId, { state: 'rj' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
 
       expect(prismaMock.event.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -461,9 +478,18 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { title: 'Teste' }, 'CIRCUIT_COORDINATOR')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.update('id-inexistente', { title: 'Teste' }, 'CIRCUIT_COORDINATOR', CIRCUIT_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const event = buildPrismaEvent();
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(
+        service.update(event.id, { title: 'Teste' }, 'CIRCUIT_COORDINATOR', 'outro-circuito'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -475,7 +501,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'OPEN' }) as never);
 
-      const result = await service.transitionStatus(eventId, { status: 'OPEN' });
+      const result = await service.transitionStatus(eventId, { status: 'OPEN' }, CIRCUIT_ID);
 
       expect(result.status).toBe('OPEN');
     });
@@ -486,7 +512,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'CLOSED' }) as never);
 
-      const result = await service.transitionStatus(eventId, { status: 'CLOSED' });
+      const result = await service.transitionStatus(eventId, { status: 'CLOSED' }, CIRCUIT_ID);
 
       expect(result.status).toBe('CLOSED');
     });
@@ -497,7 +523,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'FINISHED' }) as never);
 
-      const result = await service.transitionStatus(eventId, { status: 'FINISHED' });
+      const result = await service.transitionStatus(eventId, { status: 'FINISHED' }, CIRCUIT_ID);
 
       expect(result.status).toBe('FINISHED');
     });
@@ -507,7 +533,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'CLOSED' })).rejects.toThrow(
+      await expect(service.transitionStatus(eventId, { status: 'CLOSED' }, CIRCUIT_ID)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -517,7 +543,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'DRAFT' })).rejects.toThrow(
+      await expect(service.transitionStatus(eventId, { status: 'DRAFT' }, CIRCUIT_ID)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -527,7 +553,9 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' }, CIRCUIT_ID)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve rejeitar DRAFT → OPEN sem dias ativos', async () => {
@@ -535,13 +563,26 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(eventId, { status: 'OPEN' })).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' }, CIRCUIT_ID)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.transitionStatus('id-inexistente', { status: 'OPEN' })).rejects.toThrow(NotFoundException);
+      await expect(service.transitionStatus('id-inexistente', { status: 'OPEN' }, CIRCUIT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const event = buildPrismaEventWithDays();
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.transitionStatus(event.id, { status: 'OPEN' }, 'outro-circuito')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -554,7 +595,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.$transaction.mockResolvedValue([cancelledEvent, { count: 2 }, { count: 3 }] as never);
 
-      const result = await service.cancel(eventId);
+      const result = await service.cancel(eventId, CIRCUIT_ID);
 
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.$transaction).toHaveBeenCalled();
@@ -565,7 +606,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      const result = await service.cancel(eventId);
+      const result = await service.cancel(eventId, CIRCUIT_ID);
 
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -576,7 +617,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.cancel(eventId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve rejeitar cancelamento de evento em CLOSED', async () => {
@@ -584,7 +625,7 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.cancel(eventId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve rejeitar cancelamento de evento em FINISHED', async () => {
@@ -592,13 +633,13 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.cancel(eventId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.cancel(eventId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.cancel('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.cancel('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve usar $transaction para atomicidade', async () => {
@@ -608,12 +649,19 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.$transaction.mockResolvedValue([cancelledEvent, { count: 1 }, { count: 1 }] as never);
 
-      await service.cancel(eventId);
+      await service.cancel(eventId, CIRCUIT_ID);
 
       expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
       expect(prismaMock.event.update).toHaveBeenCalled();
       expect(prismaMock.eventDay.updateMany).toHaveBeenCalled();
       expect(prismaMock.congregationEventStatus.updateMany).toHaveBeenCalled();
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.cancel(event.id, 'outro-circuito')).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -625,7 +673,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.delete.mockResolvedValue(event as never);
 
-      await service.remove(eventId);
+      await service.remove(eventId, CIRCUIT_ID);
 
       expect(prismaMock.event.delete).toHaveBeenCalledWith({ where: { id: eventId } });
     });
@@ -635,13 +683,20 @@ describe('EventsService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.remove(eventId)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.remove(eventId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const event = buildPrismaEvent({ status: 'DRAFT' });
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+
+      await expect(service.remove(event.id, 'outro-circuito')).rejects.toThrow(ForbiddenException);
     });
   });
 });

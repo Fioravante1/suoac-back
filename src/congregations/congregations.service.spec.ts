@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
@@ -49,6 +49,8 @@ function buildCircuit(): { id: string; name: string; city: string; state: string
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
 }
+
+const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 
 // ── Test Suite ───────────────────────────────────────────────────
 describe('CongregationsService', () => {
@@ -165,7 +167,7 @@ describe('CongregationsService', () => {
 
       prismaMock.congregation.findFirst.mockResolvedValue(prismaRow);
 
-      const result = await service.findOne(prismaRow.id);
+      const result = await service.findOne(prismaRow.id, CIRCUIT_ID);
 
       expect(result).toEqual(buildExpectedResponse());
       expect(result).not.toHaveProperty('isActive');
@@ -177,13 +179,20 @@ describe('CongregationsService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar NotFoundException quando a congregação está inativa', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inativo')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inativo', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const congregation = buildPrismaCongregation();
+      prismaMock.congregation.findFirst.mockResolvedValue(congregation);
+
+      await expect(service.findOne(congregation.id, 'outro-circuito')).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -196,7 +205,7 @@ describe('CongregationsService', () => {
       prismaMock.congregation.findFirst.mockResolvedValue(existing);
       prismaMock.congregation.update.mockResolvedValue(updated);
 
-      const result = await service.update(existing.id, { name: 'Novo Nome' });
+      const result = await service.update(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
 
       expect(result.name).toBe('Novo Nome');
       expect(result).not.toHaveProperty('isActive');
@@ -212,7 +221,7 @@ describe('CongregationsService', () => {
       prismaMock.congregation.findFirst.mockResolvedValue(existing);
       prismaMock.congregation.update.mockResolvedValue(existing);
 
-      const result = await service.update(existing.id, {});
+      const result = await service.update(existing.id, {}, CIRCUIT_ID);
 
       expect(result).toEqual(buildExpectedResponse());
       expect(prismaMock.congregation.update).toHaveBeenCalledWith({
@@ -224,7 +233,7 @@ describe('CongregationsService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { name: 'Novo' }, CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ConflictException quando code já pertence a outra congregação', async () => {
@@ -233,7 +242,7 @@ describe('CongregationsService', () => {
 
       prismaMock.congregation.findFirst.mockResolvedValueOnce(existing).mockResolvedValueOnce(conflict);
 
-      await expect(service.update(existing.id, { code: '99999' })).rejects.toThrow(ConflictException);
+      await expect(service.update(existing.id, { code: '99999' }, CIRCUIT_ID)).rejects.toThrow(ConflictException);
     });
 
     it('deve lançar ConflictException quando email já pertence a outra congregação', async () => {
@@ -242,7 +251,9 @@ describe('CongregationsService', () => {
 
       prismaMock.congregation.findFirst.mockResolvedValueOnce(existing).mockResolvedValueOnce(conflict);
 
-      await expect(service.update(existing.id, { email: 'outro@email.com' })).rejects.toThrow(ConflictException);
+      await expect(service.update(existing.id, { email: 'outro@email.com' }, CIRCUIT_ID)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -254,7 +265,7 @@ describe('CongregationsService', () => {
       prismaMock.congregation.findFirst.mockResolvedValue(existing);
       prismaMock.congregation.update.mockResolvedValue({ ...existing, isActive: false });
 
-      await service.remove(existing.id);
+      await service.remove(existing.id, CIRCUIT_ID);
 
       expect(prismaMock.congregation.update).toHaveBeenCalledWith({
         where: { id: existing.id },
@@ -265,7 +276,7 @@ describe('CongregationsService', () => {
     it('deve lançar NotFoundException quando a congregação não existe', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 });

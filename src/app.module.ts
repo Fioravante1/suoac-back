@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module';
+import { CircuitOwnershipGuard } from './auth/guards/circuit-ownership.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CircuitsModule } from './circuits/circuits.module';
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: CircuitOwnershipGuard },
   ],
 })
 export class AppModule {}

@@ -12,6 +12,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CircuitsService } from './circuits.service';
@@ -26,28 +28,42 @@ export class CircuitsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() dto: CreateCircuitDto): Promise<CircuitResponse> {
-    return this.circuitsService.create(dto);
+  @Roles('CIRCUIT_COORDINATOR')
+  async create(
+    @CurrentUser('circuitId') userCircuitId: string,
+    @Body() dto: CreateCircuitDto,
+  ): Promise<CircuitResponse> {
+    return this.circuitsService.create(userCircuitId, dto);
   }
 
   @Get()
-  async findAll(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<CircuitResponse>> {
-    return this.circuitsService.findAll(query.page ?? 1, query.limit ?? 20);
+  async findAll(
+    @Query() query: PaginationQueryDto,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<PaginatedResponse<CircuitResponse>> {
+    return this.circuitsService.findAll(query.page ?? 1, query.limit ?? 20, userCircuitId);
   }
 
   @Get(':id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<CircuitResponse> {
-    return this.circuitsService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<CircuitResponse> {
+    return this.circuitsService.findOne(id, userCircuitId);
   }
 
   @Patch(':id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCircuitDto): Promise<CircuitResponse> {
-    return this.circuitsService.update(id, dto);
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCircuitDto,
+    @CurrentUser('circuitId') userCircuitId: string,
+  ): Promise<CircuitResponse> {
+    return this.circuitsService.update(id, dto, userCircuitId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.circuitsService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
+    return this.circuitsService.remove(id, userCircuitId);
   }
 }

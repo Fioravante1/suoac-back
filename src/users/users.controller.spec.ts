@@ -114,16 +114,16 @@ describe('UsersController', () => {
       const expected = buildUserResponse();
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(USER_ID);
+      const result = await controller.findOne(USER_ID, CIRCUIT_ID);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(USER_ID);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(USER_ID, CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Usuario nao encontrado'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -133,16 +133,18 @@ describe('UsersController', () => {
       const updated = buildUserResponse({ name: 'Novo Nome' });
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(USER_ID, { name: 'Novo Nome' });
+      const result = await controller.update(USER_ID, { name: 'Novo Nome' }, CIRCUIT_ID);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(USER_ID, { name: 'Novo Nome' });
+      expect(serviceMock.update).toHaveBeenCalledWith(USER_ID, { name: 'Novo Nome' }, CIRCUIT_ID);
     });
 
     it('deve propagar ConflictException do service', async () => {
       serviceMock.update.mockRejectedValue(new ConflictException('Ja existe um usuario com este email'));
 
-      await expect(controller.update(USER_ID, { email: 'dup@example.com' })).rejects.toThrow(ConflictException);
+      await expect(controller.update(USER_ID, { email: 'dup@example.com' }, CIRCUIT_ID)).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -151,15 +153,15 @@ describe('UsersController', () => {
     it('deve delegar a remocao ao service', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove(USER_ID);
+      await controller.remove(USER_ID, CIRCUIT_ID);
 
-      expect(serviceMock.remove).toHaveBeenCalledWith(USER_ID);
+      expect(serviceMock.remove).toHaveBeenCalledWith(USER_ID, CIRCUIT_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Usuario nao encontrado'));
 
-      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 });

@@ -12,6 +12,7 @@ interface PrismaEvent {
   id: string;
   status: string;
   paymentDeadline: Date;
+  circuitId: string;
 }
 
 interface PrismaEventPassenger {
@@ -41,6 +42,7 @@ const PAYMENT_ID = 'pay1pay2-0000-0000-0000-000000000001';
 const EVENT_ID = 'e1e2e3e4-0000-0000-0000-000000000001';
 const CONGREGATION_ID = 'c1c2c3c4-0000-0000-0000-000000000001';
 const USER_ID = 'u1u2u3u4-0000-0000-0000-000000000001';
+const CIRCUIT_ID = 'circuit-1';
 
 const FUTURE_DEADLINE = new Date('2099-12-31T23:59:59Z');
 const PAST_DEADLINE = new Date('2020-01-01T00:00:00Z');
@@ -52,7 +54,7 @@ function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
     sub: overrides.sub ?? USER_ID,
     email: overrides.email ?? 'user@test.com',
     role: overrides.role ?? 'CONGREGATION_COORDINATOR',
-    circuitId: overrides.circuitId ?? 'circuit-1',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId !== undefined ? overrides.congregationId : CONGREGATION_ID,
   };
 }
@@ -62,6 +64,7 @@ function buildEvent(overrides: Partial<PrismaEvent> = {}): PrismaEvent {
     id: overrides.id ?? EVENT_ID,
     status: overrides.status ?? 'OPEN',
     paymentDeadline: overrides.paymentDeadline ?? FUTURE_DEADLINE,
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
   };
 }
 
@@ -247,9 +250,15 @@ describe('PaymentsService', () => {
       const ep = buildEventPassenger();
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
 
-      await expect(service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE })).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar ForbiddenException quando circuito diferente', async () => {
+      const user = buildUser({ circuitId: 'outro-circuito' });
+      const ep = buildEventPassenger();
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
+
+      await expect(service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE })).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -306,6 +315,13 @@ describe('PaymentsService', () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
 
       await expect(service.findByEventPassenger('non-existent', buildUser())).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuito diferente', async () => {
+      const user = buildUser({ circuitId: 'outro-circuito' });
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEventPassenger() as never);
+
+      await expect(service.findByEventPassenger(EP_ID, user)).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -379,13 +395,22 @@ describe('PaymentsService', () => {
 
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);
 
-      await expect(
-        service.remove(PAYMENT_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' })),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.remove(PAYMENT_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' }))).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar ForbiddenException quando congregação diferente', async () => {
       const user = buildUser({ congregationId: 'other-congregation' });
+      const payment = buildPayment();
+
+      prismaMock.payment.findUnique.mockResolvedValue(payment as never);
+
+      await expect(service.remove(PAYMENT_ID, user)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar ForbiddenException quando circuito diferente', async () => {
+      const user = buildUser({ circuitId: 'outro-circuito' });
       const payment = buildPayment();
 
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);

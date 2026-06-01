@@ -64,17 +64,17 @@ describe('PaymentsController', () => {
     it('deve propagar UnprocessableEntityException do service', async () => {
       serviceMock.create.mockRejectedValue(new UnprocessableEntityException('Passageiro isento'));
 
-      await expect(
-        controller.create('ep-1', USER, { amount: 25, paidAt: '2026-01-15T10:00:00Z' }),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.create('ep-1', USER, { amount: 25, paidAt: '2026-01-15T10:00:00Z' })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve propagar ForbiddenException do service', async () => {
       serviceMock.create.mockRejectedValue(new ForbiddenException('Sem permissão'));
 
-      await expect(
-        controller.create('ep-1', USER, { amount: 25, paidAt: '2026-01-15T10:00:00Z' }),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(controller.create('ep-1', USER, { amount: 25, paidAt: '2026-01-15T10:00:00Z' })).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
