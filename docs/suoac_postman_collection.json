@@ -132,53 +132,18 @@
       "name": "Circuits",
       "item": [
         {
-          "name": "List Circuits",
+          "name": "Get My Circuit",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/circuits?page=1&limit=20",
+              "raw": "{{baseUrl}}/circuits/me",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "circuits"
-              ],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "20"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create Circuit",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Circuito Teste SP\",\n  \"city\": \"São Paulo\",\n  \"state\": \"sp\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/circuits",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "circuits"
+                "circuits",
+                "me"
               ]
             }
           },
