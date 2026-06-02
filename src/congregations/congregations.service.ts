@@ -1,4 +1,6 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCongregationDto } from './dto/create-congregation.dto';
@@ -72,7 +74,7 @@ export class CongregationsService {
     };
   }
 
-  async findOne(id: string, userCircuitId?: string): Promise<CongregationResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<CongregationResponse> {
     const congregation = await this.prisma.client.congregation.findFirst({
       where: { id, isActive: true },
     });
@@ -82,15 +84,13 @@ export class CongregationsService {
       throw new NotFoundException('Congregação não encontrada');
     }
 
-    if (userCircuitId && congregation.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, congregation.circuitId);
 
     return this.toResponse(congregation);
   }
 
-  async update(id: string, dto: UpdateCongregationDto, userCircuitId?: string): Promise<CongregationResponse> {
-    await this.findOne(id, userCircuitId);
+  async update(id: string, dto: UpdateCongregationDto, user: JwtPayload): Promise<CongregationResponse> {
+    await this.findOne(id, user);
 
     const conditions: Array<{ code: string } | { email: string }> = [];
 
@@ -102,19 +102,20 @@ export class CongregationsService {
       conditions.push({ email: dto.email });
     }
 
-    if (conditions.length > 0) {
-      const existing = await this.prisma.client.congregation.findFirst({
-        where: {
-          OR: conditions,
-          NOT: { id },
-        },
-      });
+    const existing =
+      conditions.length > 0
+        ? await this.prisma.client.congregation.findFirst({
+            where: {
+              OR: conditions,
+              NOT: { id },
+            },
+          })
+        : null;
 
-      if (existing) {
-        const field = dto.code !== undefined && existing.code === dto.code ? 'Código' : 'E-mail';
-        this.logger.warn(`Conflito ao atualizar congregação — id=${id}, ${field} duplicado`);
-        throw new ConflictException(`Já existe uma congregação com este ${field}`);
-      }
+    if (existing) {
+      const field = dto.code !== undefined && existing.code === dto.code ? 'Código' : 'E-mail';
+      this.logger.warn(`Conflito ao atualizar congregação — id=${id}, ${field} duplicado`);
+      throw new ConflictException(`Já existe uma congregação com este ${field}`);
     }
 
     const congregation = await this.prisma.client.congregation.update({
@@ -131,8 +132,8 @@ export class CongregationsService {
     return this.toResponse(congregation);
   }
 
-  async remove(id: string, userCircuitId?: string): Promise<void> {
-    await this.findOne(id, userCircuitId);
+  async remove(id: string, user: JwtPayload): Promise<void> {
+    await this.findOne(id, user);
 
     await this.prisma.client.congregation.update({
       where: { id },

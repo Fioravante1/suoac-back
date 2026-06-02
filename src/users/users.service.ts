@@ -1,11 +1,6 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -72,7 +67,7 @@ export class UsersService {
     };
   }
 
-  async findOne(id: string, userCircuitId?: string): Promise<UserResponse> {
+  async findOne(id: string, caller: JwtPayload): Promise<UserResponse> {
     const user = await this.prisma.client.user.findUnique({
       where: { id },
     });
@@ -82,15 +77,13 @@ export class UsersService {
       throw new NotFoundException('Usuario nao encontrado');
     }
 
-    if (userCircuitId && user.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(caller, user.circuitId);
 
     return this.toUserResponse(user);
   }
 
-  async update(id: string, dto: UpdateUserDto, userCircuitId?: string): Promise<UserResponse> {
-    const existing = await this.findOneRaw(id, userCircuitId);
+  async update(id: string, dto: UpdateUserDto, caller: JwtPayload): Promise<UserResponse> {
+    const existing = await this.findOneRaw(id, caller);
 
     if (dto.email !== undefined) {
       await this.ensureEmailUnique(dto.email, id);
@@ -117,8 +110,8 @@ export class UsersService {
     return this.toUserResponse(user);
   }
 
-  async remove(id: string, userCircuitId?: string): Promise<void> {
-    await this.findOne(id, userCircuitId);
+  async remove(id: string, caller: JwtPayload): Promise<void> {
+    await this.findOne(id, caller);
 
     await this.prisma.client.user.update({
       where: { id },
@@ -218,7 +211,7 @@ export class UsersService {
 
   private async findOneRaw(
     id: string,
-    userCircuitId?: string,
+    caller: JwtPayload,
   ): Promise<{ id: string; role: string; circuitId: string; congregationId: string | null }> {
     const user = await this.prisma.client.user.findUnique({
       where: { id },
@@ -229,9 +222,7 @@ export class UsersService {
       throw new NotFoundException('Usuario nao encontrado');
     }
 
-    if (userCircuitId && user.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(caller, user.circuitId);
 
     return user;
   }

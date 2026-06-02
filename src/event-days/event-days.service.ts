@@ -1,10 +1,6 @@
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateEventDayDto } from './dto/update-event-day.dto';
 import type { EventDayResponse } from './interfaces/event-day-response.interface';
@@ -17,12 +13,11 @@ export class EventDaysService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByEvent(eventId: string, role: string, userCircuitId?: string): Promise<EventDayResponse[]> {
-    const event = await this.ensureEventExists(eventId, userCircuitId);
+  async findByEvent(eventId: string, user: JwtPayload): Promise<EventDayResponse[]> {
+    const event = await this.ensureEventExists(eventId, user);
 
-    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
-    if (isRestricted && event.status === 'DRAFT') {
-      this.logger.warn(`Acesso negado: Evento em DRAFT — eventId=${eventId}, role=${role}`);
+    if (!isCircuitRole(user.role) && event.status === 'DRAFT') {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — eventId=${eventId}, role=${user.role}`);
       throw new NotFoundException('Evento não encontrado');
     }
 
@@ -36,7 +31,7 @@ export class EventDaysService {
     return days.map((d) => this.toResponse(d));
   }
 
-  async findOne(id: string, role: string, userCircuitId?: string): Promise<EventDayResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -47,20 +42,17 @@ export class EventDaysService {
       throw new NotFoundException('Dia do evento não encontrado');
     }
 
-    if (userCircuitId && day.event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, day.event.circuitId);
 
-    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
-    if (isRestricted && day.event.status === 'DRAFT') {
-      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, eventId=${day.eventId}, role=${role}`);
+    if (!isCircuitRole(user.role) && day.event.status === 'DRAFT') {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, eventId=${day.eventId}, role=${user.role}`);
       throw new NotFoundException('Dia do evento não encontrado');
     }
 
     return this.toResponse(day);
   }
 
-  async update(id: string, dto: UpdateEventDayDto, userCircuitId?: string): Promise<EventDayResponse> {
+  async update(id: string, dto: UpdateEventDayDto, user: JwtPayload): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -71,9 +63,7 @@ export class EventDaysService {
       throw new NotFoundException('Dia do evento não encontrado');
     }
 
-    if (userCircuitId && day.event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, day.event.circuitId);
 
     if (!EDITABLE_EVENT_STATUSES.includes(day.event.status)) {
       throw new UnprocessableEntityException(`Não é possível editar dias de um evento com status ${day.event.status}`);
@@ -95,7 +85,7 @@ export class EventDaysService {
     return this.toResponse(updated);
   }
 
-  async cancel(id: string, userCircuitId?: string): Promise<EventDayResponse> {
+  async cancel(id: string, user: JwtPayload): Promise<EventDayResponse> {
     const day = await this.prisma.client.eventDay.findUnique({
       where: { id },
       include: { event: true },
@@ -106,9 +96,7 @@ export class EventDaysService {
       throw new NotFoundException('Dia do evento não encontrado');
     }
 
-    if (userCircuitId && day.event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, day.event.circuitId);
 
     if (!EDITABLE_EVENT_STATUSES.includes(day.event.status)) {
       throw new UnprocessableEntityException(
@@ -180,7 +168,7 @@ export class EventDaysService {
 
   private async ensureEventExists(
     eventId: string,
-    userCircuitId?: string,
+    user: JwtPayload,
   ): Promise<{ id: string; status: string; circuitId: string }> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
@@ -192,9 +180,7 @@ export class EventDaysService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
     return event;
   }

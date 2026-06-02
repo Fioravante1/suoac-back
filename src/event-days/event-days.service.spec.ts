@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventDaysService } from './event-days.service';
@@ -75,6 +76,17 @@ function buildExpectedDayResponse(overrides: Partial<EventDayResponse> = {}): Ev
   };
 }
 
+
+function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
+    email: overrides.email ?? 'user@example.com',
+    role: overrides.role ?? 'CIRCUIT_COORDINATOR',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
+    congregationId: overrides.congregationId ?? null,
+  };
+}
+
 // ── Test Suite ───────────────────────────────────────────────────
 describe('EventDaysService', () => {
   let service: EventDaysService;
@@ -101,7 +113,7 @@ describe('EventDaysService', () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
       prismaMock.eventDay.findMany.mockResolvedValue(days as never);
 
-      const result = await service.findByEvent(eventId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
+      const result = await service.findByEvent(eventId, buildUser());
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual(buildExpectedDayResponse());
@@ -111,7 +123,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByEvent('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.findByEvent('id-inexistente', buildUser())).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -119,7 +131,7 @@ describe('EventDaysService', () => {
     it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
 
-      await expect(service.findByEvent(eventId, 'CIRCUIT_COORDINATOR', 'outro-circuito')).rejects.toThrow(
+      await expect(service.findByEvent(eventId, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
         ForbiddenException,
       );
     });
@@ -130,7 +142,7 @@ describe('EventDaysService', () => {
     it('deve retornar o dia do evento', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(buildEventDayWithEvent() as never);
 
-      const result = await service.findOne(dayId, 'CIRCUIT_COORDINATOR', CIRCUIT_ID);
+      const result = await service.findOne(dayId, buildUser());
 
       expect(result).toEqual(buildExpectedDayResponse());
     });
@@ -138,7 +150,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o dia não existe', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente', 'CIRCUIT_COORDINATOR', CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.findOne('id-inexistente', buildUser())).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -153,7 +165,7 @@ describe('EventDaysService', () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
       prismaMock.eventDay.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID);
+      const result = await service.update(dayId, { departureTime: '07:00' }, buildUser());
 
       expect(result.departureTime).toBe('07:00');
     });
@@ -165,7 +177,7 @@ describe('EventDaysService', () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
       prismaMock.eventDay.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(dayId, { returnTime: '19:00' }, CIRCUIT_ID);
+      const result = await service.update(dayId, { returnTime: '19:00' }, buildUser());
 
       expect(result.returnTime).toBe('19:00');
     });
@@ -175,7 +187,7 @@ describe('EventDaysService', () => {
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
 
-      await expect(service.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.update(dayId, { departureTime: '07:00' }, buildUser())).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -185,7 +197,7 @@ describe('EventDaysService', () => {
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
 
-      await expect(service.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.update(dayId, { departureTime: '07:00' }, buildUser())).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -195,7 +207,7 @@ describe('EventDaysService', () => {
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
 
-      await expect(service.update(dayId, { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.update(dayId, { departureTime: '07:00' }, buildUser())).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -207,7 +219,7 @@ describe('EventDaysService', () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
       prismaMock.eventDay.update.mockResolvedValue(updated as never);
 
-      const result = await service.update(dayId, {}, CIRCUIT_ID);
+      const result = await service.update(dayId, {}, buildUser());
 
       expect(result).toEqual(buildExpectedDayResponse());
       expect(prismaMock.eventDay.update).toHaveBeenCalledWith({
@@ -219,7 +231,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o dia não existe', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { departureTime: '07:00' }, CIRCUIT_ID)).rejects.toThrow(
+      await expect(service.update('id-inexistente', { departureTime: '07:00' }, buildUser())).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -235,7 +247,7 @@ describe('EventDaysService', () => {
       prismaMock.eventDay.count.mockResolvedValue(2);
       prismaMock.eventDay.update.mockResolvedValue(cancelled as never);
 
-      const result = await service.cancel(dayId, CIRCUIT_ID);
+      const result = await service.cancel(dayId, buildUser());
 
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.eventDay.update).toHaveBeenCalledWith({
@@ -252,7 +264,7 @@ describe('EventDaysService', () => {
       prismaMock.eventDay.count.mockResolvedValue(1);
       prismaMock.$transaction.mockResolvedValue([cancelledDay, {}, { count: 2 }] as never);
 
-      const result = await service.cancel(dayId, CIRCUIT_ID);
+      const result = await service.cancel(dayId, buildUser());
 
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
@@ -266,7 +278,7 @@ describe('EventDaysService', () => {
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
 
-      const result = await service.cancel(dayId, CIRCUIT_ID);
+      const result = await service.cancel(dayId, buildUser());
 
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.eventDay.update).not.toHaveBeenCalled();
@@ -277,13 +289,13 @@ describe('EventDaysService', () => {
 
       prismaMock.eventDay.findUnique.mockResolvedValue(dayWithEvent as never);
 
-      await expect(service.cancel(dayId, CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.cancel(dayId, buildUser())).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve lançar NotFoundException quando o dia não existe', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(null);
 
-      await expect(service.cancel('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+      await expect(service.cancel('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 });

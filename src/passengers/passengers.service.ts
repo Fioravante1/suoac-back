@@ -1,11 +1,12 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,8 +25,8 @@ export class PassengersService {
     private readonly encryption: EncryptionService,
   ) {}
 
-  async create(congregationId: string, dto: CreatePassengerDto, userCircuitId?: string): Promise<PassengerResponse> {
-    await this.ensureCongregationExists(congregationId, userCircuitId);
+  async create(congregationId: string, dto: CreatePassengerDto, user: JwtPayload): Promise<PassengerResponse> {
+    await this.ensureCongregationExists(congregationId, user);
 
     const normalizedRg = this.normalizeRg(dto.rg);
     const rgHash = this.encryption.hash(normalizedRg);
@@ -60,9 +61,9 @@ export class PassengersService {
     congregationId: string,
     page: number,
     limit: number,
-    userCircuitId?: string,
+    user: JwtPayload,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    await this.ensureCongregationExists(congregationId, userCircuitId);
+    await this.ensureCongregationExists(congregationId, user);
 
     this.logger.debug(`Listando passageiros — congregationId=${congregationId}, page=${page}, limit=${limit}`);
 
@@ -94,9 +95,9 @@ export class PassengersService {
     q: string,
     page: number,
     limit: number,
-    userCircuitId?: string,
+    user: JwtPayload,
   ): Promise<PaginatedResponse<PassengerResponse>> {
-    await this.ensureCongregationExists(congregationId, userCircuitId);
+    await this.ensureCongregationExists(congregationId, user);
 
     this.logger.debug(`Buscando passageiros — congregationId=${congregationId}, q="${q}"`);
 
@@ -148,7 +149,7 @@ export class PassengersService {
     };
   }
 
-  async findOne(id: string, userCircuitId?: string): Promise<PassengerResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<PassengerResponse> {
     const passenger = await this.prisma.client.passenger.findUnique({
       where: { id },
       include: { congregation: { select: { circuitId: true } } },
@@ -159,14 +160,12 @@ export class PassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
-    if (userCircuitId && passenger.congregation.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, passenger.congregation.circuitId);
 
     return this.toResponse(passenger);
   }
 
-  async update(id: string, dto: UpdatePassengerDto, userCircuitId?: string): Promise<PassengerResponse> {
+  async update(id: string, dto: UpdatePassengerDto, user: JwtPayload): Promise<PassengerResponse> {
     const existing = await this.prisma.client.passenger.findUnique({
       where: { id },
       include: { congregation: { select: { circuitId: true } } },
@@ -177,9 +176,7 @@ export class PassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
-    if (userCircuitId && existing.congregation.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, existing.congregation.circuitId);
 
     const normalizedRg = dto.rg !== undefined ? this.normalizeRg(dto.rg) : undefined;
     const rgHash = normalizedRg !== undefined ? this.encryption.hash(normalizedRg) : undefined;
@@ -212,7 +209,7 @@ export class PassengersService {
     return this.toResponse(passenger);
   }
 
-  async remove(id: string, userCircuitId?: string): Promise<void> {
+  async remove(id: string, user: JwtPayload): Promise<void> {
     const existing = await this.prisma.client.passenger.findUnique({
       where: { id },
       include: { congregation: { select: { circuitId: true } } },
@@ -223,9 +220,7 @@ export class PassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
-    if (userCircuitId && existing.congregation.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, existing.congregation.circuitId);
 
     const eventCount = await this.prisma.client.eventPassenger.count({
       where: { passengerId: id },
@@ -271,7 +266,7 @@ export class PassengersService {
     };
   }
 
-  private async ensureCongregationExists(congregationId: string, userCircuitId?: string): Promise<void> {
+  private async ensureCongregationExists(congregationId: string, user: JwtPayload): Promise<void> {
     const congregation = await this.prisma.client.congregation.findFirst({
       where: { id: congregationId, isActive: true },
       select: { id: true, circuitId: true },
@@ -282,8 +277,6 @@ export class PassengersService {
       throw new NotFoundException('Congregação não encontrada');
     }
 
-    if (userCircuitId && congregation.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, congregation.circuitId);
   }
 }

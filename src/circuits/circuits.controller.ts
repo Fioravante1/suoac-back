@@ -1,23 +1,8 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  ParseUUIDPipe,
-  Patch,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CircuitsService } from './circuits.service';
-import { CreateCircuitDto } from './dto/create-circuit.dto';
 import { UpdateCircuitDto } from './dto/update-circuit.dto';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
 
@@ -26,44 +11,31 @@ import type { CircuitResponse } from './interfaces/circuit-response.interface';
 export class CircuitsController {
   constructor(private readonly circuitsService: CircuitsService) {}
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @Roles('CIRCUIT_COORDINATOR')
-  async create(
-    @CurrentUser('circuitId') userCircuitId: string,
-    @Body() dto: CreateCircuitDto,
-  ): Promise<CircuitResponse> {
-    return this.circuitsService.create(userCircuitId, dto);
-  }
-
-  @Get()
-  async findAll(
-    @Query() query: PaginationQueryDto,
-    @CurrentUser('circuitId') userCircuitId: string,
-  ): Promise<PaginatedResponse<CircuitResponse>> {
-    return this.circuitsService.findAll(query.page ?? 1, query.limit ?? 20, userCircuitId);
+  @Get('me')
+  async findOwn(@CurrentUser() user: JwtPayload): Promise<CircuitResponse> {
+    return this.circuitsService.findOwn(user);
   }
 
   @Get(':id')
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CircuitResponse> {
-    return this.circuitsService.findOne(id, userCircuitId);
+    return this.circuitsService.findOne(id, user);
   }
 
   @Patch(':id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCircuitDto,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CircuitResponse> {
-    return this.circuitsService.update(id, dto, userCircuitId);
+    return this.circuitsService.update(id, dto, user);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
-    return this.circuitsService.remove(id, userCircuitId);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
+    return this.circuitsService.remove(id, user);
   }
 }

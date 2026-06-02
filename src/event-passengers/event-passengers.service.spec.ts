@@ -277,11 +277,15 @@ describe('EventPassengersService', () => {
       });
 
       expect(result.id).toBe(EP_ID);
-      expect(passengersServiceMock.create).toHaveBeenCalledWith(CONGREGATION_ID, {
-        name: 'João Silva',
-        rg: '12.345.678-X',
-        phone: '11999999999',
-      });
+      expect(passengersServiceMock.create).toHaveBeenCalledWith(
+        CONGREGATION_ID,
+        {
+          name: 'João Silva',
+          rg: '12.345.678-X',
+          phone: '11999999999',
+        },
+        user,
+      );
     });
 
     it('deve auto-selecionar o único dia ACTIVE para ASSEMBLY (ignora dayIds)', async () => {

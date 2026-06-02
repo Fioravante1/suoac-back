@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
@@ -42,18 +43,17 @@ export class EventsController {
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Query() query: PaginationQueryDto,
-    @CurrentUser('role') role: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponse<EventResponse>> {
-    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, role);
+    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, user);
   }
 
   @Get('events/:id')
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('role') role: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventResponse> {
-    return this.eventsService.findOne(id, role, userCircuitId);
+    return this.eventsService.findOne(id, user);
   }
 
   @Patch('events/:id')
@@ -61,10 +61,9 @@ export class EventsController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEventDto,
-    @CurrentUser('role') role: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventResponse> {
-    return this.eventsService.update(id, dto, role, userCircuitId);
+    return this.eventsService.update(id, dto, user);
   }
 
   @Patch('events/:id/status')
@@ -72,24 +71,24 @@ export class EventsController {
   async transitionStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: TransitionEventStatusDto,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventResponse> {
-    return this.eventsService.transitionStatus(id, dto, userCircuitId);
+    return this.eventsService.transitionStatus(id, dto, user);
   }
 
   @Patch('events/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventResponse> {
-    return this.eventsService.cancel(id, userCircuitId);
+    return this.eventsService.cancel(id, user);
   }
 
   @Delete('events/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
-  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('circuitId') userCircuitId: string): Promise<void> {
-    return this.eventsService.remove(id, userCircuitId);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
+    return this.eventsService.remove(id, user);
   }
 }

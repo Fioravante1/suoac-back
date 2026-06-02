@@ -202,12 +202,10 @@ export class EventPassengersService {
     const newTotalAmount = Number(ep.event.ticketPrice) * dto.dayIds.length;
     const paidAmount = Number(ep.paidAmount);
 
-    let newPaymentStatus: PaymentStatus;
-    if (ep.paymentStatus === PaymentStatus.EXEMPT) {
-      newPaymentStatus = PaymentStatus.EXEMPT;
-    } else {
-      newPaymentStatus = this.calculatePaymentStatus(paidAmount, newTotalAmount);
-    }
+    const newPaymentStatus: PaymentStatus =
+      ep.paymentStatus === PaymentStatus.EXEMPT
+        ? PaymentStatus.EXEMPT
+        : this.calculatePaymentStatus(paidAmount, newTotalAmount);
 
     if (paidAmount > newTotalAmount && ep.paymentStatus !== PaymentStatus.EXEMPT) {
       this.logger.warn(
@@ -314,11 +312,15 @@ export class EventPassengersService {
     const congregationId = user.congregationId!;
 
     try {
-      const created = await this.passengersService.create(congregationId, {
-        name: dto.name!,
-        rg: dto.rg!,
-        phone: dto.phone,
-      });
+      const created = await this.passengersService.create(
+        congregationId,
+        {
+          name: dto.name!,
+          rg: dto.rg!,
+          phone: dto.phone,
+        },
+        user,
+      );
 
       const passenger = await this.prisma.client.passenger.findUnique({
         where: { id: created.id },

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateEventDayDto } from './dto/update-event-day.dto';
 import { EventDaysService } from './event-days.service';
@@ -14,19 +15,17 @@ export class EventDaysController {
   @Get('events/:eventId/days')
   async findByEvent(
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @CurrentUser('role') role: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventDayResponse[]> {
-    return this.eventDaysService.findByEvent(eventId, role, userCircuitId);
+    return this.eventDaysService.findByEvent(eventId, user);
   }
 
   @Get('event-days/:id')
   async findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('role') role: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventDayResponse> {
-    return this.eventDaysService.findOne(id, role, userCircuitId);
+    return this.eventDaysService.findOne(id, user);
   }
 
   @Patch('event-days/:id')
@@ -34,17 +33,17 @@ export class EventDaysController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEventDayDto,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventDayResponse> {
-    return this.eventDaysService.update(id, dto, userCircuitId);
+    return this.eventDaysService.update(id, dto, user);
   }
 
   @Patch('event-days/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
   async cancel(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('circuitId') userCircuitId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EventDayResponse> {
-    return this.eventDaysService.cancel(id, userCircuitId);
+    return this.eventDaysService.cancel(id, user);
   }
 }

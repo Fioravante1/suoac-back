@@ -1,7 +1,7 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CreateCircuitDto } from './dto/create-circuit.dto';
 import type { UpdateCircuitDto } from './dto/update-circuit.dto';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
 
@@ -11,46 +11,22 @@ export class CircuitsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(page: number, limit: number, userCircuitId: string): Promise<PaginatedResponse<CircuitResponse>> {
-    this.logger.debug(`Listando circuitos — page=${page}, limit=${limit}, userCircuitId=${userCircuitId}`);
+  async findOwn(user: JwtPayload): Promise<CircuitResponse> {
+    this.logger.debug(`Buscando circuito do usuário — circuitId=${user.circuitId}`);
 
-    const where = { id: userCircuitId };
-
-    const [data, total] = await Promise.all([
-      this.prisma.client.circuit.findMany({
-        where,
-        orderBy: { name: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.client.circuit.count({ where }),
-    ]);
-
-    return {
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
-
-  async create(userCircuitId: string, dto: CreateCircuitDto): Promise<CircuitResponse> {
-    const circuit = await this.prisma.client.circuit.create({
-      data: {
-        name: dto.name,
-        city: dto.city,
-        state: dto.state.toUpperCase(),
-      },
+    const circuit = await this.prisma.client.circuit.findUnique({
+      where: { id: user.circuitId },
     });
 
-    this.logger.log(`Circuito criado — id=${circuit.id}, name="${circuit.name}", userCircuitId=${userCircuitId}`);
+    if (!circuit) {
+      this.logger.warn(`Circuito do usuário não encontrado — circuitId=${user.circuitId}`);
+      throw new NotFoundException('Circuito não encontrado');
+    }
+
     return circuit;
   }
 
-  async findOne(id: string, userCircuitId: string): Promise<CircuitResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<CircuitResponse> {
     const circuit = await this.prisma.client.circuit.findUnique({
       where: { id },
     });
@@ -60,15 +36,13 @@ export class CircuitsService {
       throw new NotFoundException('Circuito não encontrado');
     }
 
-    if (circuit.id !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, circuit.id);
 
     return circuit;
   }
 
-  async update(id: string, dto: UpdateCircuitDto, userCircuitId: string): Promise<CircuitResponse> {
-    await this.findOne(id, userCircuitId);
+  async update(id: string, dto: UpdateCircuitDto, user: JwtPayload): Promise<CircuitResponse> {
+    await this.findOne(id, user);
 
     const circuit = await this.prisma.client.circuit.update({
       where: { id },
@@ -83,8 +57,8 @@ export class CircuitsService {
     return circuit;
   }
 
-  async remove(id: string, userCircuitId: string): Promise<void> {
-    await this.findOne(id, userCircuitId);
+  async remove(id: string, user: JwtPayload): Promise<void> {
+    await this.findOne(id, user);
 
     await this.prisma.client.circuit.delete({
       where: { id },

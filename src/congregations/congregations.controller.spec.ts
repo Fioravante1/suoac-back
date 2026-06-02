@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CongregationsController } from './congregations.controller';
 import { CongregationsService } from './congregations.service';
 import type { CongregationResponse } from './interfaces/congregation-response.interface';
@@ -19,6 +20,16 @@ function buildCongregation(overrides: Partial<CongregationResponse> = {}): Congr
 }
 
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
+function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: 'u1u2u3u4-0000-0000-0000-000000000001',
+    email: 'user@example.com',
+    role: overrides.role ?? 'CIRCUIT_COORDINATOR',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
+    congregationId: overrides.congregationId ?? null,
+  };
+}
 
 // ── Test Suite ───────────────────────────────────────────────────
 describe('CongregationsController', () => {
@@ -112,19 +123,20 @@ describe('CongregationsController', () => {
   describe('findOne', () => {
     it('deve delegar a busca ao service e retornar o resultado', async () => {
       const expected = buildCongregation();
+      const user = buildUser();
 
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(expected.id, CIRCUIT_ID);
+      const result = await controller.findOne(expected.id, user);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, CIRCUIT_ID);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, user);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -133,36 +145,38 @@ describe('CongregationsController', () => {
     it('deve delegar a atualização ao service e retornar o resultado', async () => {
       const existing = buildCongregation();
       const updated = buildCongregation({ name: 'Novo Nome' });
+      const user = buildUser();
 
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
+      const result = await controller.update(existing.id, { name: 'Novo Nome' }, user);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
+      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, user);
     });
 
     it('deve propagar ConflictException do service', async () => {
       serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
-      await expect(controller.update('id', { code: 'duplicado' }, CIRCUIT_ID)).rejects.toThrow(ConflictException);
+      await expect(controller.update('id', { code: 'duplicado' }, buildUser())).rejects.toThrow(ConflictException);
     });
   });
 
   // ── remove ────────────────────────────────────────────────────
   describe('remove', () => {
     it('deve delegar a remoção ao service', async () => {
+      const user = buildUser();
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001', CIRCUIT_ID);
+      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001', user);
 
-      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001', CIRCUIT_ID);
+      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001', user);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 });

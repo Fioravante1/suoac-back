@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { PassengerResponse } from './interfaces/passenger-response.interface';
 import { PassengersController } from './passengers.controller';
 import { PassengersService } from './passengers.service';
@@ -19,6 +20,17 @@ function buildPassenger(overrides: Partial<PassengerResponse> = {}): PassengerRe
 }
 
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
+
+function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
+    email: overrides.email ?? 'user@example.com',
+    role: overrides.role ?? 'CIRCUIT_COORDINATOR',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
+    congregationId: overrides.congregationId ?? null,
+  };
+}
 
 // ── Test Suite ───────────────────────────────────────────────────
 describe('PassengersController', () => {
@@ -53,10 +65,10 @@ describe('PassengersController', () => {
 
       serviceMock.create.mockResolvedValue(expected);
 
-      const result = await controller.create(congregationId, CIRCUIT_ID, dto);
+      const result = await controller.create(congregationId, buildUser(), dto);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.create).toHaveBeenCalledWith(congregationId, dto, CIRCUIT_ID);
+      expect(serviceMock.create).toHaveBeenCalledWith(congregationId, dto, buildUser());
     });
 
     it('deve propagar NotFoundException do service', async () => {
@@ -64,7 +76,7 @@ describe('PassengersController', () => {
 
       serviceMock.create.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.create(congregationId, CIRCUIT_ID, dto)).rejects.toThrow(NotFoundException);
+      await expect(controller.create(congregationId, buildUser(), dto)).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar ConflictException do service', async () => {
@@ -72,7 +84,7 @@ describe('PassengersController', () => {
 
       serviceMock.create.mockRejectedValue(new ConflictException('Já existe um passageiro com este RG'));
 
-      await expect(controller.create(congregationId, CIRCUIT_ID, dto)).rejects.toThrow(ConflictException);
+      await expect(controller.create(congregationId, buildUser(), dto)).rejects.toThrow(ConflictException);
     });
   });
 
@@ -88,10 +100,10 @@ describe('PassengersController', () => {
 
       serviceMock.findByCongregation.mockResolvedValue(expected);
 
-      const result = await controller.findByCongregation(congregationId, {}, CIRCUIT_ID);
+      const result = await controller.findByCongregation(congregationId, {}, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCongregation).toHaveBeenCalledWith(congregationId, 1, 20, CIRCUIT_ID);
+      expect(serviceMock.findByCongregation).toHaveBeenCalledWith(congregationId, 1, 20, buildUser());
     });
 
     it('deve passar parâmetros de paginação customizados', async () => {
@@ -102,10 +114,10 @@ describe('PassengersController', () => {
 
       serviceMock.findByCongregation.mockResolvedValue(expected);
 
-      const result = await controller.findByCongregation(congregationId, { page: 2, limit: 10 }, CIRCUIT_ID);
+      const result = await controller.findByCongregation(congregationId, { page: 2, limit: 10 }, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCongregation).toHaveBeenCalledWith(congregationId, 2, 10, CIRCUIT_ID);
+      expect(serviceMock.findByCongregation).toHaveBeenCalledWith(congregationId, 2, 10, buildUser());
     });
   });
 
@@ -121,10 +133,10 @@ describe('PassengersController', () => {
 
       serviceMock.search.mockResolvedValue(expected);
 
-      const result = await controller.search(congregationId, { q: 'João' }, CIRCUIT_ID);
+      const result = await controller.search(congregationId, { q: 'João' }, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.search).toHaveBeenCalledWith(congregationId, 'João', 1, 20, CIRCUIT_ID);
+      expect(serviceMock.search).toHaveBeenCalledWith(congregationId, 'João', 1, 20, buildUser());
     });
 
     it('deve passar parâmetros de paginação customizados na busca', async () => {
@@ -135,10 +147,10 @@ describe('PassengersController', () => {
 
       serviceMock.search.mockResolvedValue(expected);
 
-      const result = await controller.search(congregationId, { q: 'João', page: 2, limit: 10 }, CIRCUIT_ID);
+      const result = await controller.search(congregationId, { q: 'João', page: 2, limit: 10 }, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.search).toHaveBeenCalledWith(congregationId, 'João', 2, 10, CIRCUIT_ID);
+      expect(serviceMock.search).toHaveBeenCalledWith(congregationId, 'João', 2, 10, buildUser());
     });
   });
 
@@ -149,16 +161,16 @@ describe('PassengersController', () => {
 
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(expected.id, CIRCUIT_ID);
+      const result = await controller.findOne(expected.id, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, CIRCUIT_ID);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, buildUser());
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Passageiro não encontrado'));
 
-      await expect(controller.findOne('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -170,22 +182,22 @@ describe('PassengersController', () => {
 
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
+      const result = await controller.update(existing.id, { name: 'Novo Nome' }, buildUser());
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, CIRCUIT_ID);
+      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, buildUser());
     });
 
     it('deve propagar ConflictException do service', async () => {
       serviceMock.update.mockRejectedValue(new ConflictException('RG duplicado'));
 
-      await expect(controller.update('id', { rg: '12.345.678-X' }, CIRCUIT_ID)).rejects.toThrow(ConflictException);
+      await expect(controller.update('id', { rg: '12.345.678-X' }, buildUser())).rejects.toThrow(ConflictException);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.update.mockRejectedValue(new NotFoundException('Passageiro não encontrado'));
 
-      await expect(controller.update('id-inexistente', { name: 'Novo' }, CIRCUIT_ID)).rejects.toThrow(
+      await expect(controller.update('id-inexistente', { name: 'Novo' }, buildUser())).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -196,21 +208,21 @@ describe('PassengersController', () => {
     it('deve delegar a remoção ao service', async () => {
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove('p1p2p3p4-0000-0000-0000-000000000001', CIRCUIT_ID);
+      await controller.remove('p1p2p3p4-0000-0000-0000-000000000001', buildUser());
 
-      expect(serviceMock.remove).toHaveBeenCalledWith('p1p2p3p4-0000-0000-0000-000000000001', CIRCUIT_ID);
+      expect(serviceMock.remove).toHaveBeenCalledWith('p1p2p3p4-0000-0000-0000-000000000001', buildUser());
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Passageiro não encontrado'));
 
-      await expect(controller.remove('id-inexistente', CIRCUIT_ID)).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
       serviceMock.remove.mockRejectedValue(new UnprocessableEntityException('Passageiro possui inscrições em eventos'));
 
-      await expect(controller.remove('id', CIRCUIT_ID)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.remove('id', buildUser())).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

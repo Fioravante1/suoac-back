@@ -5,8 +5,10 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
 import { EventStatus, EventType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
@@ -118,13 +120,13 @@ export class EventsService {
     circuitId: string,
     page: number,
     limit: number,
-    role: string,
+    user: JwtPayload,
   ): Promise<PaginatedResponse<EventResponse>> {
     await this.ensureCircuitExists(circuitId);
 
-    this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${role}`);
+    this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${user.role}`);
 
-    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
+    const isRestricted = !isCircuitRole(user.role);
     const where = {
       circuitId,
       ...(isRestricted && { status: { not: EventStatus.DRAFT } }),
@@ -151,7 +153,7 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string, role: string, userCircuitId?: string): Promise<EventResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
@@ -162,20 +164,17 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
-    const isRestricted = role === 'CONGREGATION_COORDINATOR' || role === 'CONGREGATION_ASSISTANT';
-    if (isRestricted && event.status === EventStatus.DRAFT) {
-      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, role=${role}`);
+    if (!isCircuitRole(user.role) && event.status === EventStatus.DRAFT) {
+      this.logger.warn(`Acesso negado: Evento em DRAFT — id=${id}, role=${user.role}`);
       throw new NotFoundException('Evento não encontrado');
     }
 
     return this.toResponse(event, true);
   }
 
-  async update(id: string, dto: UpdateEventDto, role: string, userCircuitId?: string): Promise<EventResponse> {
+  async update(id: string, dto: UpdateEventDto, user: JwtPayload): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
@@ -183,9 +182,7 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
     const allowedFields = EDITABLE_FIELDS_BY_STATUS[event.status] ?? [];
     const sentFields = Object.keys(dto).filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
@@ -198,13 +195,14 @@ export class EventsService {
     }
 
     const restrictions = ROLE_RESTRICTED_FIELDS[event.status];
-    if (restrictions) {
-      const restrictedFields = sentFields.filter((f) => restrictions[f] && restrictions[f] !== role);
-      if (restrictedFields.length > 0) {
-        throw new ForbiddenException(
-          `Apenas ${restrictions[restrictedFields[0]!]!} pode editar: ${restrictedFields.join(', ')}`,
-        );
-      }
+    const restrictedFields = restrictions
+      ? sentFields.filter((f) => restrictions[f] && restrictions[f] !== user.role)
+      : [];
+
+    if (restrictedFields.length > 0) {
+      throw new ForbiddenException(
+        `Apenas ${restrictions![restrictedFields[0]!]!} pode editar: ${restrictedFields.join(', ')}`,
+      );
     }
 
     const updated = await this.prisma.client.event.update({
@@ -226,7 +224,7 @@ export class EventsService {
     return this.toResponse(updated);
   }
 
-  async transitionStatus(id: string, dto: TransitionEventStatusDto, userCircuitId?: string): Promise<EventResponse> {
+  async transitionStatus(id: string, dto: TransitionEventStatusDto, user: JwtPayload): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: true },
@@ -237,9 +235,7 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
     const validNext = VALID_TRANSITIONS[event.status] ?? [];
     if (!validNext.includes(dto.status)) {
@@ -262,7 +258,7 @@ export class EventsService {
     return this.toResponse(updated);
   }
 
-  async remove(id: string, userCircuitId?: string): Promise<void> {
+  async remove(id: string, user: JwtPayload): Promise<void> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
@@ -270,9 +266,7 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
     if (event.status !== EventStatus.DRAFT) {
       throw new UnprocessableEntityException('Apenas eventos em rascunho podem ser removidos');
@@ -283,7 +277,7 @@ export class EventsService {
     this.logger.warn(`Evento removido (hard-delete) — id=${id}`);
   }
 
-  async cancel(id: string, userCircuitId?: string): Promise<EventResponse> {
+  async cancel(id: string, user: JwtPayload): Promise<EventResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id } });
 
     if (!event) {
@@ -291,9 +285,7 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    if (userCircuitId && event.circuitId !== userCircuitId) {
-      throw new ForbiddenException('Sem permissão para acessar recursos de outro circuito');
-    }
+    checkCircuitOwnership(user, event.circuitId);
 
     if (event.status === EventStatus.CANCELLED) {
       this.logger.debug(`Evento já cancelado (idempotente) — id=${id}`);
