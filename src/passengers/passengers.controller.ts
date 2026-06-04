@@ -56,10 +56,7 @@ export class PassengersController {
   }
 
   @Get('passengers/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<PassengerResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<PassengerResponse> {
     return this.passengersService.findOne(id, user);
   }
 

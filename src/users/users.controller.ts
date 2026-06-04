@@ -44,10 +44,7 @@ export class UsersController {
   }
 
   @Get('users/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<UserResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<UserResponse> {
     return this.usersService.findOne(id, user);
   }
 

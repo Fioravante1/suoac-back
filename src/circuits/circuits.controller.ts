@@ -17,10 +17,7 @@ export class CircuitsController {
   }
 
   @Get(':id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<CircuitResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<CircuitResponse> {
     return this.circuitsService.findOne(id, user);
   }
 

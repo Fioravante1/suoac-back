@@ -49,10 +49,7 @@ export class EventsController {
   }
 
   @Get('events/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<EventResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<EventResponse> {
     return this.eventsService.findOne(id, user);
   }
 
@@ -78,10 +75,7 @@ export class EventsController {
 
   @Patch('events/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
-  async cancel(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<EventResponse> {
+  async cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<EventResponse> {
     return this.eventsService.cancel(id, user);
   }
 

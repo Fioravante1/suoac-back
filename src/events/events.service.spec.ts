@@ -119,7 +119,6 @@ function buildCreateDto(overrides: Partial<CreateEventDto> = {}): CreateEventDto
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? userId,
@@ -345,9 +344,7 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
@@ -415,9 +412,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      await expect(
-        service.update(eventId, { registrationDeadline: '2026-08-01' }, buildUser()),
-      ).resolves.toBeDefined();
+      await expect(service.update(eventId, { registrationDeadline: '2026-08-01' }, buildUser())).resolves.toBeDefined();
     });
 
     it('deve rejeitar CIRCUIT_ASSISTANT de editar registrationDeadline em OPEN', async () => {
@@ -437,9 +432,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(event as never);
       prismaMock.event.update.mockResolvedValue(updated as never);
 
-      await expect(
-        service.update(eventId, { paymentDeadline: '2026-09-01' }, buildUser()),
-      ).resolves.toBeDefined();
+      await expect(service.update(eventId, { paymentDeadline: '2026-09-01' }, buildUser())).resolves.toBeDefined();
     });
 
     it('deve rejeitar CIRCUIT_ASSISTANT de editar paymentDeadline em OPEN', async () => {
@@ -485,9 +478,9 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.update('id-inexistente', { title: 'Teste' }, buildUser()),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { title: 'Teste' }, buildUser())).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
@@ -587,9 +580,9 @@ describe('EventsService', () => {
       const event = buildPrismaEventWithDays();
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.transitionStatus(event.id, { status: 'OPEN' }, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.transitionStatus(event.id, { status: 'OPEN' }, buildUser({ circuitId: 'outro-circuito' })),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -668,7 +661,9 @@ describe('EventsService', () => {
       const event = buildPrismaEvent({ status: 'OPEN' });
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.cancel(event.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(ForbiddenException);
+      await expect(service.cancel(event.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -703,7 +698,9 @@ describe('EventsService', () => {
       const event = buildPrismaEvent({ status: 'DRAFT' });
       prismaMock.event.findUnique.mockResolvedValue(event as never);
 
-      await expect(service.remove(event.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(ForbiddenException);
+      await expect(service.remove(event.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 });

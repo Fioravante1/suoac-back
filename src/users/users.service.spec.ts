@@ -266,7 +266,9 @@ describe('UsersService', () => {
       const user = buildUserRaw();
       prismaMock.user.findUnique.mockResolvedValue(user);
 
-      await expect(service.findOne(user.id, buildCaller({ circuitId: 'outro-circuito' }))).rejects.toThrow(ForbiddenException);
+      await expect(service.findOne(user.id, buildCaller({ circuitId: 'outro-circuito' }))).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -336,7 +338,9 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando usuario nao existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { name: 'Novo' }, buildCaller())).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { name: 'Novo' }, buildCaller())).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deve lancar ConflictException quando email duplicado', async () => {

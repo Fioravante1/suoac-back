@@ -21,7 +21,6 @@ function buildPassenger(overrides: Partial<PassengerResponse> = {}): PassengerRe
 
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',

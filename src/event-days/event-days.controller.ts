@@ -21,10 +21,7 @@ export class EventDaysController {
   }
 
   @Get('event-days/:id')
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<EventDayResponse> {
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<EventDayResponse> {
     return this.eventDaysService.findOne(id, user);
   }
 
@@ -40,10 +37,7 @@ export class EventDaysController {
 
   @Patch('event-days/:id/cancel')
   @Roles('CIRCUIT_COORDINATOR')
-  async cancel(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<EventDayResponse> {
+  async cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<EventDayResponse> {
     return this.eventDaysService.cancel(id, user);
   }
 }

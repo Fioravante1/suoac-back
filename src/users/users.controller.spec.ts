@@ -24,7 +24,6 @@ function buildUserResponse(overrides: Partial<UserResponse> = {}): UserResponse 
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? USER_ID,

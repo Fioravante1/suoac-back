@@ -32,7 +32,6 @@ function buildEvent(overrides: Partial<EventResponse> = {}): EventResponse {
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? userId,
@@ -151,9 +150,7 @@ describe('EventsController', () => {
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar ForbiddenException do service', async () => {

@@ -76,7 +76,6 @@ function buildExpectedDayResponse(overrides: Partial<EventDayResponse> = {}): Ev
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
@@ -123,9 +122,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByEvent('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findByEvent('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
@@ -150,9 +147,7 @@ describe('EventDaysService', () => {
     it('deve lançar NotFoundException quando o dia não existe', async () => {
       prismaMock.eventDay.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 

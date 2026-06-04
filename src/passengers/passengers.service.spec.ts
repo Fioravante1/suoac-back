@@ -82,7 +82,6 @@ function buildCongregation(): {
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
@@ -417,7 +416,9 @@ describe('PassengersService', () => {
         .mockResolvedValueOnce(existing) // findOne
         .mockResolvedValueOnce(conflict); // uniqueness check
 
-      await expect(service.update(PASSENGER_ID, { rg: '98.765.432-Y' }, buildUser())).rejects.toThrow(ConflictException);
+      await expect(service.update(PASSENGER_ID, { rg: '98.765.432-Y' }, buildUser())).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 

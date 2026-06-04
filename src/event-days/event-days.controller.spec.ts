@@ -23,7 +23,6 @@ function buildDay(overrides: Partial<EventDayResponse> = {}): EventDayResponse {
   };
 }
 
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
@@ -70,9 +69,7 @@ describe('EventDaysController', () => {
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findByEvent.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.findByEvent('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(controller.findByEvent('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -91,9 +88,7 @@ describe('EventDaysController', () => {
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Dia do evento não encontrado'));
 
-      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 
