@@ -45,6 +45,8 @@ O `.env` deve conter ao menos as seguintes variáveis:
 - `JWT_EXPIRATION` — Tempo de vida do access token em segundos (default: `900` = 15min).
 - `JWT_REFRESH_EXPIRATION` — Tempo de vida do refresh token em segundos (default: `604800` = 7d).
 - `ENCRYPTION_KEY` — Chave AES-256-GCM para criptografia de dados sensíveis (RG). 32 bytes hex. Gerado automaticamente pelo `setup:env`.
+- `ALLOWED_ORIGINS` — Origens CORS permitidas (comma-separated). Em dev, `localhost` com qualquer porta é permitido automaticamente. Em staging/prod, se vazio, nenhuma origin é permitida (fail-closed).
+- `RATE_LIMIT_MAX` — Requests por minuto por IP (default: `100`).
 
 *(Opcional) Verifique se a porta `5432` ou `3000` já estão em uso na sua máquina. Se estiverem, altere no `.env` e no `docker-compose.yml`.*
 
@@ -135,6 +137,8 @@ Cada environment deve ter suas próprias env vars configuradas no dashboard:
 - `PORT` — porta da API (Railway injeta automaticamente)
 - `PASSWORD_PEPPER`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY` — secrets (gerar valores únicos por environment)
 - `LOG_LEVEL` — nível de log (recomendado: `info` para ambos)
+- `ALLOWED_ORIGINS` — origens CORS (comma-separated, ex: `https://suoac.example.com`)
+- `RATE_LIMIT_MAX` — requests por minuto por IP (default: `100`)
 
 O arquivo `railway.toml` na raiz configura health check (`/health`), política de restart e timeout.
 
@@ -149,6 +153,15 @@ http://localhost:8080/api/docs
 A documentação é gerada automaticamente a partir dos DTOs e controllers via CLI plugin do `@nestjs/swagger` — não é necessário adicionar `@ApiProperty()` manualmente nos DTOs.
 
 > **Nota:** O Swagger é desabilitado automaticamente quando `NODE_ENV=production`.
+
+## 🔒 Segurança
+
+O backend implementa múltiplas camadas de segurança para produção:
+
+- **CORS**: Origens controladas via `ALLOWED_ORIGINS`. Em dev, aceita `localhost` com qualquer porta. Em staging/prod, fail-closed (sem origins configuradas = nenhuma permitida).
+- **Helmet**: Security headers (X-Content-Type-Options, X-Frame-Options, etc.) habilitados em todos os ambientes. CSP habilitado apenas em produção (desabilitado em dev/staging para permitir Swagger UI).
+- **Rate Limiting**: Limite de requests por IP/minuto via `RATE_LIMIT_MAX` (default: 100). `trustProxy: true` para funcionar atrás de reverse proxy (Railway).
+- **Filtro Global de Exceções**: Erros do Prisma (P2002, P2003, P2025) mapeados para HTTP status codes adequados. Stacktraces nunca expostos ao client.
 
 ## 📦 Estrutura do Projeto e Padrões Adotados
 
