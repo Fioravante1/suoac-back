@@ -1,11 +1,11 @@
 import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from './payments.service';
-
-import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 // ── Types ────────────────────────────────────────────────────────
 interface PrismaEvent {
@@ -97,12 +97,22 @@ function buildPayment(overrides: Partial<PrismaPayment> = {}): PrismaPayment {
 describe('PaymentsService', () => {
   let service: PaymentsService;
   let prismaMock: DeepMockProxy<PrismaClientType>;
+  let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
+    congregationEventStatusMock = {
+      findByEvent: jest.fn(),
+      updateStatus: jest.fn(),
+      ensureNotFinalized: jest.fn(),
+    } as unknown as jest.Mocked<CongregationEventStatusService>;
 
     const module = await Test.createTestingModule({
-      providers: [PaymentsService, { provide: PrismaService, useValue: { client: prismaMock } }],
+      providers: [
+        PaymentsService,
+        { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
+      ],
     }).compile();
 
     service = module.get(PaymentsService);
@@ -260,6 +270,21 @@ describe('PaymentsService', () => {
 
       await expect(service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE })).rejects.toThrow(ForbiddenException);
     });
+
+    it('deve lançar UnprocessableEntityException quando lista da congregação está finalizada', async () => {
+      const user = buildUser();
+      const ep = buildEventPassenger({ totalAmount: 50.0, paidAmount: 0 });
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar pagamentos',
+        ),
+      );
+
+      await expect(service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
   });
 
   // ── findByEventPassenger ────────────────────────────────────────
@@ -416,6 +441,19 @@ describe('PaymentsService', () => {
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);
 
       await expect(service.remove(PAYMENT_ID, user)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar UnprocessableEntityException quando lista da congregação está finalizada', async () => {
+      const user = buildUser();
+      const payment = buildPayment();
+      prismaMock.payment.findUnique.mockResolvedValue(payment as never);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar pagamentos',
+        ),
+      );
+
+      await expect(service.remove(PAYMENT_ID, user)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

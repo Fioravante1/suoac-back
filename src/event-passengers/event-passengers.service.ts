@@ -7,6 +7,7 @@ import {
 } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
 import { PassengersService } from '../passengers/passengers.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +26,7 @@ export class EventPassengersService {
     private readonly prisma: PrismaService,
     private readonly passengersService: PassengersService,
     private readonly encryption: EncryptionService,
+    private readonly congregationEventStatusService: CongregationEventStatusService,
   ) {}
 
   async create(eventId: string, user: JwtPayload, dto: CreateEventPassengerDto): Promise<EventPassengerResponse> {
@@ -44,11 +46,24 @@ export class EventPassengersService {
     this.ensureEventOpen(event.status);
     this.checkDeadlinePermission(event.registrationDeadline, user.role);
 
-    const resolved = dto.passengerId
-      ? await this.resolveExistingPassenger(dto.passengerId)
-      : await this.resolveInlinePassenger(user, dto);
+    let resolved: { passengerId: string; congregationId: string; rgHash: string };
 
-    checkCongregationPermission(user, resolved.congregationId, 'passageiros');
+    if (dto.passengerId) {
+      resolved = await this.resolveExistingPassenger(dto.passengerId);
+      checkCongregationPermission(user, resolved.congregationId, 'passageiros');
+      await this.congregationEventStatusService.ensureNotFinalized(
+        eventId,
+        resolved.congregationId,
+        user,
+        'inscrições',
+      );
+    } else {
+      this.validateInlinePermissions(user);
+      const congregationId = user.congregationId!;
+      checkCongregationPermission(user, congregationId, 'passageiros');
+      await this.congregationEventStatusService.ensureNotFinalized(eventId, congregationId, user, 'inscrições');
+      resolved = await this.resolveInlinePassenger(user, dto);
+    }
 
     const existingEnrollment = await this.prisma.client.eventPassenger.findUnique({
       where: { eventId_passengerId: { eventId, passengerId: resolved.passengerId } },
@@ -190,6 +205,7 @@ export class EventPassengersService {
     checkCircuitOwnership(user, ep.event.circuitId);
     this.ensureEventOpen(ep.event.status);
     checkCongregationPermission(user, ep.congregationId, 'passageiros');
+    await this.congregationEventStatusService.ensureNotFinalized(ep.eventId, ep.congregationId, user, 'inscrições');
 
     const activeDays = ep.event.eventDays.filter((d) => d.status === EventDayStatus.ACTIVE);
     const activeDayIds = new Set(activeDays.map((d) => d.id));
@@ -259,6 +275,7 @@ export class EventPassengersService {
     this.ensureEventOpen(ep.event.status);
     this.checkDeadlinePermission(ep.event.registrationDeadline, user.role);
     checkCongregationPermission(user, ep.congregationId, 'passageiros');
+    await this.congregationEventStatusService.ensureNotFinalized(ep.eventId, ep.congregationId, user, 'inscrições');
 
     await this.prisma.client.eventPassenger.delete({ where: { id } });
 
@@ -299,16 +316,18 @@ export class EventPassengersService {
     return { passengerId: passenger.id, congregationId: passenger.congregationId, rgHash: passenger.rgHash };
   }
 
+  private validateInlinePermissions(user: JwtPayload): void {
+    if (!user.congregationId) {
+      throw new UnprocessableEntityException(
+        'Usuários sem congregação vinculada devem usar passengerId para inscrever passageiros',
+      );
+    }
+  }
+
   private async resolveInlinePassenger(
     user: JwtPayload,
     dto: CreateEventPassengerDto,
   ): Promise<{ passengerId: string; congregationId: string; rgHash: string }> {
-    if (!isCircuitRole(user.role) && !user.congregationId) {
-      throw new UnprocessableEntityException(
-        'Roles de circuito sem congregação devem usar passengerId para inscrever passageiros',
-      );
-    }
-
     const congregationId = user.congregationId!;
 
     try {

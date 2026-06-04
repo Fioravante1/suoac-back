@@ -10,6 +10,7 @@ import { CircuitsModule } from './circuits/circuits.module';
 import { EncryptionModule } from './common/encryption/encryption.module';
 import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
+import { CongregationEventStatusModule } from './congregation-event-status/congregation-event-status.module';
 import { CongregationsModule } from './congregations/congregations.module';
 import { EventDaysModule } from './event-days/event-days.module';
 import { EventPassengersModule } from './event-passengers/event-passengers.module';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     HashingModule,
     EncryptionModule,
     CircuitsModule,
+    CongregationEventStatusModule,
     CongregationsModule,
     EventsModule,
     EventDaysModule,

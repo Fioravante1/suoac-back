@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException, Unprocessable
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PassengersService } from '../passengers/passengers.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -189,6 +190,7 @@ describe('EventPassengersService', () => {
   let prismaMock: DeepMockProxy<PrismaClientType>;
   let encryptionMock: jest.Mocked<EncryptionService>;
   let passengersServiceMock: jest.Mocked<PassengersService>;
+  let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
@@ -205,6 +207,11 @@ describe('EventPassengersService', () => {
       update: jest.fn(),
       remove: jest.fn(),
     } as unknown as jest.Mocked<PassengersService>;
+    congregationEventStatusMock = {
+      findByEvent: jest.fn(),
+      updateStatus: jest.fn(),
+      ensureNotFinalized: jest.fn(),
+    } as unknown as jest.Mocked<CongregationEventStatusService>;
 
     const module = await Test.createTestingModule({
       providers: [
@@ -212,6 +219,7 @@ describe('EventPassengersService', () => {
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: EncryptionService, useValue: encryptionMock },
         { provide: PassengersService, useValue: passengersServiceMock },
+        { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
       ],
     }).compile();
 
@@ -513,6 +521,42 @@ describe('EventPassengersService', () => {
         service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID, name: 'João', rg: '12345678X' }),
       ).rejects.toThrow(UnprocessableEntityException);
     });
+
+    it('deve lançar UnprocessableEntityException quando lista da congregação está finalizada (passageiro existente)', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      const event = buildEvent();
+      const passenger = buildPassenger();
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar inscrições',
+        ),
+      );
+
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('deve bloquear inscrição inline sem criar Passenger quando lista está finalizada', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      const event = buildEvent();
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar inscrições',
+        ),
+      );
+
+      await expect(service.create(EVENT_ID, user, { name: 'João Silva', rg: '12.345.678-X' })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+
+      expect(passengersServiceMock.create).not.toHaveBeenCalled();
+    });
   });
 
   // ── findByEvent ────────────────────────────────────────────────
@@ -725,6 +769,20 @@ describe('EventPassengersService', () => {
 
       await expect(service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, user)).rejects.toThrow(ForbiddenException);
     });
+
+    it('deve lançar UnprocessableEntityException quando lista da congregação está finalizada', async () => {
+      const user = buildUser();
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEpWithEvent() as never);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar inscrições',
+        ),
+      );
+
+      await expect(service.updateDays(EP_ID, { dayIds: [DAY_ID_1] }, user)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
   });
 
   // ── remove ────────────────────────────────────────────────────
@@ -790,6 +848,18 @@ describe('EventPassengersService', () => {
       await service.remove(EP_ID, user);
 
       expect(prismaMock.eventPassenger.delete).toHaveBeenCalledWith({ where: { id: EP_ID } });
+    });
+
+    it('deve lançar UnprocessableEntityException quando lista da congregação está finalizada', async () => {
+      const user = buildUser();
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEpWithEventForRemove() as never);
+      congregationEventStatusMock.ensureNotFinalized.mockRejectedValue(
+        new UnprocessableEntityException(
+          'A lista desta congregação já foi finalizada. Não é possível alterar inscrições',
+        ),
+      );
+
+      await expect(service.remove(EP_ID, user)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

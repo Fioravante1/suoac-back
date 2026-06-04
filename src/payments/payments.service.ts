@@ -5,6 +5,7 @@ import {
   checkCongregationPermission,
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
+import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import { EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
@@ -14,7 +15,10 @@ import type { PaymentResponse } from './interfaces/payment-response.interface';
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly congregationEventStatusService: CongregationEventStatusService,
+  ) {}
 
   async create(eventPassengerId: string, user: JwtPayload, dto: CreatePaymentDto): Promise<PaymentResponse> {
     const ep = await this.prisma.client.eventPassenger.findUnique({
@@ -31,6 +35,7 @@ export class PaymentsService {
     this.ensureEventOpen(ep.event.status);
     this.checkPaymentDeadlinePermission(ep.event.paymentDeadline, user.role);
     checkCongregationPermission(user, ep.congregationId, 'pagamentos');
+    await this.congregationEventStatusService.ensureNotFinalized(ep.eventId, ep.congregationId, user, 'pagamentos');
 
     if (ep.paymentStatus === PaymentStatus.EXEMPT) {
       throw new UnprocessableEntityException('Passageiro isento de pagamento');
@@ -120,6 +125,12 @@ export class PaymentsService {
     this.ensureEventOpen(payment.eventPassenger.event.status);
     this.checkPaymentDeadlinePermission(payment.eventPassenger.event.paymentDeadline, user.role);
     checkCongregationPermission(user, payment.eventPassenger.congregationId, 'pagamentos');
+    await this.congregationEventStatusService.ensureNotFinalized(
+      payment.eventPassenger.eventId,
+      payment.eventPassenger.congregationId,
+      user,
+      'pagamentos',
+    );
 
     const paidAmount = Number(payment.eventPassenger.paidAmount);
     const totalAmount = Number(payment.eventPassenger.totalAmount);

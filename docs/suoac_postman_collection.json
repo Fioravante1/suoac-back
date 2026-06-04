@@ -1382,6 +1382,48 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "CongregationEventStatus",
+      "item": [
+        {
+          "name": "List Congregation Statuses by Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "congregation-statuses"]
+            },
+            "description": "Lista o status de finalização de todas as congregações do circuito para um evento. Restrito a CC/CA."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Congregation Event Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"FINALIZED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses/{{congregationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "congregation-statuses", "{{congregationId}}"]
+            },
+            "description": "Finaliza ou reabre a lista de uma congregação para um evento. FINALIZED cria/atualiza o registro; PENDING deleta o registro (retorno à ausência implícita). Reabrir (PENDING) restrito a CC/CA."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
