@@ -93,7 +93,9 @@ export class CongregationEventStatusService {
     });
 
     if (dto.status === CongregationListStatus.PENDING && !currentStatus) {
-      this.logger.debug(`Lista da congregação já estava pendente — eventId=${eventId}, congregationId=${congregationId}`);
+      this.logger.debug(
+        `Lista da congregação já estava pendente — eventId=${eventId}, congregationId=${congregationId}`,
+      );
       return this.toResponse(congregation, eventId, null);
     }
 
@@ -108,9 +110,7 @@ export class CongregationEventStatusService {
           oldValues: currentStatus as unknown as Record<string, unknown>,
           newValues: { status: CongregationListStatus.PENDING, eventId, congregationId },
         })
-        .catch((err: unknown) =>
-          this.logger.error({ err, entityId: currentStatus!.id }, 'Falha ao gravar audit log'),
-        );
+        .catch((err: unknown) => this.logger.error({ err, entityId: currentStatus!.id }, 'Falha ao gravar audit log'));
 
       return this.toResponse(congregation, eventId, null);
     }

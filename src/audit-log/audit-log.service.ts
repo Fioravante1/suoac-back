@@ -24,7 +24,13 @@ export class AuditLogService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async log(action: AuditAction, entity: string, entityId: string, userId: string, details?: AuditLogDetails): Promise<void> {
+  async log(
+    action: AuditAction,
+    entity: string,
+    entityId: string,
+    userId: string,
+    details?: AuditLogDetails,
+  ): Promise<void> {
     await this.prisma.client.auditLog.create({
       data: this.buildCreateData(action, entity, entityId, userId, details),
     });

@@ -41,7 +41,10 @@ export class UsersService {
     this.logger.log(`Usuario criado — id=${user.id}, email="${user.email}", role=${user.role}, circuitId=${circuitId}`);
 
     void this.auditLogService
-      .log('CREATE', 'User', user.id, caller.sub, { oldValues: null, newValues: user as unknown as Record<string, unknown> })
+      .log('CREATE', 'User', user.id, caller.sub, {
+        oldValues: null,
+        newValues: user as unknown as Record<string, unknown>,
+      })
       .catch((err: unknown) => this.logger.error({ err, entityId: user.id }, 'Falha ao gravar audit log'));
 
     return this.toUserResponse(user);

@@ -102,7 +102,9 @@ describe('EventsController', () => {
     it('deve propagar UnprocessableEntityException do service', async () => {
       serviceMock.create.mockRejectedValue(new UnprocessableEntityException('endDate é obrigatório'));
 
-      await expect(controller.create(circuitId, buildUser(), dto as never)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.create(circuitId, buildUser(), dto as never)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 

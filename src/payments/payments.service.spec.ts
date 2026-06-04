@@ -117,13 +117,15 @@ describe('PaymentsService', () => {
           provide: AuditLogService,
           useValue: {
             log: jest.fn().mockResolvedValue(undefined),
-            buildCreateData: jest.fn((action: string, entity: string, entityId: string, userId: string, details: unknown) => ({
-              action,
-              entity,
-              entityId,
-              userId,
-              details,
-            })),
+            buildCreateData: jest.fn(
+              (action: string, entity: string, entityId: string, userId: string, details: unknown) => ({
+                action,
+                entity,
+                entityId,
+                userId,
+                details,
+              }),
+            ),
           },
         },
       ],
