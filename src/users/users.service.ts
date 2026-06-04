@@ -1,8 +1,10 @@
 import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import type { User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -15,9 +17,10 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly hashing: HashingService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
-  async create(circuitId: string, dto: CreateUserDto): Promise<UserResponse> {
+  async create(circuitId: string, dto: CreateUserDto, caller: JwtPayload): Promise<UserResponse> {
     await this.ensureCircuitExists(circuitId);
     await this.ensureCongregationBelongsToCircuit(dto.congregationId, circuitId);
     await this.ensureEmailUnique(dto.email);
@@ -36,6 +39,11 @@ export class UsersService {
     });
 
     this.logger.log(`Usuario criado — id=${user.id}, email="${user.email}", role=${user.role}, circuitId=${circuitId}`);
+
+    void this.auditLogService
+      .log('CREATE', 'User', user.id, caller.sub, { oldValues: null, newValues: user as unknown as Record<string, unknown> })
+      .catch((err: unknown) => this.logger.error({ err, entityId: user.id }, 'Falha ao gravar audit log'));
+
     return this.toUserResponse(user);
   }
 
@@ -95,7 +103,7 @@ export class UsersService {
 
     const passwordHash = dto.password ? await this.hashing.hash(dto.password) : undefined;
 
-    const user = await this.prisma.client.user.update({
+    const updated = await this.prisma.client.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
@@ -107,18 +115,33 @@ export class UsersService {
     });
 
     this.logger.log(`Usuario atualizado — id=${id}`);
-    return this.toUserResponse(user);
+
+    void this.auditLogService
+      .log('UPDATE', 'User', id, caller.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
+    return this.toUserResponse(updated);
   }
 
   async remove(id: string, caller: JwtPayload): Promise<void> {
-    await this.findOne(id, caller);
+    const existing = await this.findOne(id, caller);
 
-    await this.prisma.client.user.update({
+    const updated = await this.prisma.client.user.update({
       where: { id },
       data: { isActive: false },
     });
 
     this.logger.log(`Usuario desativado (soft-delete) — id=${id}`);
+
+    void this.auditLogService
+      .log('DEACTIVATE', 'User', id, caller.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
   async findByEmailForAuth(email: string): Promise<{
@@ -209,10 +232,7 @@ export class UsersService {
     }
   }
 
-  private async findOneRaw(
-    id: string,
-    caller: JwtPayload,
-  ): Promise<{ id: string; role: string; circuitId: string; congregationId: string | null }> {
+  private async findOneRaw(id: string, caller: JwtPayload): Promise<User> {
     const user = await this.prisma.client.user.findUnique({
       where: { id },
     });

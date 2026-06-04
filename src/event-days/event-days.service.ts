@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,7 +12,10 @@ const EDITABLE_EVENT_STATUSES = ['DRAFT', 'OPEN'];
 export class EventDaysService {
   private readonly logger = new Logger(EventDaysService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async findByEvent(eventId: string, user: JwtPayload): Promise<EventDayResponse[]> {
     const event = await this.ensureEventExists(eventId, user);
@@ -82,6 +86,14 @@ export class EventDaysService {
     });
 
     this.logger.log(`Dia do evento atualizado — id=${id}, eventId=${day.eventId}`);
+
+    void this.auditLogService
+      .log('UPDATE', 'EventDay', id, user.sub, {
+        oldValues: day as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
     return this.toResponse(updated);
   }
 
@@ -132,6 +144,14 @@ export class EventDaysService {
       this.logger.log(
         `Último dia ativo cancelado — id=${id}, eventId=${day.eventId}. Evento transicionado para CANCELLED, status de congregações resetados`,
       );
+
+      void this.auditLogService
+        .log('UPDATE', 'EventDay', id, user.sub, {
+          oldValues: { status: day.status } as unknown as Record<string, unknown>,
+          newValues: { status: 'CANCELLED' } as unknown as Record<string, unknown>,
+        })
+        .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
       return this.toResponse(updatedDay);
     }
 
@@ -141,6 +161,14 @@ export class EventDaysService {
     });
 
     this.logger.log(`Dia do evento cancelado — id=${id}, eventId=${day.eventId}`);
+
+    void this.auditLogService
+      .log('UPDATE', 'EventDay', id, user.sub, {
+        oldValues: { status: day.status } as unknown as Record<string, unknown>,
+        newValues: { status: 'CANCELLED' } as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
     return this.toResponse(updated);
   }
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
+import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthModule } from './auth/auth.module';
 import { CircuitOwnershipGuard } from './auth/guards/circuit-ownership.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     }),
     LoggerModule.forRoot(getLoggerConfig()),
     PrismaModule,
+    AuditLogModule,
     HealthModule,
     HashingModule,
     EncryptionModule,

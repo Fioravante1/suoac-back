@@ -1,5 +1,7 @@
 import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import type { Prisma } from '../generated/prisma/client';
 import {
   checkCircuitOwnership,
   checkCongregationPermission,
@@ -18,6 +20,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly congregationEventStatusService: CongregationEventStatusService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(eventPassengerId: string, user: JwtPayload, dto: CreatePaymentDto): Promise<PaymentResponse> {
@@ -61,8 +64,8 @@ export class PaymentsService {
     const newPaidAmount = paidAmount + dto.amount;
     const newPaymentStatus = this.calculatePaymentStatus(newPaidAmount, totalAmount);
 
-    const [payment] = await this.prisma.client.$transaction([
-      this.prisma.client.payment.create({
+    const payment = await this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
+      const created = await tx.payment.create({
         data: {
           amount: dto.amount,
           paidAt: paidAtDate,
@@ -70,15 +73,25 @@ export class PaymentsService {
           eventPassengerId,
           registeredById: user.sub,
         },
-      }),
-      this.prisma.client.eventPassenger.update({
+      });
+
+      await tx.eventPassenger.update({
         where: { id: eventPassengerId },
         data: {
           paidAmount: newPaidAmount,
           paymentStatus: newPaymentStatus,
         },
-      }),
-    ]);
+      });
+
+      await tx.auditLog.create({
+        data: this.auditLogService.buildCreateData('CREATE', 'Payment', created.id, user.sub, {
+          oldValues: null,
+          newValues: created as unknown as Record<string, unknown>,
+        }),
+      });
+
+      return created;
+    });
 
     this.logger.log(
       `Pagamento registrado — id=${payment.id}, eventPassengerId=${eventPassengerId}, amount=${dto.amount}`,
@@ -139,16 +152,22 @@ export class PaymentsService {
     const newPaidAmount = paidAmount - paymentAmount;
     const newPaymentStatus = this.calculatePaymentStatus(newPaidAmount, totalAmount);
 
-    await this.prisma.client.$transaction([
-      this.prisma.client.payment.delete({ where: { id } }),
-      this.prisma.client.eventPassenger.update({
+    await this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.payment.delete({ where: { id } });
+      await tx.eventPassenger.update({
         where: { id: payment.eventPassengerId },
         data: {
           paidAmount: newPaidAmount,
           paymentStatus: newPaymentStatus,
         },
-      }),
-    ]);
+      });
+      await tx.auditLog.create({
+        data: this.auditLogService.buildCreateData('DELETE', 'Payment', id, user.sub, {
+          oldValues: payment as unknown as Record<string, unknown>,
+          newValues: null,
+        }),
+      });
+    });
 
     this.logger.warn(
       `Pagamento removido — id=${id}, eventPassengerId=${payment.eventPassengerId}, amount=${paymentAmount}`,

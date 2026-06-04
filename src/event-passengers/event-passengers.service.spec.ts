@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
@@ -220,6 +221,7 @@ describe('EventPassengersService', () => {
         { provide: EncryptionService, useValue: encryptionMock },
         { provide: PassengersService, useValue: passengersServiceMock },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

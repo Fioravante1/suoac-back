@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
   checkCircuitOwnership,
@@ -27,6 +28,7 @@ export class EventPassengersService {
     private readonly passengersService: PassengersService,
     private readonly encryption: EncryptionService,
     private readonly congregationEventStatusService: CongregationEventStatusService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(eventId: string, user: JwtPayload, dto: CreateEventPassengerDto): Promise<EventPassengerResponse> {
@@ -116,6 +118,12 @@ export class EventPassengersService {
     this.logger.log(
       `Passageiro inscrito no evento — id=${created.id}, eventId=${eventId}, passengerId=${resolved.passengerId}`,
     );
+    void this.auditLogService
+      .log('CREATE', 'EventPassenger', created.id, user.sub, {
+        oldValues: null,
+        newValues: created as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: created.id }, 'Falha ao gravar audit log'));
     return this.toResponse(created);
   }
 
@@ -257,6 +265,12 @@ export class EventPassengersService {
     });
 
     this.logger.log(`Dias da inscrição atualizados — id=${id}, days=${dto.dayIds.length}`);
+    void this.auditLogService
+      .log('UPDATE', 'EventPassenger', id, user.sub, {
+        oldValues: ep as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updated!);
   }
 
@@ -282,6 +296,12 @@ export class EventPassengersService {
     this.logger.warn(
       `Inscrição removida (hard-delete) — id=${id}, eventId=${ep.eventId}, passengerId=${ep.passengerId}`,
     );
+    void this.auditLogService
+      .log('DELETE', 'EventPassenger', id, user.sub, {
+        oldValues: ep as unknown as Record<string, unknown>,
+        newValues: null,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
   private validateCreateInput(dto: CreateEventPassengerDto): void {

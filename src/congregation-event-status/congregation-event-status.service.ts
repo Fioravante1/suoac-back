@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { CongregationListStatus, EventStatus } from '../generated/prisma/enums';
@@ -16,7 +17,10 @@ import type { CongregationEventStatusResponse } from './interfaces/congregation-
 export class CongregationEventStatusService {
   private readonly logger = new Logger(CongregationEventStatusService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async findByEvent(eventId: string, user: JwtPayload): Promise<CongregationEventStatusResponse[]> {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
@@ -84,12 +88,29 @@ export class CongregationEventStatusService {
       throw new ForbiddenException('Sem permissão para finalizar a lista de outra congregação');
     }
 
+    const currentStatus = await this.prisma.client.congregationEventStatus.findUnique({
+      where: { congregationId_eventId: { congregationId, eventId } },
+    });
+
+    if (dto.status === CongregationListStatus.PENDING && !currentStatus) {
+      this.logger.debug(`Lista da congregação já estava pendente — eventId=${eventId}, congregationId=${congregationId}`);
+      return this.toResponse(congregation, eventId, null);
+    }
+
     if (dto.status === CongregationListStatus.PENDING) {
-      await this.prisma.client.congregationEventStatus.deleteMany({
-        where: { congregationId, eventId },
+      await this.prisma.client.congregationEventStatus.delete({
+        where: { id: currentStatus!.id },
       });
 
       this.logger.log(`Lista da congregação reaberta — eventId=${eventId}, congregationId=${congregationId}`);
+      void this.auditLogService
+        .log('UPDATE', 'CongregationEventStatus', currentStatus!.id, user.sub, {
+          oldValues: currentStatus as unknown as Record<string, unknown>,
+          newValues: { status: CongregationListStatus.PENDING, eventId, congregationId },
+        })
+        .catch((err: unknown) =>
+          this.logger.error({ err, entityId: currentStatus!.id }, 'Falha ao gravar audit log'),
+        );
 
       return this.toResponse(congregation, eventId, null);
     }
@@ -111,6 +132,12 @@ export class CongregationEventStatusService {
     });
 
     this.logger.log(`Lista da congregação finalizada — eventId=${eventId}, congregationId=${congregationId}`);
+    void this.auditLogService
+      .log(currentStatus ? 'UPDATE' : 'CREATE', 'CongregationEventStatus', record.id, user.sub, {
+        oldValues: currentStatus as unknown as Record<string, unknown> | null,
+        newValues: record as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: record.id }, 'Falha ao gravar audit log'));
 
     return this.toResponse(congregation, eventId, record);
   }

@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException, UnprocessableEntityException } f
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventDaysService } from './event-days.service';
@@ -95,7 +96,11 @@ describe('EventDaysService', () => {
     prismaMock = mockDeep<PrismaClientType>();
 
     const module = await Test.createTestingModule({
-      providers: [EventDaysService, { provide: PrismaService, useValue: { client: prismaMock } }],
+      providers: [
+        EventDaysService,
+        { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
 
     service = module.get(EventDaysService);

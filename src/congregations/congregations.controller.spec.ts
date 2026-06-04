@@ -63,10 +63,10 @@ describe('CongregationsController', () => {
 
       serviceMock.create.mockResolvedValue(expected);
 
-      const result = await controller.create(circuitId, dto);
+      const result = await controller.create(circuitId, dto, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, dto);
+      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, dto, buildUser());
     });
 
     it('deve propagar NotFoundException do service', async () => {
@@ -74,7 +74,7 @@ describe('CongregationsController', () => {
 
       serviceMock.create.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.create(circuitId, dto)).rejects.toThrow(NotFoundException);
+      await expect(controller.create(circuitId, dto, buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar ConflictException do service', async () => {
@@ -82,7 +82,7 @@ describe('CongregationsController', () => {
 
       serviceMock.create.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
-      await expect(controller.create(circuitId, dto)).rejects.toThrow(ConflictException);
+      await expect(controller.create(circuitId, dto, buildUser())).rejects.toThrow(ConflictException);
     });
   });
 

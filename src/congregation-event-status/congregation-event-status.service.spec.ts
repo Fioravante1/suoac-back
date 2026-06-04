@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CongregationEventStatusService } from './congregation-event-status.service';
@@ -98,7 +99,11 @@ describe('CongregationEventStatusService', () => {
     prismaMock = mockDeep<PrismaClientType>();
 
     const module = await Test.createTestingModule({
-      providers: [CongregationEventStatusService, { provide: PrismaService, useValue: { client: prismaMock } }],
+      providers: [
+        CongregationEventStatusService,
+        { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
 
     service = module.get(CongregationEventStatusService);
@@ -179,6 +184,7 @@ describe('CongregationEventStatusService', () => {
 
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
+      prismaMock.congregationEventStatus.findUnique.mockResolvedValue(null);
       prismaMock.congregationEventStatus.upsert.mockResolvedValue(upserted as never);
 
       const result = await service.updateStatus(EVENT_ID, CONGREGATION_ID, user, { status: 'FINALIZED' });
@@ -190,16 +196,19 @@ describe('CongregationEventStatusService', () => {
     it('deve permitir CC/CA reabrir lista (PENDING) deletando o registro', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
 
+      const currentStatus = buildStatus({ status: 'FINALIZED' });
+
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
-      prismaMock.congregationEventStatus.deleteMany.mockResolvedValue({ count: 1 });
+      prismaMock.congregationEventStatus.findUnique.mockResolvedValue(currentStatus as never);
+      prismaMock.congregationEventStatus.delete.mockResolvedValue(currentStatus as never);
 
       const result = await service.updateStatus(EVENT_ID, CONGREGATION_ID, user, { status: 'PENDING' });
 
       expect(result.status).toBe('PENDING');
       expect(result.id).toBeNull();
-      expect(prismaMock.congregationEventStatus.deleteMany).toHaveBeenCalledWith({
-        where: { congregationId: CONGREGATION_ID, eventId: EVENT_ID },
+      expect(prismaMock.congregationEventStatus.delete).toHaveBeenCalledWith({
+        where: { id: currentStatus.id },
       });
       expect(prismaMock.congregationEventStatus.upsert).not.toHaveBeenCalled();
     });

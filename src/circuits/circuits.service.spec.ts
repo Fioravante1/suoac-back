@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CircuitsService } from './circuits.service';
@@ -35,6 +36,7 @@ function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse
 describe('CircuitsService', () => {
   let service: CircuitsService;
   let prismaMock: DeepMockProxy<PrismaClientType>;
+  let auditLogService: { log: jest.Mock };
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
@@ -46,10 +48,12 @@ describe('CircuitsService', () => {
           provide: PrismaService,
           useValue: { client: prismaMock },
         },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
     service = module.get(CircuitsService);
+    auditLogService = module.get(AuditLogService);
   });
 
   // ── findOwn ──────────────────────────────────────────────────
@@ -109,17 +113,25 @@ describe('CircuitsService', () => {
     it('deve atualizar apenas os campos enviados', async () => {
       const existing = buildCircuit();
       const updated = buildCircuit({ name: 'Circuito SP-02' });
+      const user = buildUser();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(updated);
 
-      const result = await service.update(existing.id, { name: 'Circuito SP-02' }, buildUser());
+      const result = await service.update(existing.id, { name: 'Circuito SP-02' }, user);
 
       expect(result.name).toBe('Circuito SP-02');
       expect(prismaMock.circuit.update).toHaveBeenCalledWith({
         where: { id: existing.id },
         data: { name: 'Circuito SP-02' },
       });
+      expect(auditLogService.log).toHaveBeenCalledWith(
+        'UPDATE',
+        'Circuit',
+        existing.id,
+        user.sub,
+        expect.objectContaining({ oldValues: expect.any(Object), newValues: expect.any(Object) }),
+      );
     });
 
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
@@ -163,15 +175,42 @@ describe('CircuitsService', () => {
   describe('remove', () => {
     it('deve deletar o circuito quando ele existe', async () => {
       const existing = buildCircuit();
+      const user = buildUser();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.delete.mockResolvedValue(existing);
 
-      await service.remove(existing.id, buildUser());
+      await service.remove(existing.id, user);
 
+      expect(auditLogService.log).toHaveBeenCalledWith(
+        'DELETE',
+        'Circuit',
+        existing.id,
+        user.sub,
+        expect.objectContaining({ oldValues: expect.any(Object), newValues: null }),
+      );
       expect(prismaMock.circuit.delete).toHaveBeenCalledWith({
         where: { id: existing.id },
       });
+    });
+
+    it('deve gravar audit log ANTES do delete', async () => {
+      const existing = buildCircuit();
+      const callOrder: string[] = [];
+
+      prismaMock.circuit.findUnique.mockResolvedValue(existing);
+      auditLogService.log.mockImplementation(() => {
+        callOrder.push('audit');
+        return Promise.resolve();
+      });
+      prismaMock.circuit.delete.mockImplementation((() => {
+        callOrder.push('delete');
+        return Promise.resolve(existing);
+      }) as never);
+
+      await service.remove(existing.id, buildUser());
+
+      expect(callOrder).toEqual(['audit', 'delete']);
     });
 
     it('deve lançar NotFoundException quando o circuito não existe', async () => {

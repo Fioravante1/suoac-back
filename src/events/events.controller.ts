@@ -33,10 +33,10 @@ export class EventsController {
   @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: JwtPayload,
     @Body() dto: CreateEventDto,
   ): Promise<EventResponse> {
-    return this.eventsService.create(circuitId, userId, dto);
+    return this.eventsService.create(circuitId, user, dto);
   }
 
   @Get('circuits/:circuitId/events')

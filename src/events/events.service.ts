@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
@@ -73,9 +74,12 @@ const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
-  async create(circuitId: string, createdById: string, dto: CreateEventDto): Promise<EventResponse> {
+  async create(circuitId: string, user: JwtPayload, dto: CreateEventDto): Promise<EventResponse> {
     await this.ensureCircuitExists(circuitId);
 
     const startDate = new Date(`${dto.date}T00:00:00Z`);
@@ -104,7 +108,7 @@ export class EventsService {
         state: dto.state.toUpperCase(),
         observations: dto.observations ?? null,
         circuitId,
-        createdById,
+        createdById: user.sub,
         eventDays: {
           create: days,
         },
@@ -113,6 +117,12 @@ export class EventsService {
     });
 
     this.logger.log(`Evento criado — id=${event.id}, title="${event.title}", circuitId=${circuitId}`);
+    void this.auditLogService
+      .log('CREATE', 'Event', event.id, user.sub, {
+        oldValues: null,
+        newValues: event as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: event.id }, 'Falha ao gravar audit log'));
     return this.toResponse(event, true);
   }
 
@@ -175,26 +185,26 @@ export class EventsService {
   }
 
   async update(id: string, dto: UpdateEventDto, user: JwtPayload): Promise<EventResponse> {
-    const event = await this.prisma.client.event.findUnique({ where: { id } });
+    const existing = await this.prisma.client.event.findUnique({ where: { id } });
 
-    if (!event) {
+    if (!existing) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
     }
 
-    checkCircuitOwnership(user, event.circuitId);
+    checkCircuitOwnership(user, existing.circuitId);
 
-    const allowedFields = EDITABLE_FIELDS_BY_STATUS[event.status] ?? [];
+    const allowedFields = EDITABLE_FIELDS_BY_STATUS[existing.status] ?? [];
     const sentFields = Object.keys(dto).filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
     const forbiddenFields = sentFields.filter((f) => !allowedFields.includes(f));
 
     if (forbiddenFields.length > 0) {
       throw new UnprocessableEntityException(
-        `Campos não editáveis no status ${event.status}: ${forbiddenFields.join(', ')}`,
+        `Campos não editáveis no status ${existing.status}: ${forbiddenFields.join(', ')}`,
       );
     }
 
-    const restrictions = ROLE_RESTRICTED_FIELDS[event.status];
+    const restrictions = ROLE_RESTRICTED_FIELDS[existing.status];
     const restrictedFields = restrictions
       ? sentFields.filter((f) => restrictions[f] && restrictions[f] !== user.role)
       : [];
@@ -221,29 +231,35 @@ export class EventsService {
     });
 
     this.logger.log(`Evento atualizado — id=${id}`);
+    void this.auditLogService
+      .log('UPDATE', 'Event', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updated);
   }
 
   async transitionStatus(id: string, dto: TransitionEventStatusDto, user: JwtPayload): Promise<EventResponse> {
-    const event = await this.prisma.client.event.findUnique({
+    const existing = await this.prisma.client.event.findUnique({
       where: { id },
       include: { eventDays: true },
     });
 
-    if (!event) {
+    if (!existing) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
     }
 
-    checkCircuitOwnership(user, event.circuitId);
+    checkCircuitOwnership(user, existing.circuitId);
 
-    const validNext = VALID_TRANSITIONS[event.status] ?? [];
+    const validNext = VALID_TRANSITIONS[existing.status] ?? [];
     if (!validNext.includes(dto.status)) {
-      throw new UnprocessableEntityException(`Transição inválida: ${event.status} → ${dto.status}`);
+      throw new UnprocessableEntityException(`Transição inválida: ${existing.status} → ${dto.status}`);
     }
 
-    const isOpeningEvent = event.status === EventStatus.DRAFT && dto.status === EventStatus.OPEN;
-    const hasNoActiveDays = isOpeningEvent && event.eventDays.every((d) => d.status !== 'ACTIVE');
+    const isOpeningEvent = existing.status === EventStatus.DRAFT && dto.status === EventStatus.OPEN;
+    const hasNoActiveDays = isOpeningEvent && existing.eventDays.every((d) => d.status !== 'ACTIVE');
 
     if (hasNoActiveDays) {
       throw new UnprocessableEntityException('O evento deve ter pelo menos 1 dia ativo para ser aberto');
@@ -254,27 +270,39 @@ export class EventsService {
       data: { status: dto.status },
     });
 
-    this.logger.log(`Status do evento alterado — id=${id}, ${event.status} → ${dto.status}`);
+    this.logger.log(`Status do evento alterado — id=${id}, ${existing.status} → ${dto.status}`);
+    void this.auditLogService
+      .log('UPDATE', 'Event', id, user.sub, {
+        oldValues: { status: existing.status } as unknown as Record<string, unknown>,
+        newValues: { status: updated.status } as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updated);
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
-    const event = await this.prisma.client.event.findUnique({ where: { id } });
+    const existing = await this.prisma.client.event.findUnique({ where: { id } });
 
-    if (!event) {
+    if (!existing) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
       throw new NotFoundException('Evento não encontrado');
     }
 
-    checkCircuitOwnership(user, event.circuitId);
+    checkCircuitOwnership(user, existing.circuitId);
 
-    if (event.status !== EventStatus.DRAFT) {
+    if (existing.status !== EventStatus.DRAFT) {
       throw new UnprocessableEntityException('Apenas eventos em rascunho podem ser removidos');
     }
 
     await this.prisma.client.event.delete({ where: { id } });
 
     this.logger.warn(`Evento removido (hard-delete) — id=${id}`);
+    void this.auditLogService
+      .log('DELETE', 'Event', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: null,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
   async cancel(id: string, user: JwtPayload): Promise<EventResponse> {
@@ -314,6 +342,12 @@ export class EventsService {
     ]);
 
     this.logger.log(`Evento cancelado — id=${id}. Dias ativos, status de congregações resetados`);
+    void this.auditLogService
+      .log('UPDATE', 'Event', id, user.sub, {
+        oldValues: { status: event.status } as unknown as Record<string, unknown>,
+        newValues: { status: 'CANCELLED' } as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updatedEvent);
   }
 

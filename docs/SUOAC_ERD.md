@@ -168,7 +168,7 @@ erDiagram
 
   AuditLog {
     uuid id PK
-    uuid user_id FK
+    uuid user_id FK nullable
     string action
     string entity
     uuid entity_id
@@ -192,4 +192,4 @@ erDiagram
 - **Payment** → registros individuais de pagamento (suporta parciais).
 - **CongregationEventStatus** → se a congregação finalizou sua lista para o evento.
 - **Invitation** → convites para novos usuários.
-- **AuditLog** → registro de todas as ações no sistema.
+- **AuditLog** → registro de ações críticas no sistema. `user_id` é nullable com `ON DELETE SET NULL`; quando necessário, dados do ator são denormalizados em `details.actor`.

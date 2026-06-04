@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
@@ -17,6 +18,7 @@ export class PassengersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   async create(congregationId: string, dto: CreatePassengerDto, user: JwtPayload): Promise<PassengerResponse> {
@@ -48,6 +50,14 @@ export class PassengersService {
     });
 
     this.logger.log(`Passageiro criado — id=${passenger.id}, congregationId=${congregationId}`);
+
+    void this.auditLogService
+      .log('CREATE', 'Passenger', passenger.id, user.sub, {
+        oldValues: null,
+        newValues: passenger as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: passenger.id }, 'Falha ao gravar audit log'));
+
     return this.toResponse(passenger);
   }
 
@@ -200,7 +210,17 @@ export class PassengersService {
     });
 
     this.logger.log(`Passageiro atualizado — id=${id}`);
-    return this.toResponse(passenger);
+
+    const updated = this.toResponse(passenger);
+
+    void this.auditLogService
+      .log('UPDATE', 'Passenger', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
+    return updated;
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
@@ -232,6 +252,13 @@ export class PassengersService {
     });
 
     this.logger.warn(`Passageiro removido (hard-delete) — id=${id}`);
+
+    void this.auditLogService
+      .log('DELETE', 'Passenger', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: null,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
   private normalizeRg(rg: string): string {

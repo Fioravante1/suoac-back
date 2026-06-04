@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException, UnprocessableEntityException } f
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -112,6 +113,19 @@ describe('PaymentsService', () => {
         PaymentsService,
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
+        {
+          provide: AuditLogService,
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            buildCreateData: jest.fn((action: string, entity: string, entityId: string, userId: string, details: unknown) => ({
+              action,
+              entity,
+              entityId,
+              userId,
+              details,
+            })),
+          },
+        },
       ],
     }).compile();
 
@@ -134,7 +148,10 @@ describe('PaymentsService', () => {
       };
 
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
-      prismaMock.$transaction.mockResolvedValue([createdPayment, {}]);
+      prismaMock.payment.create.mockResolvedValue(createdPayment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
@@ -158,7 +175,10 @@ describe('PaymentsService', () => {
       };
 
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
-      prismaMock.$transaction.mockResolvedValue([createdPayment, {}]);
+      prismaMock.payment.create.mockResolvedValue(createdPayment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
@@ -179,7 +199,10 @@ describe('PaymentsService', () => {
       };
 
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
-      prismaMock.$transaction.mockResolvedValue([createdPayment, {}]);
+      prismaMock.payment.create.mockResolvedValue(createdPayment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
@@ -230,7 +253,10 @@ describe('PaymentsService', () => {
       };
 
       prismaMock.eventPassenger.findUnique.mockResolvedValue(ep as never);
-      prismaMock.$transaction.mockResolvedValue([createdPayment, {}]);
+      prismaMock.payment.create.mockResolvedValue(createdPayment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
@@ -360,7 +386,10 @@ describe('PaymentsService', () => {
       });
 
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);
-      prismaMock.$transaction.mockResolvedValue([{}, {}]);
+      prismaMock.payment.delete.mockResolvedValue(payment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       await service.remove(PAYMENT_ID, user);
 
@@ -375,7 +404,10 @@ describe('PaymentsService', () => {
       });
 
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);
-      prismaMock.$transaction.mockResolvedValue([{}, {}]);
+      prismaMock.payment.delete.mockResolvedValue(payment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       await service.remove(PAYMENT_ID, user);
 
@@ -390,7 +422,10 @@ describe('PaymentsService', () => {
       });
 
       prismaMock.payment.findUnique.mockResolvedValue(payment as never);
-      prismaMock.$transaction.mockResolvedValue([{}, {}]);
+      prismaMock.payment.delete.mockResolvedValue(payment as never);
+      prismaMock.eventPassenger.update.mockResolvedValue({} as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       await service.remove(PAYMENT_ID, user);
 

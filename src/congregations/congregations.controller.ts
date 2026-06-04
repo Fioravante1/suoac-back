@@ -31,8 +31,9 @@ export class CongregationsController {
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Body() dto: CreateCongregationDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CongregationResponse> {
-    return this.congregationsService.create(circuitId, dto);
+    return this.congregationsService.create(circuitId, dto, user);
   }
 
   @Get('circuits/:circuitId/congregations')

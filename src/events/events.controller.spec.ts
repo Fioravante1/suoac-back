@@ -87,22 +87,22 @@ describe('EventsController', () => {
       const expected = buildEvent();
       serviceMock.create.mockResolvedValue(expected);
 
-      const result = await controller.create(circuitId, userId, dto);
+      const result = await controller.create(circuitId, buildUser(), dto);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, userId, dto);
+      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, buildUser(), dto);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.create.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.create(circuitId, userId, dto as never)).rejects.toThrow(NotFoundException);
+      await expect(controller.create(circuitId, buildUser(), dto as never)).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar UnprocessableEntityException do service', async () => {
       serviceMock.create.mockRejectedValue(new UnprocessableEntityException('endDate é obrigatório'));
 
-      await expect(controller.create(circuitId, userId, dto as never)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.create(circuitId, buildUser(), dto as never)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 

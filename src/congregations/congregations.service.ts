@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
@@ -11,9 +12,12 @@ import type { CongregationResponse } from './interfaces/congregation-response.in
 export class CongregationsService {
   private readonly logger = new Logger(CongregationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
-  async create(circuitId: string, dto: CreateCongregationDto): Promise<CongregationResponse> {
+  async create(circuitId: string, dto: CreateCongregationDto, user: JwtPayload): Promise<CongregationResponse> {
     await this.ensureCircuitExists(circuitId);
 
     const existing = await this.prisma.client.congregation.findFirst({
@@ -39,6 +43,14 @@ export class CongregationsService {
     });
 
     this.logger.log(`Congregação criada — id=${congregation.id}, code="${congregation.code}", circuitId=${circuitId}`);
+
+    void this.auditLogService
+      .log('CREATE', 'Congregation', congregation.id, user.sub, {
+        oldValues: null,
+        newValues: congregation as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: congregation.id }, 'Falha ao gravar audit log'));
+
     return this.toResponse(congregation);
   }
 
@@ -90,7 +102,7 @@ export class CongregationsService {
   }
 
   async update(id: string, dto: UpdateCongregationDto, user: JwtPayload): Promise<CongregationResponse> {
-    await this.findOne(id, user);
+    const current = await this.findOne(id, user);
 
     const conditions: Array<{ code: string } | { email: string }> = [];
 
@@ -102,7 +114,7 @@ export class CongregationsService {
       conditions.push({ email: dto.email });
     }
 
-    const existing =
+    const conflict =
       conditions.length > 0
         ? await this.prisma.client.congregation.findFirst({
             where: {
@@ -112,8 +124,8 @@ export class CongregationsService {
           })
         : null;
 
-    if (existing) {
-      const field = dto.code !== undefined && existing.code === dto.code ? 'Código' : 'E-mail';
+    if (conflict) {
+      const field = dto.code !== undefined && conflict.code === dto.code ? 'Código' : 'E-mail';
       this.logger.warn(`Conflito ao atualizar congregação — id=${id}, ${field} duplicado`);
       throw new ConflictException(`Já existe uma congregação com este ${field}`);
     }
@@ -129,18 +141,33 @@ export class CongregationsService {
     });
 
     this.logger.log(`Congregação atualizada — id=${id}`);
+
+    void this.auditLogService
+      .log('UPDATE', 'Congregation', id, user.sub, {
+        oldValues: current as unknown as Record<string, unknown>,
+        newValues: congregation as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
     return this.toResponse(congregation);
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
-    await this.findOne(id, user);
+    const existing = await this.findOne(id, user);
 
-    await this.prisma.client.congregation.update({
+    const updated = await this.prisma.client.congregation.update({
       where: { id },
       data: { isActive: false },
     });
 
     this.logger.log(`Congregação desativada (soft-delete) — id=${id}`);
+
+    void this.auditLogService
+      .log('DEACTIVATE', 'Congregation', id, user.sub, {
+        oldValues: { ...existing, isActive: true },
+        newValues: { ...updated, isActive: false } as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
   private toResponse(congregation: {

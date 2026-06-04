@@ -36,3 +36,6 @@ npm-debug.log*
 
 # Prisma generated client
 src/generated/
+
+# Documentation
+IMPLEMENTACAO_FRONT_DOC/

@@ -31,8 +31,9 @@ export class UsersController {
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Body() dto: CreateUserDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<UserResponse> {
-    return this.usersService.create(circuitId, dto);
+    return this.usersService.create(circuitId, dto, user);
   }
 
   @Get('circuits/:circuitId/users')

@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException, Unprocessable
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -111,6 +112,7 @@ describe('PassengersService', () => {
         PassengersService,
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: EncryptionService, useValue: encryptionMock },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 

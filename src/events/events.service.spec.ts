@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException, UnprocessableEntityException } f
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
@@ -138,7 +139,11 @@ describe('EventsService', () => {
     prismaMock = mockDeep<PrismaClientType>();
 
     const module = await Test.createTestingModule({
-      providers: [EventsService, { provide: PrismaService, useValue: { client: prismaMock } }],
+      providers: [
+        EventsService,
+        { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
 
     service = module.get(EventsService);
@@ -152,7 +157,7 @@ describe('EventsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
 
-      const result = await service.create(circuitId, userId, dto);
+      const result = await service.create(circuitId, buildUser(), dto);
 
       expect(result.title).toBe('Assembleia SP 2026');
       expect(result.ticketPrice).toBe('25.00');
@@ -206,7 +211,7 @@ describe('EventsService', () => {
         buildPrismaEventWithDays({ type: 'REGIONAL_CONVENTION', title: 'Congresso Regional 2026' }, days) as never,
       );
 
-      const result = await service.create(circuitId, userId, dto);
+      const result = await service.create(circuitId, buildUser(), dto);
 
       expect(result.days).toHaveLength(3);
       expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
@@ -238,7 +243,7 @@ describe('EventsService', () => {
         ]) as never,
       );
 
-      await service.create(circuitId, userId, dto);
+      await service.create(circuitId, buildUser(), dto);
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -257,7 +262,7 @@ describe('EventsService', () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
 
-      await service.create(circuitId, userId, dto);
+      await service.create(circuitId, buildUser(), dto);
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -269,7 +274,7 @@ describe('EventsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.create(circuitId, userId, buildCreateDto())).rejects.toThrow(NotFoundException);
+      await expect(service.create(circuitId, buildUser(), buildCreateDto())).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar UnprocessableEntityException quando endDate < date para congresso', async () => {
@@ -281,7 +286,7 @@ describe('EventsService', () => {
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
 
-      await expect(service.create(circuitId, userId, dto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(circuitId, buildUser(), dto)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('deve lançar UnprocessableEntityException quando endDate ausente para congresso', async () => {
@@ -292,7 +297,7 @@ describe('EventsService', () => {
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
 
-      await expect(service.create(circuitId, userId, dto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(circuitId, buildUser(), dto)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 
