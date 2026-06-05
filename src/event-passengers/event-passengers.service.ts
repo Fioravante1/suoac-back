@@ -109,7 +109,16 @@ export class EventPassengersService {
       : this.calculatePaymentStatus(paidAmount, totalAmount);
 
     if (dto.payment) {
-      return this.createWithPayment(eventId, user, dto, resolved, selectedDayIds, totalAmount, paidAmount, paymentStatus);
+      return this.createWithPayment(
+        eventId,
+        user,
+        dto,
+        resolved,
+        selectedDayIds,
+        totalAmount,
+        paidAmount,
+        paymentStatus,
+      );
     }
 
     const created = await this.prisma.client.eventPassenger.create({
@@ -333,9 +342,7 @@ export class EventPassengersService {
     }
 
     if (payment.amount > totalAmount) {
-      throw new UnprocessableEntityException(
-        `Valor do pagamento excede o total de R$ ${totalAmount.toFixed(2)}`,
-      );
+      throw new UnprocessableEntityException(`Valor do pagamento excede o total de R$ ${totalAmount.toFixed(2)}`);
     }
 
     if (new Date() > paymentDeadline && !isCircuitRole(role)) {

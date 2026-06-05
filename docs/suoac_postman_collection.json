@@ -1472,6 +1472,58 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Congregation Dashboard (role congregação)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "congregation-dashboard"
+              ]
+            },
+            "description": "Retorna o dashboard completo de uma congregação em um evento. Para roles de congregação, usa a congregação do JWT automaticamente."
+          },
+          "response": []
+        },
+        {
+          "name": "Congregation Dashboard (role circuito)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-dashboard?congregationId={{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "congregation-dashboard"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Obrigatório para roles de circuito (CC/CA)"
+                }
+              ]
+            },
+            "description": "Retorna o dashboard de uma congregação específica em um evento. O query param congregationId é obrigatório para coordenadores de circuito."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [

@@ -598,9 +598,7 @@ describe('EventPassengersService', () => {
         updatedAt: new Date(),
       } as never);
       prismaMock.auditLog.create.mockResolvedValue({} as never);
-      prismaMock.$transaction.mockImplementation(
-        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
-      );
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EVENT_ID, user, {
         passengerId: PASSENGER_ID,
@@ -634,9 +632,7 @@ describe('EventPassengersService', () => {
         updatedAt: new Date(),
       } as never);
       prismaMock.auditLog.create.mockResolvedValue({} as never);
-      prismaMock.$transaction.mockImplementation(
-        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
-      );
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EVENT_ID, user, {
         passengerId: PASSENGER_ID,
@@ -734,9 +730,7 @@ describe('EventPassengersService', () => {
         updatedAt: new Date(),
       } as never);
       prismaMock.auditLog.create.mockResolvedValue({} as never);
-      prismaMock.$transaction.mockImplementation(
-        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
-      );
+      prismaMock.$transaction.mockImplementation((fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock));
 
       const result = await service.create(EVENT_ID, user, {
         passengerId: PASSENGER_ID,

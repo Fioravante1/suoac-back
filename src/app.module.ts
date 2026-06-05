@@ -14,6 +14,7 @@ import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
 import { CongregationEventStatusModule } from './congregation-event-status/congregation-event-status.module';
 import { CongregationsModule } from './congregations/congregations.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { EventDaysModule } from './event-days/event-days.module';
 import { EventPassengersModule } from './event-passengers/event-passengers.module';
 import { EventsModule } from './events/events.module';
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
     CircuitsModule,
     CongregationEventStatusModule,
     CongregationsModule,
+    DashboardModule,
     EventsModule,
     EventDaysModule,
     EventPassengersModule,

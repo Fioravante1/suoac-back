@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer';
-import { IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Min, ValidateNested } from 'class-validator';
+import {
+  IsISO8601,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class InitialPaymentDto {
   @IsNumber({ maxDecimalPlaces: 2 })
