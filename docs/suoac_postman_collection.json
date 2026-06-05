@@ -1195,6 +1195,54 @@
           "response": []
         },
         {
+          "name": "Create EventPassenger (com pagamento)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Inscrição com pagamento\",\n  \"payment\": {\n    \"amount\": 25.00,\n    \"paidAt\": \"2026-06-01T10:00:00Z\",\n    \"observations\": \"Pagamento em dinheiro\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "List EventPassengers by Event",
           "request": {
             "method": "GET",

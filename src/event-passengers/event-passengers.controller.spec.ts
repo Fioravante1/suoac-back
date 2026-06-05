@@ -79,6 +79,21 @@ describe('EventPassengersController', () => {
         UnprocessableEntityException,
       );
     });
+
+    it('deve delegar DTO com payment ao service corretamente', async () => {
+      const expected = buildResponse({ paymentStatus: 'PAID', paidAmount: '25' });
+      serviceMock.create.mockResolvedValue(expected);
+
+      const dto = {
+        passengerId: 'p1',
+        payment: { amount: 25, paidAt: '2026-05-01T10:00:00Z' },
+      };
+
+      const result = await controller.create('event-1', USER, dto);
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.create).toHaveBeenCalledWith('event-1', USER, dto);
+    });
   });
 
   // ── findByEvent ────────────────────────────────────────────────

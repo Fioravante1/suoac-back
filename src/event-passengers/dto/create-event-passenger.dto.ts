@@ -1,4 +1,19 @@
-import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Min, ValidateNested } from 'class-validator';
+
+export class InitialPaymentDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  amount!: number;
+
+  @IsISO8601()
+  paidAt!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 500)
+  observations?: string;
+}
 
 export class CreateEventPassengerDto {
   @IsOptional()
@@ -33,4 +48,9 @@ export class CreateEventPassengerDto {
   @IsString()
   @Length(1, 300)
   exemptionReason?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InitialPaymentDto)
+  payment?: InitialPaymentDto;
 }

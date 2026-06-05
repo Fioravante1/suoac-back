@@ -9,6 +9,7 @@ import {
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
+import type { Prisma } from '../generated/prisma/client';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
 import { PassengersService } from '../passengers/passengers.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,6 +34,10 @@ export class EventPassengersService {
 
   async create(eventId: string, user: JwtPayload, dto: CreateEventPassengerDto): Promise<EventPassengerResponse> {
     this.validateCreateInput(dto);
+
+    if (dto.payment && dto.exemptionReason) {
+      throw new UnprocessableEntityException('Passageiro isento não pode ter pagamento');
+    }
 
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
@@ -93,7 +98,19 @@ export class EventPassengersService {
     const selectedDayIds = this.resolveSelectedDays(event.type, activeDays, dto.dayIds);
 
     const totalAmount = Number(event.ticketPrice) * selectedDayIds.length;
-    const paymentStatus = dto.exemptionReason ? PaymentStatus.EXEMPT : PaymentStatus.PENDING;
+
+    if (dto.payment) {
+      this.validateInitialPayment(dto.payment, totalAmount, event.paymentDeadline, user.role);
+    }
+
+    const paidAmount = dto.payment ? dto.payment.amount : 0;
+    const paymentStatus = dto.exemptionReason
+      ? PaymentStatus.EXEMPT
+      : this.calculatePaymentStatus(paidAmount, totalAmount);
+
+    if (dto.payment) {
+      return this.createWithPayment(eventId, user, dto, resolved, selectedDayIds, totalAmount, paidAmount, paymentStatus);
+    }
 
     const created = await this.prisma.client.eventPassenger.create({
       data: {
@@ -302,6 +319,95 @@ export class EventPassengersService {
         newValues: null,
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+  }
+
+  private validateInitialPayment(
+    payment: { amount: number; paidAt: string },
+    totalAmount: number,
+    paymentDeadline: Date,
+    role: string,
+  ): void {
+    const paidAtDate = new Date(payment.paidAt);
+    if (paidAtDate > new Date()) {
+      throw new UnprocessableEntityException('A data do pagamento não pode ser futura');
+    }
+
+    if (payment.amount > totalAmount) {
+      throw new UnprocessableEntityException(
+        `Valor do pagamento excede o total de R$ ${totalAmount.toFixed(2)}`,
+      );
+    }
+
+    if (new Date() > paymentDeadline && !isCircuitRole(role)) {
+      throw new UnprocessableEntityException('O prazo de pagamento expirou');
+    }
+  }
+
+  private async createWithPayment(
+    eventId: string,
+    user: JwtPayload,
+    dto: CreateEventPassengerDto,
+    resolved: { passengerId: string; congregationId: string },
+    selectedDayIds: string[],
+    totalAmount: number,
+    paidAmount: number,
+    paymentStatus: PaymentStatus,
+  ): Promise<EventPassengerResponse> {
+    const payment = dto.payment!;
+
+    const created = await this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
+      const ep = await tx.eventPassenger.create({
+        data: {
+          totalAmount,
+          paidAmount,
+          paymentStatus,
+          exemptionReason: null,
+          observations: dto.observations ?? null,
+          eventId,
+          passengerId: resolved.passengerId,
+          congregationId: resolved.congregationId,
+          registeredById: user.sub,
+          eventPassengerDays: {
+            create: selectedDayIds.map((dayId) => ({ eventDayId: dayId })),
+          },
+        },
+        include: {
+          passenger: true,
+          eventPassengerDays: { include: { eventDay: true } },
+        },
+      });
+
+      const createdPayment = await tx.payment.create({
+        data: {
+          amount: payment.amount,
+          paidAt: new Date(payment.paidAt),
+          observations: payment.observations ?? null,
+          eventPassengerId: ep.id,
+          registeredById: user.sub,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: this.auditLogService.buildCreateData('CREATE', 'EventPassenger', ep.id, user.sub, {
+          oldValues: null,
+          newValues: ep as unknown as Record<string, unknown>,
+        }),
+      });
+
+      await tx.auditLog.create({
+        data: this.auditLogService.buildCreateData('CREATE', 'Payment', createdPayment.id, user.sub, {
+          oldValues: null,
+          newValues: createdPayment as unknown as Record<string, unknown>,
+        }),
+      });
+
+      return ep;
+    });
+
+    this.logger.log(
+      `Passageiro inscrito com pagamento — id=${created.id}, eventId=${eventId}, passengerId=${resolved.passengerId}, amount=${payment.amount}`,
+    );
+    return this.toResponse(created);
   }
 
   private validateCreateInput(dto: CreateEventPassengerDto): void {

@@ -94,6 +94,8 @@ const RG_HASH = 'a'.repeat(64);
 const ENCRYPTED_RG = 'base64-encrypted-rg';
 const DECRYPTED_RG = '12345678X';
 
+const PAYMENT_ID = 'pay00000-0000-0000-0000-000000000001';
+
 const FUTURE_DEADLINE = new Date('2099-12-31T23:59:59Z');
 const PAST_DEADLINE = new Date('2020-01-01T00:00:00Z');
 
@@ -221,7 +223,19 @@ describe('EventPassengersService', () => {
         { provide: EncryptionService, useValue: encryptionMock },
         { provide: PassengersService, useValue: passengersServiceMock },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
-        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+        {
+          provide: AuditLogService,
+          useValue: {
+            log: jest.fn().mockResolvedValue(undefined),
+            buildCreateData: jest.fn().mockReturnValue({
+              action: 'CREATE',
+              entity: 'test',
+              entityId: 'test-id',
+              userId: USER_ID,
+              details: {},
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -558,6 +572,179 @@ describe('EventPassengersService', () => {
       );
 
       expect(passengersServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    // ── create with initial payment ──────────────────────────────
+
+    it('deve criar inscrição com pagamento total e status PAID', async () => {
+      const user = buildUser();
+      const event = buildEvent({ ticketPrice: 25.0 });
+      const passenger = buildPassenger();
+      const ep = buildEventPassenger({ totalAmount: 25.0, paidAmount: 25.0, paymentStatus: 'PAID' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+      prismaMock.eventPassenger.create.mockResolvedValue(ep as never);
+      prismaMock.payment.create.mockResolvedValue({
+        id: PAYMENT_ID,
+        amount: 25.0,
+        paidAt: new Date('2026-05-01T10:00:00Z'),
+        observations: null,
+        eventPassengerId: EP_ID,
+        registeredById: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation(
+        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
+      );
+
+      const result = await service.create(EVENT_ID, user, {
+        passengerId: PASSENGER_ID,
+        payment: { amount: 25.0, paidAt: '2026-05-01T10:00:00Z' },
+      });
+
+      expect(result.id).toBe(EP_ID);
+      expect(result.paymentStatus).toBe('PAID');
+      expect(prismaMock.$transaction).toHaveBeenCalled();
+    });
+
+    it('deve criar inscrição com pagamento parcial e status PARTIAL', async () => {
+      const user = buildUser();
+      const event = buildEvent({ ticketPrice: 25.0 });
+      const passenger = buildPassenger();
+      const ep = buildEventPassenger({ totalAmount: 25.0, paidAmount: 10.0, paymentStatus: 'PARTIAL' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+      prismaMock.eventPassenger.create.mockResolvedValue(ep as never);
+      prismaMock.payment.create.mockResolvedValue({
+        id: PAYMENT_ID,
+        amount: 10.0,
+        paidAt: new Date('2026-05-01T10:00:00Z'),
+        observations: null,
+        eventPassengerId: EP_ID,
+        registeredById: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation(
+        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
+      );
+
+      const result = await service.create(EVENT_ID, user, {
+        passengerId: PASSENGER_ID,
+        payment: { amount: 10.0, paidAt: '2026-05-01T10:00:00Z' },
+      });
+
+      expect(result.id).toBe(EP_ID);
+      expect(result.paymentStatus).toBe('PARTIAL');
+      expect(prismaMock.$transaction).toHaveBeenCalled();
+    });
+
+    it('deve lançar UnprocessableEntityException quando pagamento e isenção enviados juntos', async () => {
+      await expect(
+        service.create(EVENT_ID, buildUser(), {
+          passengerId: PASSENGER_ID,
+          exemptionReason: 'Pioneiro regular',
+          payment: { amount: 25.0, paidAt: '2026-05-01T10:00:00Z' },
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve lançar UnprocessableEntityException quando valor excede totalAmount', async () => {
+      const user = buildUser();
+      const event = buildEvent({ ticketPrice: 25.0 });
+      const passenger = buildPassenger();
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(EVENT_ID, user, {
+          passengerId: PASSENGER_ID,
+          payment: { amount: 50.0, paidAt: '2026-05-01T10:00:00Z' },
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve lançar UnprocessableEntityException quando paidAt é data futura', async () => {
+      const user = buildUser();
+      const event = buildEvent({ ticketPrice: 25.0 });
+      const passenger = buildPassenger();
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(EVENT_ID, user, {
+          passengerId: PASSENGER_ID,
+          payment: { amount: 25.0, paidAt: '2099-12-31T23:59:59Z' },
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve lançar UnprocessableEntityException quando prazo de pagamento expirou para role de congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      const event = buildEvent({ ticketPrice: 25.0, paymentDeadline: PAST_DEADLINE });
+      const passenger = buildPassenger();
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(EVENT_ID, user, {
+          passengerId: PASSENGER_ID,
+          payment: { amount: 25.0, paidAt: '2026-05-01T10:00:00Z' },
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve permitir pagamento após prazo para role de circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      const event = buildEvent({ ticketPrice: 25.0, paymentDeadline: PAST_DEADLINE });
+      const passenger = buildPassenger();
+      const ep = buildEventPassenger({ totalAmount: 25.0, paidAmount: 25.0, paymentStatus: 'PAID' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+      prismaMock.eventPassenger.create.mockResolvedValue(ep as never);
+      prismaMock.payment.create.mockResolvedValue({
+        id: PAYMENT_ID,
+        amount: 25.0,
+        paidAt: new Date('2026-05-01T10:00:00Z'),
+        observations: null,
+        eventPassengerId: EP_ID,
+        registeredById: USER_ID,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      prismaMock.auditLog.create.mockResolvedValue({} as never);
+      prismaMock.$transaction.mockImplementation(
+        (fn: (tx: PrismaClientType) => Promise<unknown>) => fn(prismaMock),
+      );
+
+      const result = await service.create(EVENT_ID, user, {
+        passengerId: PASSENGER_ID,
+        payment: { amount: 25.0, paidAt: '2026-05-01T10:00:00Z' },
+      });
+
+      expect(result.id).toBe(EP_ID);
+      expect(prismaMock.$transaction).toHaveBeenCalled();
     });
   });
 
