@@ -29,7 +29,11 @@ config({ path: envFile });
 
 const databaseUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 
-if (!databaseUrl) {
+// prisma generate não precisa de DATABASE_URL (apenas gera o client TypeScript).
+// O fail-fast é mantido para comandos que realmente acessam o banco (migrate, seed, etc.).
+const isGenerateCommand = process.argv.some((arg) => arg === 'generate');
+
+if (!databaseUrl && !isGenerateCommand) {
   throw new Error(
     `DATABASE_URL não definida. Verifique se o arquivo "${envFile}" existe e contém DATABASE_URL.`,
   );
@@ -41,7 +45,7 @@ export default defineConfig({
     // DIRECT_URL é usada pelo Prisma CLI (migrations, introspect, push).
     // Em ambiente Neon, ela aponta para a conexão direta (sem pooler).
     // Se não existir, usa a DATABASE_URL padrão (dev local com Docker).
-    url: databaseUrl,
+    url: databaseUrl ?? '',
   },
   migrations: {
     seed: 'npx ts-node prisma/seed.ts',
