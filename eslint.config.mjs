@@ -35,10 +35,7 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-return': 'error',
 
       // ── Code Quality ─────────────────────────────────────────────
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/consistent-type-imports': [
         'warn',
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
@@ -84,7 +81,7 @@ export default tseslint.config(
   // Prisma seed file uses PrismaClient directly (same @ts-nocheck taint issue)
   // and needs console.log for seed output feedback.
   {
-    files: ['prisma/seed.ts'],
+    files: ['prisma/seed.ts', 'prisma/seeds/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',

@@ -69,11 +69,19 @@ O projeto deve seguir princípios **SOLID** e **Clean Architecture**, organizado
 O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui a inferência de tipos em `strict mode`.
 - **Regra:** *NUNCA* exporte o tipo `PrismaClient` (classe) instanciado. O `PrismaService` deve atuar como uma barreira arquitetural.
 - Exponha os tipos reais usando a interface exportada (`type PrismaClientType`) do client gerado (`src/generated/prisma/client.ts`).
-- Modificações no `schema.prisma` exigem rodar `npx prisma generate` em seguida (o docker-compose faz isso automaticamente no boot).
+- Modificações no `schema.prisma` exigem rodar `npx prisma generate` em seguida.
 
 ### Queries
 - O Prisma deve ser acessado **exclusivamente** pelo `PrismaService`.
 - Evite passar o objeto do Prisma diretamente para funções privadas. Mantenha as consultas encapsuladas no service de repositório da respectiva entidade.
+
+### prisma.config.ts (Carregamento de Ambiente)
+- O `prisma.config.ts` carrega variáveis de ambiente de forma **determinística** via `envFileMap`:
+  - `development` (default) → `.env`
+  - `test` → `.env.test`
+  - `staging` → `.env.staging`
+  - `production` → `.env.production`
+- **Fail-fast:** Lança erro se `NODE_ENV` for inválido ou se `DATABASE_URL` não estiver definida.
 
 ### Seed
 - O seed é configurado em `prisma.config.ts` (campo `migrations.seed`), **não** no `package.json`.
@@ -81,8 +89,36 @@ O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui
 - A URL de conexão usa `DIRECT_URL ?? DATABASE_URL`, consistente com `prisma.config.ts` — em ambiente Neon, isso garante conexão direta (sem pooler).
 - Todos os upserts utilizam chaves naturais únicas (ex: `Circuit.name`, `Congregation.code`) em vez de IDs fixos, garantindo idempotência e UUIDs aleatórios.
 - Para executar:
-  - **Dev (Docker):** `npx prisma db seed` (ou `docker compose exec api npx prisma db seed`)
-  - **Prod (Neon):** `npm run seed:prod`
+  - **Dev:** `npm run db:seed`
+  - **Staging:** `npm run db:seed:staging` (pede confirmação)
+  - **Prod:** `npm run db:seed:prod` (pede confirmação dupla)
+
+### Scripts de Banco de Dados (`scripts/db.sh`)
+Todas as operações de banco são centralizadas em `scripts/db.sh`, com aliases no `package.json`:
+
+```bash
+# Desenvolvimento
+npm run db:migrate          # prisma migrate dev (cria migration)
+npm run db:seed             # seed de dev
+npm run db:status           # status das migrations
+npm run db:reset            # reseta banco (APENAS dev/test)
+npm run db:studio           # abre Prisma Studio
+npm run db:push             # sincroniza schema sem migration
+
+# Staging (pede confirmação)
+npm run db:migrate:staging  # prisma migrate deploy
+npm run db:seed:staging
+
+# Produção (pede confirmação dupla)
+npm run db:migrate:prod     # prisma migrate deploy
+npm run db:seed:prod
+```
+
+**Safety nets:**
+- `reset` e `push` funcionam **apenas em dev/test**
+- `migrate dev` (que cria migrations) funciona **apenas em dev**
+- Staging pede confirmação interativa (`y/N`)
+- Produção exige digitar `prod` para confirmar
 
 ---
 

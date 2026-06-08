@@ -18,13 +18,10 @@ Este projeto é construído com tecnologias modernas para garantir alta performa
 
 ## 🛠 Pré-requisitos
 
-Para rodar este projeto, você precisará apenas do **Docker** e **Docker Compose** instalados na sua máquina.
-
-Caso queira rodar scripts locais ou instalar dependências fora do container, recomendamos o uso do **Node.js v24** (conforme `.nvmrc`).
+- **Docker** e **Docker Compose** — para subir o banco PostgreSQL
+- **Node.js v24** (conforme `.nvmrc`) — para rodar a API e scripts localmente
 
 ## ⚙️ Como Levantar o Ambiente (Setup)
-
-O projeto está totalmente dockerizado para facilitar o setup inicial. Siga os passos abaixo:
 
 ### 1. Configurar Variáveis de Ambiente
 
@@ -34,61 +31,80 @@ Execute o script de setup para gerar o `.env` automaticamente a partir do `.env.
 npm run setup:env
 ```
 
-O `.env` deve conter ao menos as seguintes variáveis:
-- `DATABASE_URL` — URL de conexão com o PostgreSQL
-- `PORT` — Porta da API (default: `8080`)
-- `NODE_ENV` — Ambiente (`development` / `production`)
-- `LOG_LEVEL` — Nível de log do Pino (`debug`, `info`, etc.)
-- `PASSWORD_PEPPER` — Pepper para hashing de senhas (Argon2). Gerado automaticamente pelo `setup:env`.
-- `JWT_SECRET` — Chave secreta para assinar access tokens JWT. Gerado automaticamente pelo `setup:env`.
-- `JWT_REFRESH_SECRET` — Chave secreta para assinar refresh tokens JWT. Gerado automaticamente pelo `setup:env`.
-- `JWT_EXPIRATION` — Tempo de vida do access token em segundos (default: `900` = 15min).
-- `JWT_REFRESH_EXPIRATION` — Tempo de vida do refresh token em segundos (default: `604800` = 7d).
-- `ENCRYPTION_KEY` — Chave AES-256-GCM para criptografia de dados sensíveis (RG). 32 bytes hex. Gerado automaticamente pelo `setup:env`.
-- `ALLOWED_ORIGINS` — Origens CORS permitidas (comma-separated). Em dev, `localhost` com qualquer porta é permitido automaticamente. Em staging/prod, se vazio, nenhuma origin é permitida (fail-closed).
-- `RATE_LIMIT_MAX` — Requests por minuto por IP (default: `100`).
-
-*(Opcional) Verifique se a porta `5432` ou `3000` já estão em uso na sua máquina. Se estiverem, altere no `.env` e no `docker-compose.yml`.*
-
-### 2. Subir os Containers
-
-Execute o Docker Compose para fazer o build da imagem da API e subir o banco de dados:
+### 2. Subir o Banco de Dados
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
-Isso fará o seguinte:
-- Subirá o container `suoac-db` (Postgres).
-- Falará o build da aplicação Node.
-- Rodará `npx prisma generate` dentro do container (gerando o client em `src/generated/prisma`).
-- Iniciará o servidor NestJS em modo `watch` (hot-reload habilitado via bind mount).
+Isso sobe o container `suoac-db` (PostgreSQL 16) na porta `5432`.
+
+### 3. Rodar Migrations e Seed
+
+```bash
+npm run db:migrate    # Cria/aplica migrations no banco local
+npm run db:seed       # Popula com dados iniciais de dev
+```
+
+### 4. Iniciar a API
+
+```bash
+npm run start:dev
+```
 
 A API estará disponível em: `http://localhost:8080`
 
-### 3. Rodar as Migrations do Banco de Dados
+## 🗄️ Banco de Dados — Operações por Ambiente
 
-Com os containers rodando, abra outro terminal e execute o comando abaixo para aplicar as migrações (criar as tabelas no banco de dados):
+Todas as operações de banco são feitas através do script unificado `scripts/db.sh`, com aliases no `package.json`:
+
+### Ambientes
+
+| Ambiente | Banco | Arquivo de Env | Descrição |
+|----------|-------|----------------|-----------|
+| `dev` | Docker local `:5432` | `.env` | Desenvolvimento local |
+| `test` | Docker local `:5433` | `.env.test` | Testes E2E (isolado) |
+| `staging` | Neon (pooler) | `.env.staging` | Homologação Railway |
+| `prod` | Neon (pooler) | `.env.production` | Produção Railway |
+
+### Comandos
 
 ```bash
-docker compose exec api npx prisma migrate dev
+# ── Desenvolvimento (dev) ────────────────────────────────────
+npm run db:migrate          # Cria/aplica migrations (prisma migrate dev)
+npm run db:seed             # Popula com dados de desenvolvimento
+npm run db:status           # Verifica status das migrations
+npm run db:reset            # Reseta banco (apaga tudo e recria)
+npm run db:studio           # Abre Prisma Studio (GUI)
+npm run db:push             # Sincroniza schema sem criar migration
+
+# ── Staging (homologação) ────────────────────────────────────
+npm run db:migrate:staging  # Aplica migrations pendentes (migrate deploy)
+npm run db:seed:staging     # Roda seed de staging
+
+# ── Produção ─────────────────────────────────────────────────
+npm run db:migrate:prod     # Aplica migrations pendentes (migrate deploy)
+npm run db:seed:prod        # Roda seed de produção
 ```
 
-*(Nota: como estamos na versão 7 do Prisma, o comando lê as credenciais diretamente do `prisma.config.ts` através da variável `DATABASE_URL`)*
+> **⚠️ Safety nets:** Staging pede confirmação interativa. Produção exige digitar `prod` para confirmar. Os comandos `reset` e `push` funcionam **apenas em dev**.
 
-### 4. Rodar o Seed (dados iniciais)
+### Uso direto do script (sem npm)
 
 ```bash
-docker compose exec api npx prisma db seed
+./scripts/db.sh migrate dev       # Equivalente a npm run db:migrate
+./scripts/db.sh seed staging      # Equivalente a npm run db:seed:staging
+./scripts/db.sh status prod       # Status das migrations em produção
+./scripts/db.sh reset dev         # Reset do banco local
 ```
 
-### 5. Produção (Neon)
-
-Para aplicar migrations e seed no banco Neon (produção), utilize os scripts dedicados. Eles carregam automaticamente o `.env.production` com as URLs do Neon:
+### Docker Compose
 
 ```bash
-npm run migrate:prod   # aplica migrations pendentes
-npm run seed:prod      # roda o seed
+docker compose up -d                                      # Banco de dev (porta 5432)
+docker compose -f docker-compose.test.yml up -d           # Banco de testes E2E (porta 5433)
+docker compose down                                       # Para o banco de dev
+docker compose -f docker-compose.test.yml down             # Para o banco de testes
 ```
 
 ## 🚂 Deploy (Railway)
@@ -112,22 +128,6 @@ develop  ← desenvolvimento e homologação
 2. O Railway faz deploy automático de `develop` no environment de homologação
 3. Após validação, abra PR de `develop` → `main`
 4. O merge dispara deploy automático em produção
-
-### Scripts de migration/seed por ambiente
-
-```bash
-# Dev local (Docker)
-npm run migrate:dev
-docker compose exec api npx prisma db seed
-
-# Staging (homologação Railway)
-npm run migrate:staging
-npm run seed:staging
-
-# Produção (Railway)
-npm run migrate:prod
-npm run seed:prod
-```
 
 ### Configuração no Railway
 
@@ -168,7 +168,7 @@ O backend implementa múltiplas camadas de segurança para produção:
 ### Prisma 7 (Mudanças de Arquitetura)
 Este projeto utiliza o Prisma v7, que introduziu mudanças significativas:
 - **Client Gerado Localmente**: O Prisma Client não é mais gerado na pasta `node_modules`. Ele é gerado dentro de `src/generated/prisma`. **Não modifique arquivos nesta pasta**. Eles são ignorados pelo Git (`.gitignore`) e pelo ESLint/Prettier.
-- **Prisma Config**: As configurações de runtime estão no arquivo `prisma.config.ts`. A string de conexão foi removida do `schema.prisma`.
+- **Prisma Config**: As configurações de runtime estão no arquivo `prisma.config.ts`. A string de conexão foi removida do `schema.prisma`. O carregamento de variáveis é determinístico: `NODE_ENV` → arquivo `.env` correspondente.
 - **Driver Adapters**: Utilizamos o pacote `@prisma/adapter-pg` acoplado ao `pg` nativo. A conexão com o banco é instanciada no `PrismaService` via *composition*.
 
 ### Lint e Formatação
