@@ -350,7 +350,9 @@ export class EventPassengersService {
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
   }
 
-  private async buildFinancialSummary(baseWhere: Prisma.EventPassengerWhereInput): Promise<EventPassengerFinancialSummary> {
+  private async buildFinancialSummary(
+    baseWhere: Prisma.EventPassengerWhereInput,
+  ): Promise<EventPassengerFinancialSummary> {
     const breakdown = await this.prisma.client.eventPassenger.groupBy({
       by: ['paymentStatus'],
       where: baseWhere,

@@ -18,7 +18,10 @@ import { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
 import { EventPassengerQueryDto } from './dto/event-passenger-query.dto';
 import { UpdateEventPassengerDaysDto } from './dto/update-event-passenger-days.dto';
 import { EventPassengersService } from './event-passengers.service';
-import type { EventPassengerResponse, PaginatedPassengerResponse } from './interfaces/event-passenger-response.interface';
+import type {
+  EventPassengerResponse,
+  PaginatedPassengerResponse,
+} from './interfaces/event-passenger-response.interface';
 
 @ApiTags('EventPassengers')
 @Controller()
