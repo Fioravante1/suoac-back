@@ -14,12 +14,11 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
+import { EventPassengerQueryDto } from './dto/event-passenger-query.dto';
 import { UpdateEventPassengerDaysDto } from './dto/update-event-passenger-days.dto';
 import { EventPassengersService } from './event-passengers.service';
-import type { EventPassengerResponse } from './interfaces/event-passenger-response.interface';
+import type { EventPassengerResponse, PaginatedPassengerResponse } from './interfaces/event-passenger-response.interface';
 
 @ApiTags('EventPassengers')
 @Controller()
@@ -39,10 +38,16 @@ export class EventPassengersController {
   @Get('events/:eventId/passengers')
   async findByEvent(
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Query() query: PaginationQueryDto,
+    @Query() query: EventPassengerQueryDto,
     @CurrentUser() user: JwtPayload,
-  ): Promise<PaginatedResponse<EventPassengerResponse>> {
-    return this.eventPassengersService.findByEvent(eventId, query.page ?? 1, query.limit ?? 20, user);
+  ): Promise<PaginatedPassengerResponse> {
+    return this.eventPassengersService.findByEvent(
+      eventId,
+      query.page ?? 1,
+      query.limit ?? 20,
+      user,
+      query.paymentStatus,
+    );
   }
 
   @Get('event-passengers/:id')

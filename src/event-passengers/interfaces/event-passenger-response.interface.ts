@@ -1,3 +1,5 @@
+import type { PaginationMeta } from '../../common/interfaces/paginated-response.interface';
+
 export interface EventPassengerDayResponse {
   id: string;
   eventDayId: string;
@@ -22,4 +24,18 @@ export interface EventPassengerResponse {
   createdAt: Date;
   updatedAt: Date;
   days: EventPassengerDayResponse[];
+}
+
+export interface EventPassengerFinancialSummary {
+  totalPassengers: number;
+  totalExpected: string;
+  totalReceived: string;
+  totalPending: string;
+  byStatus: { paid: number; partial: number; pending: number; exempt: number };
+}
+
+export interface PaginatedPassengerResponse {
+  data: EventPassengerResponse[];
+  meta: PaginationMeta;
+  financialSummary: EventPassengerFinancialSummary;
 }

@@ -50,9 +50,9 @@ export interface DashboardPendingPassenger {
   paymentStatus: string;
 }
 
-export interface CongregationDashboardResponse {
+export interface DashboardResponse {
   event: DashboardEventInfo;
-  congregation: DashboardCongregationInfo;
+  congregation: DashboardCongregationInfo | null;
   stats: DashboardStats;
   paymentBreakdown: DashboardPaymentBreakdown;
   pendingPassengers: DashboardPendingPassenger[];

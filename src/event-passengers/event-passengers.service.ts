@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
@@ -7,7 +14,6 @@ import {
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
-import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { Prisma } from '../generated/prisma/client';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
@@ -17,7 +23,9 @@ import type { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
 import type { UpdateEventPassengerDaysDto } from './dto/update-event-passenger-days.dto';
 import type {
   EventPassengerDayResponse,
+  EventPassengerFinancialSummary,
   EventPassengerResponse,
+  PaginatedPassengerResponse,
 } from './interfaces/event-passenger-response.interface';
 
 @Injectable()
@@ -158,7 +166,8 @@ export class EventPassengersService {
     page: number,
     limit: number,
     user: JwtPayload,
-  ): Promise<PaginatedResponse<EventPassengerResponse>> {
+    paymentStatus?: PaymentStatus,
+  ): Promise<PaginatedPassengerResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
 
     if (!event) {
@@ -172,14 +181,23 @@ export class EventPassengersService {
 
     const isCongregationRole = !isCircuitRole(user.role);
 
-    const where = {
+    if (isCongregationRole && !user.congregationId) {
+      throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
+    }
+
+    const baseWhere: Prisma.EventPassengerWhereInput = {
       eventId,
-      ...(isCongregationRole && user.congregationId ? { congregationId: user.congregationId } : {}),
+      ...(isCongregationRole ? { congregationId: user.congregationId! } : {}),
     };
 
-    const [data, total] = await Promise.all([
+    const filteredWhere: Prisma.EventPassengerWhereInput = {
+      ...baseWhere,
+      ...(paymentStatus ? { paymentStatus } : {}),
+    };
+
+    const [data, total, financialSummary] = await Promise.all([
       this.prisma.client.eventPassenger.findMany({
-        where,
+        where: filteredWhere,
         orderBy: { passenger: { name: 'asc' } },
         skip: (page - 1) * limit,
         take: limit,
@@ -188,7 +206,8 @@ export class EventPassengersService {
           eventPassengerDays: { include: { eventDay: true } },
         },
       }),
-      this.prisma.client.eventPassenger.count({ where }),
+      this.prisma.client.eventPassenger.count({ where: filteredWhere }),
+      this.buildFinancialSummary(baseWhere),
     ]);
 
     return {
@@ -199,6 +218,7 @@ export class EventPassengersService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+      financialSummary,
     };
   }
 
@@ -328,6 +348,50 @@ export class EventPassengersService {
         newValues: null,
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+  }
+
+  private async buildFinancialSummary(baseWhere: Prisma.EventPassengerWhereInput): Promise<EventPassengerFinancialSummary> {
+    const breakdown = await this.prisma.client.eventPassenger.groupBy({
+      by: ['paymentStatus'],
+      where: baseWhere,
+      _count: true,
+      _sum: { totalAmount: true, paidAmount: true },
+    });
+
+    let totalPassengers = 0;
+    let totalExpected = 0;
+    let totalReceived = 0;
+
+    const statusToKey: Record<string, keyof EventPassengerFinancialSummary['byStatus']> = {
+      [PaymentStatus.PAID]: 'paid',
+      [PaymentStatus.PARTIAL]: 'partial',
+      [PaymentStatus.PENDING]: 'pending',
+      [PaymentStatus.EXEMPT]: 'exempt',
+    };
+
+    const byStatus = breakdown.reduce<EventPassengerFinancialSummary['byStatus']>(
+      (acc, entry) => {
+        totalPassengers += entry._count;
+        if (entry.paymentStatus !== PaymentStatus.EXEMPT) {
+          totalExpected += Number(entry._sum.totalAmount ?? 0);
+          totalReceived += Number(entry._sum.paidAmount ?? 0);
+        }
+        const key = statusToKey[entry.paymentStatus];
+        if (key) {
+          acc[key] = entry._count;
+        }
+        return acc;
+      },
+      { paid: 0, partial: 0, pending: 0, exempt: 0 },
+    );
+
+    return {
+      totalPassengers,
+      totalExpected: totalExpected.toFixed(2),
+      totalReceived: totalReceived.toFixed(2),
+      totalPending: (totalExpected - totalReceived).toFixed(2),
+      byStatus,
+    };
   }
 
   private validateInitialPayment(

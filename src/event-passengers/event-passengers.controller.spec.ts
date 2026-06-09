@@ -99,13 +99,42 @@ describe('EventPassengersController', () => {
   // ── findByEvent ────────────────────────────────────────────────
   describe('findByEvent', () => {
     it('deve delegar a listagem ao service com paginação padrão', async () => {
-      const expected = { data: [buildResponse()], meta: { total: 1, page: 1, limit: 20, totalPages: 1 } };
+      const expected = {
+        data: [buildResponse()],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+        financialSummary: {
+          totalPassengers: 1,
+          totalExpected: '25.00',
+          totalReceived: '0.00',
+          totalPending: '25.00',
+          byStatus: { paid: 0, partial: 0, pending: 1, exempt: 0 },
+        },
+      };
       serviceMock.findByEvent.mockResolvedValue(expected);
 
       const result = await controller.findByEvent('event-1', {}, USER);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', 1, 20, USER);
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', 1, 20, USER, undefined);
+    });
+
+    it('deve repassar paymentStatus ao service', async () => {
+      const expected = {
+        data: [],
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+        financialSummary: {
+          totalPassengers: 0,
+          totalExpected: '0.00',
+          totalReceived: '0.00',
+          totalPending: '0.00',
+          byStatus: { paid: 0, partial: 0, pending: 0, exempt: 0 },
+        },
+      };
+      serviceMock.findByEvent.mockResolvedValue(expected);
+
+      await controller.findByEvent('event-1', { paymentStatus: 'PENDING' as const }, USER);
+
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', 1, 20, USER, 'PENDING');
     });
 
     it('deve propagar NotFoundException do service', async () => {

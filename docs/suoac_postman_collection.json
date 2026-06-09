@@ -1265,6 +1265,12 @@
                 {
                   "key": "limit",
                   "value": "20"
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": "PENDING",
+                  "description": "Filtro opcional por status de pagamento (PENDING, PARTIAL, PAID, EXEMPT)",
+                  "disabled": true
                 }
               ],
               "variable": [
@@ -1273,7 +1279,8 @@
                   "value": "{{eventId}}"
                 }
               ]
-            }
+            },
+            "description": "Lista paginada de passageiros inscritos no evento. Resposta inclui financialSummary com totais financeiros (sem filtro de paymentStatus). O filtro paymentStatus afeta apenas data e meta.total."
           },
           "response": []
         },
@@ -1477,49 +1484,89 @@
       "name": "Dashboard",
       "item": [
         {
-          "name": "Congregation Dashboard (role congregação)",
+          "name": "Dashboard (role congregação)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-dashboard",
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "events",
                 "{{eventId}}",
-                "congregation-dashboard"
+                "dashboard"
               ]
             },
-            "description": "Retorna o dashboard completo de uma congregação em um evento. Para roles de congregação, usa a congregação do JWT automaticamente."
+            "description": "Retorna o dashboard de uma congregação em um evento. Para roles de congregação, usa a congregação do JWT automaticamente. congregation != null."
           },
           "response": []
         },
         {
-          "name": "Congregation Dashboard (role circuito)",
+          "name": "Dashboard (circuito - drill-down)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-dashboard?congregationId={{congregationId}}",
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard?congregationId={{congregationId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "events",
                 "{{eventId}}",
-                "congregation-dashboard"
+                "dashboard"
               ],
               "query": [
                 {
                   "key": "congregationId",
                   "value": "{{congregationId}}",
-                  "description": "Obrigatório para roles de circuito (CC/CA)"
+                  "description": "Opcional para roles de circuito — drill-down em congregação específica"
                 }
               ]
             },
-            "description": "Retorna o dashboard de uma congregação específica em um evento. O query param congregationId é obrigatório para coordenadores de circuito."
+            "description": "Retorna o dashboard de uma congregação específica em um evento. Opcional para coordenadores de circuito (drill-down). congregation != null."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard (circuito - visão geral)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "dashboard"
+              ]
+            },
+            "description": "Retorna o dashboard com visão geral do evento inteiro para roles de circuito (sem congregationId). congregation = null, stats/paymentBreakdown/pendingPassengers refletem todas as congregações."
+          },
+          "response": []
+        },
+        {
+          "name": "Financial Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/financial-summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "financial-summary"
+              ]
+            },
+            "description": "Retorna totais financeiros do evento com breakdown por congregação. Circuito: todas as congregações. Congregação: apenas a própria."
           },
           "response": []
         }

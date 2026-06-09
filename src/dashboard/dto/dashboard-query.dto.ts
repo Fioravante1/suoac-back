@@ -1,6 +1,6 @@
 import { IsOptional, IsUUID } from 'class-validator';
 
-export class CongregationDashboardQueryDto {
+export class DashboardQueryDto {
   @IsOptional()
   @IsUUID()
   congregationId?: string;

@@ -3,13 +3,14 @@ import { Test } from '@nestjs/testing';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
-import type { CongregationDashboardResponse } from './interfaces/congregation-dashboard-response.interface';
+import type { DashboardResponse } from './interfaces/congregation-dashboard-response.interface';
+import type { FinancialSummaryResponse } from './interfaces/financial-summary-response.interface';
 
 // ── Constants ────────────────────────────────────────────────────
 const EVENT_ID = 'e1e2e3e4-0000-0000-0000-000000000001';
 const CONGREGATION_ID = 'c1c2c3c4-0000-0000-0000-000000000001';
 
-const MOCK_RESPONSE: CongregationDashboardResponse = {
+const MOCK_RESPONSE: DashboardResponse = {
   event: {
     id: EVENT_ID,
     title: 'Assembleia de Circuito',
@@ -40,6 +41,20 @@ const MOCK_RESPONSE: CongregationDashboardResponse = {
   totalPendingPassengers: 6,
 };
 
+const MOCK_FINANCIAL_RESPONSE: FinancialSummaryResponse = {
+  eventId: EVENT_ID,
+  eventTitle: 'Assembleia de Circuito',
+  ticketPrice: '25.00',
+  totals: {
+    totalPassengers: 30,
+    totalExpected: '750.00',
+    totalReceived: '500.00',
+    totalPending: '250.00',
+    byStatus: { paid: 15, partial: 5, pending: 8, exempt: 2 },
+  },
+  congregations: [],
+};
+
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: overrides.sub ?? 'u1u2u3u4-0000-0000-0000-000000000001',
@@ -57,7 +72,9 @@ describe('DashboardController', () => {
 
   beforeEach(async () => {
     serviceMock = {
-      getCongregationDashboard: jest.fn(),
+      getDashboard: jest.fn(),
+      getFinancialSummary: jest.fn(),
+      buildPaymentBreakdown: jest.fn(),
     } as unknown as jest.Mocked<DashboardService>;
 
     const module = await Test.createTestingModule({
@@ -68,31 +85,50 @@ describe('DashboardController', () => {
     controller = module.get(DashboardController);
   });
 
-  describe('getCongregationDashboard', () => {
+  describe('getDashboard', () => {
     it('deve delegar ao service e retornar o resultado', async () => {
       const user = buildUser();
-      serviceMock.getCongregationDashboard.mockResolvedValue(MOCK_RESPONSE);
+      serviceMock.getDashboard.mockResolvedValue(MOCK_RESPONSE);
 
-      const result = await controller.getCongregationDashboard(EVENT_ID, {}, user);
+      const result = await controller.getDashboard(EVENT_ID, {}, user);
 
       expect(result).toBe(MOCK_RESPONSE);
-      expect(serviceMock.getCongregationDashboard).toHaveBeenCalledWith(EVENT_ID, user, undefined);
+      expect(serviceMock.getDashboard).toHaveBeenCalledWith(EVENT_ID, user, undefined);
     });
 
     it('deve repassar congregationId do query ao service', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
-      serviceMock.getCongregationDashboard.mockResolvedValue(MOCK_RESPONSE);
+      serviceMock.getDashboard.mockResolvedValue(MOCK_RESPONSE);
 
-      await controller.getCongregationDashboard(EVENT_ID, { congregationId: CONGREGATION_ID }, user);
+      await controller.getDashboard(EVENT_ID, { congregationId: CONGREGATION_ID }, user);
 
-      expect(serviceMock.getCongregationDashboard).toHaveBeenCalledWith(EVENT_ID, user, CONGREGATION_ID);
+      expect(serviceMock.getDashboard).toHaveBeenCalledWith(EVENT_ID, user, CONGREGATION_ID);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       const user = buildUser();
-      serviceMock.getCongregationDashboard.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+      serviceMock.getDashboard.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
-      await expect(controller.getCongregationDashboard(EVENT_ID, {}, user)).rejects.toThrow(NotFoundException);
+      await expect(controller.getDashboard(EVENT_ID, {}, user)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getFinancialSummary', () => {
+    it('deve delegar ao service e retornar o resultado', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      serviceMock.getFinancialSummary.mockResolvedValue(MOCK_FINANCIAL_RESPONSE);
+
+      const result = await controller.getFinancialSummary(EVENT_ID, user);
+
+      expect(result).toBe(MOCK_FINANCIAL_RESPONSE);
+      expect(serviceMock.getFinancialSummary).toHaveBeenCalledWith(EVENT_ID, user);
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      const user = buildUser();
+      serviceMock.getFinancialSummary.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+
+      await expect(controller.getFinancialSummary(EVENT_ID, user)).rejects.toThrow(NotFoundException);
     });
   });
 });
