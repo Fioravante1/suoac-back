@@ -46,6 +46,12 @@ describe('AllExceptionsFilter', () => {
 
   beforeEach(() => {
     filter = new AllExceptionsFilter();
+    jest.spyOn(filter['logger'], 'error').mockImplementation(() => undefined);
+    jest.spyOn(filter['logger'], 'warn').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   // ── HttpException ──────────────────────────────────────────────
@@ -164,11 +170,9 @@ describe('AllExceptionsFilter', () => {
     });
 
     it('deve chamar logger.error para erros 500', () => {
-      const loggerSpy = jest.spyOn(filter['logger'], 'error').mockImplementation();
       const exception = new Error('internal failure');
       catchException(filter, exception);
-      expect(loggerSpy).toHaveBeenCalled();
-      loggerSpy.mockRestore();
+      expect(filter['logger'].error).toHaveBeenCalled();
     });
 
     it('deve tratar exceção não-Error (string, number, etc.)', () => {
