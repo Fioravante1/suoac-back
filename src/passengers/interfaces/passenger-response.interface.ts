@@ -10,6 +10,7 @@ export interface PassengerResponse {
   phone: string | null;
   observations: string | null;
   congregationId: string;
+  congregationName?: string;
   createdAt: Date;
   updatedAt: Date;
 }

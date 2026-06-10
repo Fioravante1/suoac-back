@@ -1,11 +1,19 @@
-import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
+import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePassengerDto } from './dto/create-passenger.dto';
+import type { PassengerFilterQueryDto } from './dto/passenger-filter-query.dto';
 import type { UpdatePassengerDto } from './dto/update-passenger.dto';
 import type { PassengerResponse } from './interfaces/passenger-response.interface';
 
@@ -91,6 +99,74 @@ export class PassengersService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async findByCircuit(
+    circuitId: string,
+    query: PassengerFilterQueryDto,
+    user: JwtPayload,
+  ): Promise<PaginatedResponse<PassengerResponse>> {
+    checkCircuitOwnership(user, circuitId);
+
+    if (!isCircuitRole(user.role) && !user.congregationId) {
+      throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
+    }
+
+    await this.ensureCircuitExists(circuitId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const effectiveCongregationId = isCircuitRole(user.role) ? query.congregationId : user.congregationId!;
+
+    const baseWhere = effectiveCongregationId
+      ? { congregation: { id: effectiveCongregationId, circuitId } }
+      : { congregation: { circuitId } };
+
+    if (query.q && RG_PATTERN.test(query.q)) {
+      const normalizedRg = this.normalizeRg(query.q);
+      const rgHash = this.encryption.hash(normalizedRg);
+
+      const where = { ...baseWhere, rgHash };
+
+      const [data, total] = await Promise.all([
+        this.prisma.client.passenger.findMany({
+          where,
+          include: { congregation: { select: { name: true } } },
+          orderBy: { name: 'asc' as const },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        this.prisma.client.passenger.count({ where }),
+      ]);
+
+      return {
+        data: data.map((p) => this.toResponse(p, p.congregation.name)),
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    }
+
+    const where = query.q ? { ...baseWhere, name: { contains: query.q, mode: 'insensitive' as const } } : baseWhere;
+
+    this.logger.debug(
+      `Listando passageiros do circuito — circuitId=${circuitId}, congregationId=${effectiveCongregationId ?? 'all'}, q=${query.q ?? 'none'}, page=${page}, limit=${limit}`,
+    );
+
+    const [data, total] = await Promise.all([
+      this.prisma.client.passenger.findMany({
+        where,
+        include: { congregation: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.client.passenger.count({ where }),
+    ]);
+
+    return {
+      data: data.map((p) => this.toResponse(p, p.congregation.name)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
@@ -265,16 +341,19 @@ export class PassengersService {
     return rg.replace(/[.-]/g, '').toUpperCase();
   }
 
-  private toResponse(passenger: {
-    id: string;
-    name: string;
-    rgEncrypted: string;
-    phone: string | null;
-    observations: string | null;
-    congregationId: string;
-    createdAt: Date;
-    updatedAt: Date;
-  }): PassengerResponse {
+  private toResponse(
+    passenger: {
+      id: string;
+      name: string;
+      rgEncrypted: string;
+      phone: string | null;
+      observations: string | null;
+      congregationId: string;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    congregationName?: string,
+  ): PassengerResponse {
     return {
       id: passenger.id,
       name: passenger.name,
@@ -282,9 +361,21 @@ export class PassengersService {
       phone: passenger.phone,
       observations: passenger.observations,
       congregationId: passenger.congregationId,
+      ...(congregationName !== undefined && { congregationName }),
       createdAt: passenger.createdAt,
       updatedAt: passenger.updatedAt,
     };
+  }
+
+  private async ensureCircuitExists(circuitId: string): Promise<void> {
+    const circuit = await this.prisma.client.circuit.findUnique({
+      where: { id: circuitId },
+    });
+
+    if (!circuit) {
+      this.logger.warn(`Circuito não encontrado ao validar dependência — circuitId=${circuitId}`);
+      throw new NotFoundException('Circuito não encontrado');
+    }
   }
 
   private async ensureCongregationExists(congregationId: string, user: JwtPayload): Promise<void> {

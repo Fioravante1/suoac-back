@@ -1,4 +1,5 @@
 import * as argon2 from 'argon2';
+import { createCipheriv, createHash, randomBytes } from 'crypto';
 import type { PrismaClient } from '../../src/generated/prisma/client';
 
 export interface SeedContext {
@@ -33,6 +34,31 @@ export async function hashPassword(password: string): Promise<string> {
   });
 }
 
+function getEncryptionKey(): Buffer {
+  const keyHex = process.env.ENCRYPTION_KEY;
+  if (!keyHex) {
+    throw new Error('ENCRYPTION_KEY environment variable is not set');
+  }
+  const key = Buffer.from(keyHex, 'hex');
+  if (key.length !== 32) {
+    throw new Error(`ENCRYPTION_KEY must be exactly 32 bytes (64 hex chars), got ${key.length} bytes`);
+  }
+  return key;
+}
+
+export function encryptValue(plaintext: string): string {
+  const key = getEncryptionKey();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, encrypted]).toString('base64');
+}
+
+export function hashValue(plaintext: string): string {
+  return createHash('sha256').update(plaintext).digest('hex');
+}
+
 export async function seedCommon(prisma: PrismaClient): Promise<SeedContext> {
   // Upsert circuit SP-019 A
   const circuit = await prisma.circuit.upsert({
@@ -49,24 +75,24 @@ export async function seedCommon(prisma: PrismaClient): Promise<SeedContext> {
 
   // Congregations data for SP-019 A
   const congregationsData = [
-    { code: '80275', name: 'Águas de Março', email: 'CONG09480275@jwpub.org' },
-    { code: '87577', name: 'Andorinha da Mata', email: 'CONG09487577@jwpub.org' },
-    { code: '273', name: 'Carmosina', email: 'CONG094273@jwpub.org' },
-    { code: '105478', name: 'Cidade Popular', email: 'CONG094105478@jwpub.org' },
-    { code: '26252', name: 'Conjunto José Bonifácio', email: 'CONG09426252@jwpub.org' },
-    { code: '66803', name: 'Cosmopolita', email: 'CONG09466803@jwpub.org' },
-    { code: '114553', name: 'Estrada da Fonte', email: 'CONG094114553@jwpub.org' },
-    { code: '118901', name: 'Fontoura', email: 'CONG094118901@jwpub.org' },
-    { code: '455', name: 'Guaianazes', email: 'CONG094455@jwpub.org' },
-    { code: '547', name: 'Itaquera', email: 'CONG094547@jwpub.org' },
-    { code: '30072', name: 'Jardim São Pedro', email: 'CONG09430072@jwpub.org' },
-    { code: '29652', name: 'Jardim Tamoyo', email: 'CONG09429652@jwpub.org' },
-    { code: '31468', name: 'Marabá', email: 'CONG09431468@jwpub.org' },
-    { code: '109256', name: 'Parque do Carmo', email: 'CONG094109256@jwpub.org' },
-    { code: '79079', name: 'Serra de São Domingos', email: 'CONG09479079@jwpub.org' },
-    { code: '115717', name: 'Silvianópolis', email: 'CONG094115717@jwpub.org' },
-    { code: '30718', name: 'Vila Jussara', email: 'CONG09430718@jwpub.org' },
-    { code: '1941', name: 'Vila Rosa', email: 'CONG0941941@jwpub.org' },
+    { code: '80275', name: 'Águas de Março', email: 'CONG09480275@jwpub.org', city: 'São Paulo' },
+    { code: '87577', name: 'Andorinha da Mata', email: 'CONG09487577@jwpub.org', city: 'São Paulo' },
+    { code: '273', name: 'Carmosina', email: 'CONG094273@jwpub.org', city: 'São Paulo' },
+    { code: '105478', name: 'Cidade Popular', email: 'CONG094105478@jwpub.org', city: 'São Paulo' },
+    { code: '26252', name: 'Conjunto José Bonifácio', email: 'CONG09426252@jwpub.org', city: 'São Paulo' },
+    { code: '66803', name: 'Cosmopolita', email: 'CONG09466803@jwpub.org', city: 'São Paulo' },
+    { code: '114553', name: 'Estrada da Fonte', email: 'CONG094114553@jwpub.org', city: 'São Paulo' },
+    { code: '118901', name: 'Fontoura', email: 'CONG094118901@jwpub.org', city: 'São Paulo' },
+    { code: '455', name: 'Guaianazes', email: 'CONG094455@jwpub.org', city: 'São Paulo' },
+    { code: '547', name: 'Itaquera', email: 'CONG094547@jwpub.org', city: 'São Paulo' },
+    { code: '30072', name: 'Jardim São Pedro', email: 'CONG09430072@jwpub.org', city: 'São Paulo' },
+    { code: '29652', name: 'Jardim Tamoyo', email: 'CONG09429652@jwpub.org', city: 'São Paulo' },
+    { code: '31468', name: 'Marabá', email: 'CONG09431468@jwpub.org', city: 'São Paulo' },
+    { code: '109256', name: 'Parque do Carmo', email: 'CONG094109256@jwpub.org', city: 'São Paulo' },
+    { code: '79079', name: 'Serra de São Domingos', email: 'CONG09479079@jwpub.org', city: 'São Paulo' },
+    { code: '115717', name: 'Silvianópolis', email: 'CONG094115717@jwpub.org', city: 'São Paulo' },
+    { code: '30718', name: 'Vila Jussara', email: 'CONG09430718@jwpub.org', city: 'São Paulo' },
+    { code: '1941', name: 'Vila Rosa', email: 'CONG0941941@jwpub.org', city: 'São Paulo' },
   ];
 
   const congregations: SeedContext['congregations'] = [];

@@ -1013,6 +1013,51 @@
           "response": []
         },
         {
+          "name": "List Passengers by Circuit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/passengers?congregationId=&q=&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "",
+                  "description": "Optional. Filter by congregation UUID"
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "description": "Optional. Search by name (ILIKE) or RG (exact hash). Min 3 chars"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Get Passenger by ID",
           "request": {
             "method": "GET",

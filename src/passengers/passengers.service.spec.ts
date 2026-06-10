@@ -290,6 +290,212 @@ describe('PassengersService', () => {
     });
   });
 
+  // ── findByCircuit ────────────────────────────────────────────
+  describe('findByCircuit', () => {
+    const buildPrismaPassengerWithCongregation = (
+      overrides: Partial<PrismaPassenger> = {},
+    ): PrismaPassenger & { congregation: { circuitId: string; name: string } } => ({
+      ...buildPrismaPassenger(overrides),
+      congregation: { circuitId: CIRCUIT_ID, name: 'Águas de Março' },
+    });
+
+    it('deve listar todos os passageiros do circuito sem filtros (role de circuito)', async () => {
+      const rows = [
+        buildPrismaPassengerWithCongregation(),
+        buildPrismaPassengerWithCongregation({
+          id: 'p1p2p3p4-0000-0000-0000-000000000002',
+          name: 'Maria Santos',
+        }),
+      ];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(2);
+
+      const result = await service.findByCircuit(CIRCUIT_ID, {}, buildUser());
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0]!.congregationName).toBe('Águas de Março');
+      expect(result.meta).toEqual({ total: 2, page: 1, limit: 20, totalPages: 1 });
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { circuitId: CIRCUIT_ID } },
+          include: { congregation: { select: { name: true } } },
+        }),
+      );
+    });
+
+    it('deve filtrar por congregationId quando fornecido (role de circuito)', async () => {
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(CIRCUIT_ID, { congregationId: CONGREGATION_ID }, buildUser());
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { id: CONGREGATION_ID, circuitId: CIRCUIT_ID } },
+        }),
+      );
+    });
+
+    it('deve buscar por nome com q (sem congregationId)', async () => {
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(CIRCUIT_ID, { q: 'João' }, buildUser());
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            congregation: { circuitId: CIRCUIT_ID },
+            name: { contains: 'João', mode: 'insensitive' },
+          },
+        }),
+      );
+    });
+
+    it('deve buscar por nome com q + congregationId', async () => {
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(
+        CIRCUIT_ID,
+        { congregationId: CONGREGATION_ID, q: 'João' },
+        buildUser(),
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            congregation: { id: CONGREGATION_ID, circuitId: CIRCUIT_ID },
+            name: { contains: 'João', mode: 'insensitive' },
+          },
+        }),
+      );
+    });
+
+    it('deve buscar por RG com q (sem congregationId)', async () => {
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(CIRCUIT_ID, { q: '12.345.678-X' }, buildUser());
+
+      expect(result.data).toHaveLength(1);
+      expect(encryptionMock.hash).toHaveBeenCalledWith('12345678X');
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { circuitId: CIRCUIT_ID }, rgHash: RG_HASH },
+        }),
+      );
+    });
+
+    it('deve buscar por RG com q + congregationId', async () => {
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(
+        CIRCUIT_ID,
+        { congregationId: CONGREGATION_ID, q: '12.345.678-X' },
+        buildUser(),
+      );
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { id: CONGREGATION_ID, circuitId: CIRCUIT_ID }, rgHash: RG_HASH },
+        }),
+      );
+    });
+
+    it('deve auto-restringir role de congregação à sua congregação (ignora congregationId do query)', async () => {
+      const congUser = buildUser({
+        role: 'CONGREGATION_COORDINATOR',
+        congregationId: CONGREGATION_ID,
+      });
+      const rows = [buildPrismaPassengerWithCongregation()];
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue(rows);
+      prismaMock.passenger.count.mockResolvedValue(1);
+
+      const otherCongId = 'c1c2c3c4-0000-0000-0000-000000000099';
+      const result = await service.findByCircuit(CIRCUIT_ID, { congregationId: otherCongId }, congUser);
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { id: CONGREGATION_ID, circuitId: CIRCUIT_ID } },
+        }),
+      );
+    });
+
+    it('deve lançar NotFoundException quando o circuito não existe', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(null);
+
+      await expect(service.findByCircuit(CIRCUIT_ID, {}, buildUser())).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
+      const otherCircuitUser = buildUser({ circuitId: 'outro-circuito' });
+
+      await expect(service.findByCircuit(CIRCUIT_ID, {}, otherCircuitUser)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve impedir vazamento cross-circuit via congregationId de outro circuito', async () => {
+      const otherCongId = 'c1c2c3c4-0000-0000-0000-000000000099';
+
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue([]);
+      prismaMock.passenger.count.mockResolvedValue(0);
+
+      await service.findByCircuit(CIRCUIT_ID, { congregationId: otherCongId }, buildUser());
+
+      expect(prismaMock.passenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregation: { id: otherCongId, circuitId: CIRCUIT_ID } },
+        }),
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação sem congregationId', async () => {
+      const congUserWithoutCong = buildUser({
+        role: 'CONGREGATION_COORDINATOR',
+        congregationId: null,
+      });
+
+      await expect(service.findByCircuit(CIRCUIT_ID, {}, congUserWithoutCong)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve retornar lista vazia quando q não encontra resultados', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.passenger.findMany.mockResolvedValue([]);
+      prismaMock.passenger.count.mockResolvedValue(0);
+
+      const result = await service.findByCircuit(CIRCUIT_ID, { q: 'NomeInexistente' }, buildUser());
+
+      expect(result.data).toHaveLength(0);
+      expect(result.meta.total).toBe(0);
+    });
+  });
+
   // ── findOne ───────────────────────────────────────────────────
   describe('findOne', () => {
     it('deve retornar o passageiro com RG descriptografado', async () => {

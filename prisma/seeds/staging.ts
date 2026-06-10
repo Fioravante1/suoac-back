@@ -1,18 +1,19 @@
 import type { PrismaClient } from '../../src/generated/prisma/client';
 import { type SeedContext, hashPassword } from './common';
+import { seedStagingPassengers } from './staging-passengers';
 
 export async function seedStaging(prisma: PrismaClient, context: SeedContext): Promise<void> {
   const passwordHash = await hashPassword('UomgsvTiMPRLCDHfzZa*LenJEuKc@_*JTCw96p2v');
   const { circuit, congregations } = context;
 
   const firstCongregation = congregations[0];
-  const secondCongregation = congregations[1] ?? firstCongregation;
 
-  if (!firstCongregation || !secondCongregation) {
+  if (!firstCongregation) {
     console.warn('No congregations found, skipping user seed');
     return;
   }
 
+  // --- Coordenador de Circuito ---
   const coordCircuit = await prisma.user.upsert({
     where: { email: 'coordenador@suoac.dev' },
     update: {
@@ -33,25 +34,38 @@ export async function seedStaging(prisma: PrismaClient, context: SeedContext): P
   });
   console.log(`  User upserted: ${coordCircuit.name} (${coordCircuit.email})`);
 
-  const coordCong = await prisma.user.upsert({
-    where: { email: 'congregacao@suoac.dev' },
-    update: {
-      name: 'Coordenador de Congregação',
-      passwordHash,
-      role: 'CONGREGATION_COORDINATOR',
-      circuitId: circuit.id,
-      congregationId: secondCongregation.id,
-    },
-    create: {
-      name: 'Coordenador de Congregação',
-      email: 'congregacao@suoac.dev',
-      passwordHash,
-      role: 'CONGREGATION_COORDINATOR',
-      circuitId: circuit.id,
-      congregationId: secondCongregation.id,
-    },
-  });
-  console.log(`  User upserted: ${coordCong.name} (${coordCong.email})`);
+  // --- Coordenador de Congregação para CADA congregação ---
+  let congCoordCount = 0;
 
-  console.log('\nStaging seed completed: 2 users created');
+  for (const cong of congregations) {
+    const email = `coord.${cong.code}@suoac.dev`;
+    const name = `Coordenador - ${cong.name}`;
+
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        name,
+        passwordHash,
+        role: 'CONGREGATION_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: cong.id,
+      },
+      create: {
+        name,
+        email,
+        passwordHash,
+        role: 'CONGREGATION_COORDINATOR',
+        circuitId: circuit.id,
+        congregationId: cong.id,
+      },
+    });
+    console.log(`  User upserted: ${user.name} (${user.email})`);
+    congCoordCount++;
+  }
+
+  console.log(`\nUsers seed completed: 1 circuit coordinator + ${congCoordCount} congregation coordinators`);
+
+  // --- Passageiros para cada congregação ---
+  console.log('\nSeeding passengers...');
+  await seedStagingPassengers(prisma, context);
 }

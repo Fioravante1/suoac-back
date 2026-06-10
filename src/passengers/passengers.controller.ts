@@ -17,6 +17,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreatePassengerDto } from './dto/create-passenger.dto';
+import { PassengerFilterQueryDto } from './dto/passenger-filter-query.dto';
 import { SearchPassengerQueryDto } from './dto/search-passenger-query.dto';
 import { UpdatePassengerDto } from './dto/update-passenger.dto';
 import type { PassengerResponse } from './interfaces/passenger-response.interface';
@@ -53,6 +54,15 @@ export class PassengersController {
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponse<PassengerResponse>> {
     return this.passengersService.search(congregationId, query.q, query.page ?? 1, query.limit ?? 20, user);
+  }
+
+  @Get('circuits/:circuitId/passengers')
+  async findByCircuit(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @Query() query: PassengerFilterQueryDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<PaginatedResponse<PassengerResponse>> {
+    return this.passengersService.findByCircuit(circuitId, query, user);
   }
 
   @Get('passengers/:id')

@@ -14,6 +14,7 @@ function buildPassenger(overrides: Partial<PassengerResponse> = {}): PassengerRe
     phone: overrides.phone ?? '11999999999',
     observations: overrides.observations ?? null,
     congregationId: overrides.congregationId ?? 'c1c2c3c4-0000-0000-0000-000000000001',
+    ...(overrides.congregationName !== undefined && { congregationName: overrides.congregationName }),
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
@@ -40,6 +41,7 @@ describe('PassengersController', () => {
     serviceMock = {
       create: jest.fn(),
       findByCongregation: jest.fn(),
+      findByCircuit: jest.fn(),
       search: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
@@ -150,6 +152,45 @@ describe('PassengersController', () => {
 
       expect(result).toEqual(expected);
       expect(serviceMock.search).toHaveBeenCalledWith(congregationId, 'João', 2, 10, buildUser());
+    });
+  });
+
+  // ── findByCircuit ────────────────────────────────────────────
+  describe('findByCircuit', () => {
+    it('deve delegar a busca ao service com query e user', async () => {
+      const expected = {
+        data: [buildPassenger({ congregationName: 'Águas de Março' })],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      };
+      const query = { congregationId: 'c1c2c3c4-0000-0000-0000-000000000001', q: 'João' };
+      const user = buildUser();
+
+      serviceMock.findByCircuit.mockResolvedValue(expected);
+
+      const result = await controller.findByCircuit(CIRCUIT_ID, query, user);
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, query, user);
+    });
+
+    it('deve delegar com paginação padrão quando query vazio', async () => {
+      const expected = {
+        data: [buildPassenger()],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      };
+
+      serviceMock.findByCircuit.mockResolvedValue(expected);
+
+      const result = await controller.findByCircuit(CIRCUIT_ID, {}, buildUser());
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, {}, buildUser());
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      serviceMock.findByCircuit.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
+
+      await expect(controller.findByCircuit(CIRCUIT_ID, {}, buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 

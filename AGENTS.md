@@ -375,6 +375,14 @@ Cada request recebe um ID único (`X-Request-ID` do header ou `crypto.randomUUID
 3. **`CircuitOwnershipGuard`** — Verifica ownership do circuito em rotas com `:circuitId` no path.
    - Ver seção 7.7 para detalhes
 
+### Regras Gerais de Guards
+- **Guards sao a primeira barreira, nao a unica barreira:** guards validam autenticacao, role e parametros estruturais da rota. Services ainda **DEVEM** validar ownership do recurso real carregado do banco antes de retornar ou alterar dados.
+- **Nao presuma que query/body foram validados pelo guard:** `CircuitOwnershipGuard` olha apenas `:circuitId` no path. Qualquer `circuitId`, `congregationId`, `eventId`, `passengerId` ou outro identificador vindo de query/body precisa ser validado no service contra o recurso pai correto.
+- **Rotas com `:circuitId` continuam exigindo validacao no service:** o guard bloqueia circuitos divergentes no path, mas nao prova que filtros opcionais pertencem ao circuito. Ex: `GET /circuits/:circuitId/passengers?congregationId=...` deve validar que a congregacao filtrada pertence ao `circuitId`.
+- **Roles de congregacao nunca podem cair em listagem de circuito inteiro:** se `!isCircuitRole(user.role)`, o service deve exigir `user.congregationId` presente e restringir a consulta a essa congregacao. Se `user.congregationId` for `null`, lancar `ForbiddenException`.
+- **Use guards para politica HTTP transversal, nao para regra de negocio especifica:** regras dependentes de dados do banco (ex: evento pertence ao circuito, passageiro pertence a congregacao, pagamento pertence a inscricao) ficam no service/use case com queries explicitas e testes unitarios.
+- **Toda nova regra de guard precisa de testes:** ao criar ou alterar um guard/decorator de autorizacao, adicione specs cobrindo allow/deny, rota publica quando aplicavel, ausencia de user no request e divergencia de ownership.
+
 ### Decorators
 - `@Public()` — marca rota como publica (skip JWT guard)
 - `@Roles(...roles)` — define roles permitidas para o endpoint
@@ -402,6 +410,7 @@ O projeto implementa isolamento multi-tenant por circuito em duas camadas comple
 - Registrado como `APP_GUARD` global (após `JwtAuthGuard` e `RolesGuard`)
 - Intercepta rotas com `:circuitId` no path e compara com `user.circuitId` do JWT
 - Divergência → `403 Forbidden` imediato (antes de atingir o controller)
+- Escopo limitado: **nao** valida `congregationId`, `eventId`, `passengerId` ou filtros em query/body. Essa validacao pertence ao service, depois de carregar o recurso ou validar a relacao no banco.
 
 ### Utility Functions (`src/common/authorization/circuit-ownership.util.ts`)
 - **`checkCircuitOwnership(user: JwtPayload, resourceCircuitId: string)`** — lança `ForbiddenException` se `user.circuitId !== resourceCircuitId`. Usar em todos os services para endpoints diretos por ID (ex: `/events/:id`, `/passengers/:id`).
@@ -440,6 +449,10 @@ async findOne(@Param('id') id: string, @CurrentUser('circuitId') circuitId: stri
 - **Nunca compare `circuitId` manualmente** — use `checkCircuitOwnership()` para consistência
 - **Nunca passe strings individuais** (`userCircuitId`, `role`) — passe `user: JwtPayload` completo
 - **Exceção para `create`** — methods que criam recursos vinculados a um circuito da rota (ex: `POST /circuits/:circuitId/events`) podem usar `@CurrentUser('sub') userId: string` se necessário apenas o ID do criador, pois o guard já validou o `:circuitId`
+- **Filtros por recurso filho devem ser amarrados ao recurso pai:** se uma rota de circuito aceita `congregationId`, `eventId` ou outro ID em query/body, a query deve garantir pertencimento ao `circuitId` do path (ex: `where: { id: congregationId, circuitId }`) ou chamar um helper dedicado antes de listar dados.
+- **Endpoints diretos por ID devem carregar o recurso antes de autorizar:** em rotas como `/passengers/:id`, `/events/:id` e `/event-passengers/:id`, busque o registro com seus relacionamentos mínimos, depois aplique `checkCircuitOwnership()` e, quando aplicavel, `checkCongregationPermission()`.
+- **Roles de congregacao exigem `congregationId` valido:** antes de filtrar por congregacao do usuario, verifique explicitamente se `user.congregationId` nao e `null`. Nao use non-null assertion (`user.congregationId!`) como mecanismo de autorizacao.
+- **Testes de autorizacao sao obrigatorios:** toda rota que mistura `:circuitId` com filtros opcionais por congregacao/evento/passageiro deve ter teste negando recurso de outro circuito e teste negando role de congregacao sem permissao.
 
 ---
 
