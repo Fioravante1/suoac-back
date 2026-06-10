@@ -120,7 +120,7 @@ describe('EventsController', () => {
       const result = await controller.findByCircuit(circuitId, {}, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 1, 20, buildUser());
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 1, 20, buildUser(), undefined);
     });
 
     it('deve passar parâmetros de paginação customizados', async () => {
@@ -133,7 +133,7 @@ describe('EventsController', () => {
       const result = await controller.findByCircuit(circuitId, { page: 2, limit: 10 }, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 2, 10, buildUser());
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 2, 10, buildUser(), undefined);
     });
   });
 

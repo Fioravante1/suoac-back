@@ -327,6 +327,56 @@ describe('EventsService', () => {
       expect(result.meta.totalPages).toBe(3);
     });
 
+    it('deve filtrar por status quando informado', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent({ status: 'OPEN' })] as never);
+      prismaMock.event.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(circuitId, 1, 20, buildUser(), 'OPEN');
+
+      expect(result.data).toHaveLength(1);
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { circuitId, status: 'OPEN' },
+        }),
+      );
+      expect(prismaMock.event.count).toHaveBeenCalledWith({
+        where: { circuitId, status: 'OPEN' },
+      });
+    });
+
+    it('deve usar filtro de status explícito mesmo para roles restritas', async () => {
+      const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent({ status: 'DRAFT' })] as never);
+      prismaMock.event.count.mockResolvedValue(1);
+
+      await service.findByCircuit(circuitId, 1, 20, congregationUser, 'DRAFT');
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { circuitId, status: 'DRAFT' },
+        }),
+      );
+    });
+
+    it('deve ocultar DRAFT para roles de congregação quando status não informado', async () => {
+      const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([] as never);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findByCircuit(circuitId, 1, 20, congregationUser);
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { circuitId, status: { not: 'DRAFT' } },
+        }),
+      );
+    });
+
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 

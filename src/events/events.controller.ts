@@ -15,9 +15,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreateEventDto } from './dto/create-event.dto';
+import { EventQueryDto } from './dto/event-query.dto';
 import { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventsService } from './events.service';
@@ -42,10 +42,10 @@ export class EventsController {
   @Get('circuits/:circuitId/events')
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
-    @Query() query: PaginationQueryDto,
+    @Query() query: EventQueryDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponse<EventResponse>> {
-    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, user);
+    return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, user, query.status);
   }
 
   @Get('events/:id')

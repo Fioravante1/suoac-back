@@ -131,6 +131,7 @@ export class EventsService {
     page: number,
     limit: number,
     user: JwtPayload,
+    status?: EventStatus,
   ): Promise<PaginatedResponse<EventResponse>> {
     await this.ensureCircuitExists(circuitId);
 
@@ -139,7 +140,7 @@ export class EventsService {
     const isRestricted = !isCircuitRole(user.role);
     const where = {
       circuitId,
-      ...(isRestricted && { status: { not: EventStatus.DRAFT } }),
+      ...(status ? { status } : isRestricted && { status: { not: EventStatus.DRAFT } }),
     };
 
     const [data, total] = await Promise.all([
