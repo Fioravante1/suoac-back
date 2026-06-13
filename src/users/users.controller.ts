@@ -12,6 +12,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -29,8 +31,9 @@ export class UsersController {
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Body() dto: CreateUserDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<UserResponse> {
-    return this.usersService.create(circuitId, dto);
+    return this.usersService.create(circuitId, dto, user);
   }
 
   @Get('circuits/:circuitId/users')
@@ -42,18 +45,22 @@ export class UsersController {
   }
 
   @Get('users/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponse> {
-    return this.usersService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<UserResponse> {
+    return this.usersService.findOne(id, user);
   }
 
   @Patch('users/:id')
-  async update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto): Promise<UserResponse> {
-    return this.usersService.update(id, dto);
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<UserResponse> {
+    return this.usersService.update(id, dto, user);
   }
 
   @Delete('users/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.usersService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
+    return this.usersService.remove(id, user);
   }
 }

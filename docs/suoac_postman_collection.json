@@ -132,53 +132,18 @@
       "name": "Circuits",
       "item": [
         {
-          "name": "List Circuits",
+          "name": "Get My Circuit",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/circuits?page=1&limit=20",
+              "raw": "{{baseUrl}}/circuits/me",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "circuits"
-              ],
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "limit",
-                  "value": "20"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create Circuit",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Circuito Teste SP\",\n  \"city\": \"São Paulo\",\n  \"state\": \"sp\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/circuits",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "circuits"
+                "circuits",
+                "me"
               ]
             }
           },
@@ -423,6 +388,350 @@
       ]
     },
     {
+      "name": "Events",
+      "item": [
+        {
+          "name": "Create Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventId', body.id);",
+                  "  if (body.days && body.days.length > 0) {",
+                  "    pm.collectionVariables.set('eventDayId', body.days[0].id);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Assembleia SP 2026\",\n  \"type\": \"ASSEMBLY\",\n  \"ticketPrice\": 25.00,\n  \"registrationDeadline\": \"2026-06-01\",\n  \"paymentDeadline\": \"2026-06-15\",\n  \"venue\": \"Salão Central\",\n  \"address\": \"Rua das Flores, 100\",\n  \"city\": \"São Paulo\",\n  \"state\": \"SP\",\n  \"date\": \"2026-07-10\",\n  \"departureTime\": \"06:00\",\n  \"returnTime\": \"18:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "events"
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Events by Circuit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/events?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Event by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PATCH",
+            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Assembleia SP 2026 - Atualizada\",\n  \"registrationDeadline\": \"2026-08-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Transition Event Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OPEN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:id/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id",
+                "status"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Event",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Event",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "EventDays",
+      "item": [
+        {
+          "name": "List Days by Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/days",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "days"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get EventDay by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-days/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-days",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventDayId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update EventDay",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"departureTime\": \"07:00\",\n  \"returnTime\": \"19:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/event-days/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-days",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventDayId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel EventDay",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-days/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-days",
+                ":id",
+                "cancel"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventDayId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Users",
       "item": [
         {
@@ -576,6 +885,737 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Passengers",
+      "item": [
+        {
+          "name": "Create Passenger",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('passengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"João Silva\",\n  \"rg\": \"12.345.678-X\",\n  \"phone\": \"11999999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Passengers by Congregation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search Passengers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/congregations/:congregationId/passengers/search?q=João&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "congregations",
+                ":congregationId",
+                "passengers",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "João"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Passengers by Circuit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/passengers?congregationId=&q=&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "",
+                  "description": "Optional. Filter by congregation UUID"
+                },
+                {
+                  "key": "q",
+                  "value": "",
+                  "description": "Optional. Search by name (ILIKE) or RG (exact hash). Min 3 chars"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Passenger by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Passenger",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nome Atualizado do Passageiro\",\n  \"phone\": \"11988888888\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Passenger (hard-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{passengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "EventPassengers",
+      "item": [
+        {
+          "name": "Create EventPassenger (by passengerId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Observação opcional\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create EventPassenger (inline)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create EventPassenger (com pagamento)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('eventPassengerId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Inscrição com pagamento\",\n  \"payment\": {\n    \"amount\": 25.00,\n    \"paidAt\": \"2026-06-01T10:00:00Z\",\n    \"observations\": \"Pagamento em dinheiro\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List EventPassengers by Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/:eventId/passengers?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                ":eventId",
+                "passengers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "paymentStatus",
+                  "value": "PENDING",
+                  "description": "Filtro opcional por status de pagamento (PENDING, PARTIAL, PAID, EXEMPT)",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            },
+            "description": "Lista paginada de passageiros inscritos no evento. Resposta inclui financialSummary com totais financeiros (sem filtro de paymentStatus). O filtro paymentStatus afeta apenas data e meta.total."
+          },
+          "response": []
+        },
+        {
+          "name": "Get EventPassenger by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update EventPassenger Days",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dayIds\": [\"substituir-por-uuid-do-dia-1\", \"substituir-por-uuid-do-dia-2\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id/days",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id",
+                "days"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete EventPassenger",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{eventPassengerId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 25.00,\n  \"paidAt\": \"2026-01-15T10:00:00Z\",\n  \"observations\": \"Pagamento parcial via Pix\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/{{eventPassengerId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                "{{eventPassengerId}}",
+                "payments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Payments by EventPassenger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/event-passengers/{{eventPassengerId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "event-passengers",
+                "{{eventPassengerId}}",
+                "payments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Payment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CongregationEventStatus",
+      "item": [
+        {
+          "name": "List Congregation Statuses by Event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "congregation-statuses"]
+            },
+            "description": "Lista o status de finalização de todas as congregações do circuito para um evento. Restrito a CC/CA."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Congregation Event Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"FINALIZED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses/{{congregationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["events", "{{eventId}}", "congregation-statuses", "{{congregationId}}"]
+            },
+            "description": "Finaliza ou reabre a lista de uma congregação para um evento. FINALIZED cria/atualiza o registro; PENDING deleta o registro (retorno à ausência implícita). Reabrir (PENDING) restrito a CC/CA."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard (role congregação)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "dashboard"
+              ]
+            },
+            "description": "Retorna o dashboard de uma congregação em um evento. Para roles de congregação, usa a congregação do JWT automaticamente. congregation != null."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard (circuito - drill-down)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard?congregationId={{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Opcional para roles de circuito — drill-down em congregação específica"
+                }
+              ]
+            },
+            "description": "Retorna o dashboard de uma congregação específica em um evento. Opcional para coordenadores de circuito (drill-down). congregation != null."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard (circuito - visão geral)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "dashboard"
+              ]
+            },
+            "description": "Retorna o dashboard com visão geral do evento inteiro para roles de circuito (sem congregationId). congregation = null, stats/paymentBreakdown/pendingPassengers refletem todas as congregações."
+          },
+          "response": []
+        },
+        {
+          "name": "Financial Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/financial-summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "financial-summary"
+              ]
+            },
+            "description": "Retorna totais financeiros do evento com breakdown por congregação. Circuito: todas as congregações. Congregação: apenas a própria."
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "variable": [
@@ -591,6 +1631,36 @@
     },
     {
       "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventDayId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "congregationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "passengerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "eventPassengerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paymentId",
       "value": "",
       "type": "string"
     }

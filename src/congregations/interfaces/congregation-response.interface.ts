@@ -8,7 +8,6 @@ export interface CongregationResponse {
   name: string;
   email: string;
   city: string | null;
-  isActive: boolean;
   circuitId: string;
   createdAt: Date;
   updatedAt: Date;

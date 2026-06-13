@@ -1,3 +1,11 @@
+# ============================================================
+# SUOAC Backend - Docker Compose (Desenvolvimento)
+# ============================================================
+# Uso: docker compose up -d
+# Sobe apenas o PostgreSQL para desenvolvimento local.
+# A API roda localmente com: npm run start:dev
+# ============================================================
+
 services:
   db:
     image: postgres:16-alpine
@@ -16,26 +24,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  api:
-    container_name: suoac-api
-    build:
-      context: .
-      target: deps
-    restart: unless-stopped
-    ports:
-      - '8080:8080'
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://suoac:suoac_dev@db:5432/suoac_dev
-      PORT: 8080
-      NODE_ENV: development
-    volumes:
-      - .:/app
-      - /app/node_modules
-    command: sh -c "npx prisma generate && npm run start:dev"
 
 volumes:
   pgdata:

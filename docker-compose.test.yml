@@ -1,0 +1,26 @@
+# ============================================================
+# SUOAC Backend - Docker Compose (Testes E2E)
+# ============================================================
+# Uso: docker compose -f docker-compose.test.yml up -d
+# Sobe um PostgreSQL isolado para testes end-to-end.
+# Porta 5433 para não conflitar com o banco de desenvolvimento.
+# ============================================================
+
+services:
+  db-test:
+    image: postgres:16-alpine
+    container_name: suoac-db-test
+    restart: 'no'
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: suoac
+      POSTGRES_PASSWORD: suoac_test
+      POSTGRES_DB: suoac_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U suoac -d suoac_test']
+      interval: 3s
+      timeout: 3s
+      retries: 5

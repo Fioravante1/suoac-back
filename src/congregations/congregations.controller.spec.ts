@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CongregationsController } from './congregations.controller';
 import { CongregationsService } from './congregations.service';
 import type { CongregationResponse } from './interfaces/congregation-response.interface';
@@ -12,10 +13,21 @@ function buildCongregation(overrides: Partial<CongregationResponse> = {}): Congr
     name: overrides.name ?? 'Águas de Março',
     email: overrides.email ?? 'CONG09480275@jwpub.org',
     city: overrides.city ?? null,
-    isActive: overrides.isActive ?? true,
     circuitId: overrides.circuitId ?? 'a1b2c3d4-0000-0000-0000-000000000001',
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+  };
+}
+
+const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
+
+function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: 'u1u2u3u4-0000-0000-0000-000000000001',
+    email: 'user@example.com',
+    role: overrides.role ?? 'CIRCUIT_COORDINATOR',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
+    congregationId: overrides.congregationId ?? null,
   };
 }
 
@@ -51,10 +63,10 @@ describe('CongregationsController', () => {
 
       serviceMock.create.mockResolvedValue(expected);
 
-      const result = await controller.create(circuitId, dto);
+      const result = await controller.create(circuitId, dto, buildUser());
 
       expect(result).toEqual(expected);
-      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, dto);
+      expect(serviceMock.create).toHaveBeenCalledWith(circuitId, dto, buildUser());
     });
 
     it('deve propagar NotFoundException do service', async () => {
@@ -62,15 +74,15 @@ describe('CongregationsController', () => {
 
       serviceMock.create.mockRejectedValue(new NotFoundException('Circuito não encontrado'));
 
-      await expect(controller.create(circuitId, dto)).rejects.toThrow(NotFoundException);
+      await expect(controller.create(circuitId, dto, buildUser())).rejects.toThrow(NotFoundException);
     });
 
     it('deve propagar ConflictException do service', async () => {
       const dto = { code: '80275', name: 'Águas de Março', email: 'CONG09480275@jwpub.org' };
 
-      serviceMock.create.mockRejectedValue(new ConflictException('Já existe uma congregação com este code'));
+      serviceMock.create.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
-      await expect(controller.create(circuitId, dto)).rejects.toThrow(ConflictException);
+      await expect(controller.create(circuitId, dto, buildUser())).rejects.toThrow(ConflictException);
     });
   });
 
@@ -111,19 +123,20 @@ describe('CongregationsController', () => {
   describe('findOne', () => {
     it('deve delegar a busca ao service e retornar o resultado', async () => {
       const expected = buildCongregation();
+      const user = buildUser();
 
       serviceMock.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(expected.id);
+      const result = await controller.findOne(expected.id, user);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id);
+      expect(serviceMock.findOne).toHaveBeenCalledWith(expected.id, user);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.findOne.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.findOne('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -132,36 +145,38 @@ describe('CongregationsController', () => {
     it('deve delegar a atualização ao service e retornar o resultado', async () => {
       const existing = buildCongregation();
       const updated = buildCongregation({ name: 'Novo Nome' });
+      const user = buildUser();
 
       serviceMock.update.mockResolvedValue(updated);
 
-      const result = await controller.update(existing.id, { name: 'Novo Nome' });
+      const result = await controller.update(existing.id, { name: 'Novo Nome' }, user);
 
       expect(result).toEqual(updated);
-      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' });
+      expect(serviceMock.update).toHaveBeenCalledWith(existing.id, { name: 'Novo Nome' }, user);
     });
 
     it('deve propagar ConflictException do service', async () => {
-      serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este code'));
+      serviceMock.update.mockRejectedValue(new ConflictException('Já existe uma congregação com este código'));
 
-      await expect(controller.update('id', { code: 'duplicado' })).rejects.toThrow(ConflictException);
+      await expect(controller.update('id', { code: 'duplicado' }, buildUser())).rejects.toThrow(ConflictException);
     });
   });
 
   // ── remove ────────────────────────────────────────────────────
   describe('remove', () => {
     it('deve delegar a remoção ao service', async () => {
+      const user = buildUser();
       serviceMock.remove.mockResolvedValue(undefined);
 
-      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001');
+      await controller.remove('c1c2c3c4-0000-0000-0000-000000000001', user);
 
-      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001');
+      expect(serviceMock.remove).toHaveBeenCalledWith('c1c2c3c4-0000-0000-0000-000000000001', user);
     });
 
     it('deve propagar NotFoundException do service', async () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Congregação não encontrada'));
 
-      await expect(controller.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(controller.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
 });

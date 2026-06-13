@@ -1,0 +1,394 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import { EncryptionService } from '../common/encryption/encryption.service';
+import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import { PrismaService } from '../prisma/prisma.service';
+import type { CreatePassengerDto } from './dto/create-passenger.dto';
+import type { PassengerFilterQueryDto } from './dto/passenger-filter-query.dto';
+import type { UpdatePassengerDto } from './dto/update-passenger.dto';
+import type { PassengerResponse } from './interfaces/passenger-response.interface';
+
+const RG_PATTERN = /^[\d.\-xX]{5,14}$/;
+
+@Injectable()
+export class PassengersService {
+  private readonly logger = new Logger(PassengersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
+
+  async create(congregationId: string, dto: CreatePassengerDto, user: JwtPayload): Promise<PassengerResponse> {
+    await this.ensureCongregationExists(congregationId, user);
+
+    const normalizedRg = this.normalizeRg(dto.rg);
+    const rgHash = this.encryption.hash(normalizedRg);
+
+    const existing = await this.prisma.client.passenger.findUnique({
+      where: { congregationId_rgHash: { congregationId, rgHash } },
+    });
+
+    if (existing) {
+      this.logger.warn(`Conflito ao criar passageiro — RG duplicado na congregação, congregationId=${congregationId}`);
+      throw new ConflictException('Já existe um passageiro com este RG nesta congregação');
+    }
+
+    const rgEncrypted = this.encryption.encrypt(normalizedRg);
+
+    const passenger = await this.prisma.client.passenger.create({
+      data: {
+        name: dto.name,
+        rgEncrypted,
+        rgHash,
+        phone: dto.phone,
+        observations: dto.observations,
+        congregationId,
+      },
+    });
+
+    this.logger.log(`Passageiro criado — id=${passenger.id}, congregationId=${congregationId}`);
+
+    void this.auditLogService
+      .log('CREATE', 'Passenger', passenger.id, user.sub, {
+        oldValues: null,
+        newValues: passenger as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: passenger.id }, 'Falha ao gravar audit log'));
+
+    return this.toResponse(passenger);
+  }
+
+  async findByCongregation(
+    congregationId: string,
+    page: number,
+    limit: number,
+    user: JwtPayload,
+  ): Promise<PaginatedResponse<PassengerResponse>> {
+    await this.ensureCongregationExists(congregationId, user);
+
+    this.logger.debug(`Listando passageiros — congregationId=${congregationId}, page=${page}, limit=${limit}`);
+
+    const where = { congregationId };
+
+    const [data, total] = await Promise.all([
+      this.prisma.client.passenger.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.client.passenger.count({ where }),
+    ]);
+
+    return {
+      data: data.map((p) => this.toResponse(p)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findByCircuit(
+    circuitId: string,
+    query: PassengerFilterQueryDto,
+    user: JwtPayload,
+  ): Promise<PaginatedResponse<PassengerResponse>> {
+    checkCircuitOwnership(user, circuitId);
+
+    if (!isCircuitRole(user.role) && !user.congregationId) {
+      throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
+    }
+
+    await this.ensureCircuitExists(circuitId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const effectiveCongregationId = isCircuitRole(user.role) ? query.congregationId : user.congregationId!;
+
+    const baseWhere = effectiveCongregationId
+      ? { congregation: { id: effectiveCongregationId, circuitId } }
+      : { congregation: { circuitId } };
+
+    if (query.q && RG_PATTERN.test(query.q)) {
+      const normalizedRg = this.normalizeRg(query.q);
+      const rgHash = this.encryption.hash(normalizedRg);
+
+      const where = { ...baseWhere, rgHash };
+
+      const [data, total] = await Promise.all([
+        this.prisma.client.passenger.findMany({
+          where,
+          include: { congregation: { select: { name: true } } },
+          orderBy: { name: 'asc' as const },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        this.prisma.client.passenger.count({ where }),
+      ]);
+
+      return {
+        data: data.map((p) => this.toResponse(p, p.congregation.name)),
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      };
+    }
+
+    const where = query.q ? { ...baseWhere, name: { contains: query.q, mode: 'insensitive' as const } } : baseWhere;
+
+    this.logger.debug(
+      `Listando passageiros do circuito — circuitId=${circuitId}, congregationId=${effectiveCongregationId ?? 'all'}, q=${query.q ?? 'none'}, page=${page}, limit=${limit}`,
+    );
+
+    const [data, total] = await Promise.all([
+      this.prisma.client.passenger.findMany({
+        where,
+        include: { congregation: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.client.passenger.count({ where }),
+    ]);
+
+    return {
+      data: data.map((p) => this.toResponse(p, p.congregation.name)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async search(
+    congregationId: string,
+    q: string,
+    page: number,
+    limit: number,
+    user: JwtPayload,
+  ): Promise<PaginatedResponse<PassengerResponse>> {
+    await this.ensureCongregationExists(congregationId, user);
+
+    this.logger.debug(`Buscando passageiros — congregationId=${congregationId}, q="${q}"`);
+
+    const isRgQuery = RG_PATTERN.test(q);
+
+    if (isRgQuery) {
+      const normalizedRg = this.normalizeRg(q);
+      const rgHash = this.encryption.hash(normalizedRg);
+
+      const passenger = await this.prisma.client.passenger.findUnique({
+        where: { congregationId_rgHash: { congregationId, rgHash } },
+      });
+
+      const data = passenger ? [this.toResponse(passenger)] : [];
+      return {
+        data,
+        meta: {
+          total: data.length,
+          page: 1,
+          limit,
+          totalPages: data.length > 0 ? 1 : 0,
+        },
+      };
+    }
+
+    const where = {
+      congregationId,
+      name: { contains: q, mode: 'insensitive' as const },
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.client.passenger.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.client.passenger.count({ where }),
+    ]);
+
+    return {
+      data: data.map((p) => this.toResponse(p)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findOne(id: string, user: JwtPayload): Promise<PassengerResponse> {
+    const passenger = await this.prisma.client.passenger.findUnique({
+      where: { id },
+      include: { congregation: { select: { circuitId: true } } },
+    });
+
+    if (!passenger) {
+      this.logger.warn(`Passageiro não encontrado — id=${id}`);
+      throw new NotFoundException('Passageiro não encontrado');
+    }
+
+    checkCircuitOwnership(user, passenger.congregation.circuitId);
+
+    return this.toResponse(passenger);
+  }
+
+  async update(id: string, dto: UpdatePassengerDto, user: JwtPayload): Promise<PassengerResponse> {
+    const existing = await this.prisma.client.passenger.findUnique({
+      where: { id },
+      include: { congregation: { select: { circuitId: true } } },
+    });
+
+    if (!existing) {
+      this.logger.warn(`Passageiro não encontrado para atualização — id=${id}`);
+      throw new NotFoundException('Passageiro não encontrado');
+    }
+
+    checkCircuitOwnership(user, existing.congregation.circuitId);
+
+    const normalizedRg = dto.rg !== undefined ? this.normalizeRg(dto.rg) : undefined;
+    const rgHash = normalizedRg !== undefined ? this.encryption.hash(normalizedRg) : undefined;
+    const rgEncrypted = normalizedRg !== undefined ? this.encryption.encrypt(normalizedRg) : undefined;
+
+    const rgConflict =
+      rgHash !== undefined && rgHash !== existing.rgHash
+        ? await this.prisma.client.passenger.findUnique({
+            where: { congregationId_rgHash: { congregationId: existing.congregationId, rgHash } },
+          })
+        : null;
+
+    if (rgConflict) {
+      this.logger.warn(`Conflito ao atualizar passageiro — RG duplicado, id=${id}`);
+      throw new ConflictException('Já existe um passageiro com este RG nesta congregação');
+    }
+
+    const passenger = await this.prisma.client.passenger.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(rgEncrypted !== undefined && { rgEncrypted }),
+        ...(rgHash !== undefined && { rgHash }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.observations !== undefined && { observations: dto.observations }),
+      },
+    });
+
+    this.logger.log(`Passageiro atualizado — id=${id}`);
+
+    const updated = this.toResponse(passenger);
+
+    void this.auditLogService
+      .log('UPDATE', 'Passenger', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: updated as unknown as Record<string, unknown>,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+
+    return updated;
+  }
+
+  async remove(id: string, user: JwtPayload): Promise<void> {
+    const existing = await this.prisma.client.passenger.findUnique({
+      where: { id },
+      include: { congregation: { select: { circuitId: true } } },
+    });
+
+    if (!existing) {
+      this.logger.warn(`Passageiro não encontrado para remoção — id=${id}`);
+      throw new NotFoundException('Passageiro não encontrado');
+    }
+
+    checkCircuitOwnership(user, existing.congregation.circuitId);
+
+    const eventCount = await this.prisma.client.eventPassenger.count({
+      where: { passengerId: id },
+    });
+
+    if (eventCount > 0) {
+      this.logger.warn(
+        `Tentativa de remover passageiro com inscrições em eventos — id=${id}, eventCount=${eventCount}`,
+      );
+      throw new UnprocessableEntityException('Não é possível remover um passageiro que possui inscrições em eventos');
+    }
+
+    await this.prisma.client.passenger.delete({
+      where: { id },
+    });
+
+    this.logger.warn(`Passageiro removido (hard-delete) — id=${id}`);
+
+    void this.auditLogService
+      .log('DELETE', 'Passenger', id, user.sub, {
+        oldValues: existing as unknown as Record<string, unknown>,
+        newValues: null,
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+  }
+
+  private normalizeRg(rg: string): string {
+    return rg.replace(/[.-]/g, '').toUpperCase();
+  }
+
+  private toResponse(
+    passenger: {
+      id: string;
+      name: string;
+      rgEncrypted: string;
+      phone: string | null;
+      observations: string | null;
+      congregationId: string;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    congregationName?: string,
+  ): PassengerResponse {
+    return {
+      id: passenger.id,
+      name: passenger.name,
+      rg: this.encryption.decrypt(passenger.rgEncrypted),
+      phone: passenger.phone,
+      observations: passenger.observations,
+      congregationId: passenger.congregationId,
+      ...(congregationName !== undefined && { congregationName }),
+      createdAt: passenger.createdAt,
+      updatedAt: passenger.updatedAt,
+    };
+  }
+
+  private async ensureCircuitExists(circuitId: string): Promise<void> {
+    const circuit = await this.prisma.client.circuit.findUnique({
+      where: { id: circuitId },
+    });
+
+    if (!circuit) {
+      this.logger.warn(`Circuito não encontrado ao validar dependência — circuitId=${circuitId}`);
+      throw new NotFoundException('Circuito não encontrado');
+    }
+  }
+
+  private async ensureCongregationExists(congregationId: string, user: JwtPayload): Promise<void> {
+    const congregation = await this.prisma.client.congregation.findFirst({
+      where: { id: congregationId, isActive: true },
+      select: { id: true, circuitId: true },
+    });
+
+    if (!congregation) {
+      this.logger.warn(`Congregação não encontrada ao validar dependência — congregationId=${congregationId}`);
+      throw new NotFoundException('Congregação não encontrada');
+    }
+
+    checkCircuitOwnership(user, congregation.circuitId);
+  }
+}

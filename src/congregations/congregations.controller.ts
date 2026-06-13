@@ -12,6 +12,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { CongregationsService } from './congregations.service';
@@ -29,8 +31,9 @@ export class CongregationsController {
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Body() dto: CreateCongregationDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CongregationResponse> {
-    return this.congregationsService.create(circuitId, dto);
+    return this.congregationsService.create(circuitId, dto, user);
   }
 
   @Get('circuits/:circuitId/congregations')
@@ -42,21 +45,25 @@ export class CongregationsController {
   }
 
   @Get('congregations/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<CongregationResponse> {
-    return this.congregationsService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CongregationResponse> {
+    return this.congregationsService.findOne(id, user);
   }
 
   @Patch('congregations/:id')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCongregationDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<CongregationResponse> {
-    return this.congregationsService.update(id, dto);
+    return this.congregationsService.update(id, dto, user);
   }
 
   @Delete('congregations/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.congregationsService.remove(id);
+  async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
+    return this.congregationsService.remove(id, user);
   }
 }

@@ -1,8 +1,8 @@
 # SUOAC - Sistema Unificado de Ônibus para Assembleias e Congressos
 
 **Documento de Requisitos**
-**Versão:** 2.0
-**Data:** 14/05/2026
+**Versão:** 2.1
+**Data:** 27/05/2026
 
 ---
 
@@ -16,6 +16,7 @@
 6. [Regras de Negócio](#6-regras-de-negócio)
 7. [Stack Tecnológica](#7-stack-tecnológica)
 8. [Considerações Finais](#8-considerações-finais)
+9. [Histórico de Alterações](#9-histórico-de-alterações)
 
 ---
 
@@ -41,6 +42,15 @@ Facilitar o gerenciamento de inscrições, pagamentos e logística de transporte
 - Cálculo automático do valor total (valor da passagem × dias selecionados)
 - Gestão de ocupação do ônibus por dia
 - Funcionalidades adicionais de usabilidade e operação
+
+### 1.4 Mudanças na v2.1
+
+- Gestão de Ônibus promovida de funcionalidade adicional (4.4) para requisito funcional (2.7)
+- Detalhamento completo: ônibus por dia do evento, cotas por congregação, compartilhamento entre congregações
+- Clarificação do modelo financeiro: `ticketPrice` é o valor por assento já calculado pelo coordenador do circuito a partir do custo do ônibus
+- Novas regras de negócio (14-22) para gestão de ônibus
+- Fluxo principal atualizado com etapas de gestão de ônibus
+- Módulo `BusesModule` adicionado à estrutura modular do NestJS
 
 ---
 
@@ -78,17 +88,17 @@ Campos obrigatórios ao criar um evento:
 - **Quantidade de dias do evento:** 1 dia (assembleia) ou múltiplos dias (congresso)
 - **Datas do evento:** para eventos de 1 dia, uma data. Para eventos multi-dia, data de início e data de término. O sistema deve gerar automaticamente a lista de dias do evento a partir desse intervalo
 - **Local do evento:** nome, endereço, cidade, estado
-- **Valor da passagem (por dia):** valor único definido para o evento (ex: R$ 40,00). O valor total do passageiro é calculado multiplicando esse valor pela quantidade de dias em que ele se inscreveu
+- **Valor da passagem (por dia):** valor por assento, calculado pelo coordenador do circuito a partir do custo do ônibus dividido pela capacidade (ex: ônibus de R$ 1.840 / 46 lugares = R$ 40,00). Valor único para todos os dias e todos os ônibus do evento. O valor total do passageiro é calculado multiplicando esse valor pela quantidade de dias em que ele se inscreveu
 - **Prazo de inscrição:** data limite para cadastro de passageiros
 - **Prazo de pagamento:** data limite para pagamento
 - **Horário(s) de saída e retorno:** por dia do evento
-- **Capacidade máxima de passageiros:** por ônibus e/ou total
+- **Capacidade máxima de passageiros:** controlada via gestão de ônibus (seção 2.7) — cada ônibus tem sua capacidade e cotas por congregação
 - **Observações gerais:** campo livre para informações adicionais
 - **Status do evento:** Rascunho, Aberto para inscrições, Inscrições encerradas, Finalizado
 
 #### 2.2.2 Cálculo do Valor do Passageiro
 
-O coordenador do circuito define um valor único de passagem ao criar o evento. O valor total de cada passageiro é calculado automaticamente:
+O coordenador do circuito define um valor único de passagem ao criar o evento (valor por assento, derivado do custo do ônibus / capacidade). O valor total de cada passageiro é calculado automaticamente:
 
 - **Valor total = valor da passagem × quantidade de dias selecionados**
 - Exemplo: passagem do congresso = R$ 40,00. Passageiro vai sexta e domingo (2 dias) → paga R$ 80,00. Passageiro vai os 3 dias → paga R$ 120,00
@@ -107,7 +117,7 @@ Para cada dia do evento, o sistema deve armazenar:
 #### 2.2.4 Ciclo de Vida do Evento
 
 1. **Rascunho:** Evento criado mas não visível para congregações. Coordenador do circuito pode editar livremente
-2. **Aberto para inscrições:** Evento publicado. Congregações podem cadastrar passageiros. Edições limitadas (não pode alterar datas já com inscrições)
+2. **Aberto para inscrições:** Evento publicado. Congregações podem cadastrar passageiros. Edições limitadas (não pode alterar datas já com inscrições). Os prazos de inscrição (`registrationDeadline`) e de pagamento (`paymentDeadline`) só podem ser alterados pelo coordenador do circuito
 3. **Inscrições encerradas:** Prazo de inscrição expirou ou foi encerrado manualmente. Apenas coordenador do circuito pode adicionar/remover passageiros
 4. **Finalizado:** Evento concluído. Dados em modo somente leitura para consulta e relatórios
 
@@ -218,6 +228,67 @@ Campos por passageiro:
 
 ---
 
+### 2.7 Gestão de Ônibus
+
+O arranjo de ônibus é unificado por circuito. Ônibus podem ser compartilhados entre congregações, com cotas formais de assentos. A gestão de ônibus é de responsabilidade exclusiva do coordenador e assistente do circuito.
+
+#### 2.7.1 Contexto e Modelo Financeiro
+
+O coordenador do circuito negocia o frete com a empresa de ônibus antes de criar o evento. O custo é por ônibus (ex: R$ 1.840,00 para um ônibus de 46 lugares). O coordenador calcula o valor por assento (R$ 1.840 / 46 = R$ 40,00) e usa esse valor como `ticketPrice` ao criar o evento. Portanto:
+
+- O `ticketPrice` do evento **já é o valor por assento**, calculado pelo coordenador a partir do custo do ônibus
+- O custo total do ônibus é pago integralmente à empresa, independente de ocupação real
+- Se o coordenador reservou ônibus com capacidades diferentes, ele faz uma média e define um valor único por assento
+- A gestão de ônibus no sistema é **logística/organizacional**, não altera o cálculo financeiro dos passageiros
+
+#### 2.7.2 Ônibus por Dia do Evento
+
+Cada ônibus é vinculado a um **dia do evento** (EventDay), não ao evento inteiro. Isso permite que a composição de ônibus varie entre os dias:
+
+- Sexta-feira: 3 ônibus (menos passageiros, dia de trabalho)
+- Sábado: 5 ônibus (pico de público)
+- Domingo: 4 ônibus
+
+#### 2.7.3 Criação de Ônibus (Coordenador/Assistente do Circuito)
+
+Campos por ônibus:
+
+- **Nome/rótulo:** identificação dada pelo coordenador (ex: "Ônibus 1", "Ônibus Sul", "Van Complementar")
+- **Capacidade:** número de assentos. Existe uma capacidade padrão configurável (ex: 46), mas cada ônibus pode ter sua capacidade editada individualmente (ex: van de 20 lugares)
+- **Dia do evento:** o EventDay ao qual o ônibus pertence
+
+#### 2.7.4 Alocação de Cotas por Congregação
+
+Após criar os ônibus, o coordenador do circuito distribui cotas de assentos por congregação:
+
+- Cada alocação define: **X assentos** do **Ônibus Y** para a **Congregação Z**
+- Um ônibus pode ser dividido entre múltiplas congregações (ex: Ônibus 3 → Cong A: 23, Cong B: 23)
+- Uma congregação pode ter assentos em múltiplos ônibus no mesmo dia (ex: Cong A tem 46 no Ônibus 1 + 10 no Ônibus 3)
+- A soma das cotas de um ônibus **não precisa** atingir a capacidade total — assentos podem ficar livres (mas o custo do ônibus é pago integralmente à empresa)
+- A soma das cotas **não pode exceder** a capacidade do ônibus
+
+#### 2.7.5 Sugestão Automática de Alocação
+
+O sistema deve ser capaz de sugerir alocação automática com base na quantidade de passageiros inscritos por congregação por dia:
+
+- Se uma congregação inscreveu 46 passageiros para sexta e existe um ônibus de 46 lugares disponível, o sistema sugere alocar a congregação inteira nesse ônibus
+- A sugestão é uma conveniência — o coordenador do circuito pode aceitar, ajustar ou ignorar
+
+#### 2.7.6 Visibilidade para Congregações
+
+Após o coordenador do circuito fazer a divisão de ônibus, os coordenadores e assistentes de congregação visualizam:
+
+- Em qual(is) ônibus estão alocados, por dia do evento
+- Quantos assentos têm em cada ônibus
+- Com quais congregações compartilham cada ônibus
+- Essa informação é essencial para o planejamento de pontos de parada para embarque/desembarque dos passageiros
+
+#### 2.7.7 Controle Numérico (sem vínculo passageiro-ônibus)
+
+Na versão atual, o controle é **numérico**: o sistema rastreia quantos assentos cada congregação tem em cada ônibus vs. quantos passageiros estão inscritos. Não há atribuição de passageiro individual a um ônibus específico (ex: "João vai no Ônibus 1"). Essa funcionalidade poderá ser adicionada em fase futura.
+
+---
+
 ## 3. REQUISITOS NÃO FUNCIONAIS
 
 ### 3.1 Segurança
@@ -275,12 +346,9 @@ Campos por passageiro:
 - Check-in por dia em eventos multi-dia
 - Útil para controle de assentos livres e no-shows
 
-### 4.4 Gestão de Ônibus
+### 4.4 ~~Gestão de Ônibus~~ → Promovido para Requisito Funcional (seção 2.7)
 
-- Cadastrar quantidade de ônibus disponíveis para o evento
-- Definir capacidade por ônibus
-- Visualizar ocupação por ônibus e por dia
-- Opcional: alocação de passageiros por ônibus (mapa de assentos simplificado ou apenas lista por ônibus)
+> **Nota (v2.1):** Esta funcionalidade foi promovida de sugestão para requisito funcional. Ver [seção 2.7](#27-gestão-de-ônibus) para o detalhamento completo.
 
 ### 4.5 Ponto de Encontro
 
@@ -346,32 +414,40 @@ Permite que coordenadores e assistentes (tanto do circuito quanto das congregaç
 
 | Etapa | Ação | Responsável |
 |-------|------|-------------|
-| 1 | Criar evento com data, local, valor e prazos | Coord. Circuito |
-| 2 | Publicar evento (status "Aberto para inscrições") | Coord. Circuito |
-| 3 | Cadastrar passageiros (nome, RG, pagamento) | Coord. Congregação |
-| 4 | Registrar pagamentos recebidos | Coord. Congregação |
-| 5 | Finalizar lista da congregação | Coord. Congregação |
-| 6 | Acompanhar panorama geral (inscritos, pagamentos) | Coord. Circuito |
-| 7 | Encerrar inscrições (manual ou automático por prazo) | Coord. Circuito |
-| 8 | Gerar listas e relatórios finais | Coord. Circuito |
-| 9 | Check-in no dia do evento (opcional) | Coord. Congregação |
-| 10 | Finalizar evento | Coord. Circuito |
+| 1 | Negociar frete com empresa de ônibus, calcular valor por assento | Coord. Circuito (externo ao sistema) |
+| 2 | Criar evento com data, local, valor (= valor por assento) e prazos | Coord. Circuito |
+| 3 | Publicar evento (status "Aberto para inscrições") | Coord. Circuito |
+| 4 | Cadastrar passageiros (nome, RG, pagamento) | Coord. Congregação |
+| 5 | Registrar pagamentos recebidos | Coord. Congregação |
+| 6 | Finalizar lista da congregação | Coord. Congregação |
+| 7 | Acompanhar panorama geral (inscritos, pagamentos) | Coord. Circuito |
+| 8 | Criar ônibus para o dia do evento (nome, capacidade) | Coord. Circuito |
+| 9 | Distribuir cotas de assentos por congregação em cada ônibus | Coord. Circuito |
+| 10 | Congregações visualizam seus ônibus e com quem compartilham | Coord. Congregação |
+| 11 | Encerrar inscrições (manual ou automático por prazo) | Coord. Circuito |
+| 12 | Gerar listas e relatórios finais | Coord. Circuito |
+| 13 | Check-in no dia do evento (opcional) | Coord. Congregação |
+| 14 | Finalizar evento | Coord. Circuito |
 
 ### 5.2 Fluxo para Eventos Multi-dia (Congresso)
 
 | Etapa | Ação | Responsável |
 |-------|------|-------------|
-| 1 | Criar evento com datas de início/fim, quantidade de dias, valor da passagem e prazos | Coord. Circuito |
-| 2 | Publicar evento | Coord. Circuito |
-| 3 | Cadastrar passageiros selecionando os dias em que cada um irá | Coord. Congregação |
-| 4 | Sistema calcula valor automaticamente (passagem × dias selecionados) | Sistema |
-| 5 | Registrar pagamentos (total ou parcial) | Coord. Congregação |
-| 6 | Finalizar lista da congregação | Coord. Congregação |
-| 7 | Acompanhar panorama geral por dia (quantos na sexta, quantos no sábado, etc.) | Coord. Circuito |
-| 8 | Encerrar inscrições | Coord. Circuito |
-| 9 | Gerar listas por dia (lista de embarque da sexta, lista do sábado, etc.) | Coord. Circuito |
-| 10 | Check-in por dia (opcional) | Coord. Congregação |
-| 11 | Finalizar evento | Coord. Circuito |
+| 1 | Negociar frete com empresa de ônibus, calcular valor por assento | Coord. Circuito (externo ao sistema) |
+| 2 | Criar evento com datas de início/fim, quantidade de dias, valor da passagem (= valor por assento) e prazos | Coord. Circuito |
+| 3 | Publicar evento | Coord. Circuito |
+| 4 | Cadastrar passageiros selecionando os dias em que cada um irá | Coord. Congregação |
+| 5 | Sistema calcula valor automaticamente (passagem × dias selecionados) | Sistema |
+| 6 | Registrar pagamentos (total ou parcial) | Coord. Congregação |
+| 7 | Finalizar lista da congregação | Coord. Congregação |
+| 8 | Acompanhar panorama geral por dia (quantos na sexta, quantos no sábado, etc.) | Coord. Circuito |
+| 9 | Criar ônibus por dia do evento (nome, capacidade) | Coord. Circuito |
+| 10 | Distribuir cotas de assentos por congregação em cada ônibus (manual ou com sugestão automática) | Coord. Circuito |
+| 11 | Congregações visualizam seus ônibus, vagas e com quem compartilham (para planejar pontos de parada) | Coord. Congregação |
+| 12 | Encerrar inscrições | Coord. Circuito |
+| 13 | Gerar listas por dia (lista de embarque da sexta, lista do sábado, etc.) | Coord. Circuito |
+| 14 | Check-in por dia (opcional) | Coord. Congregação |
+| 15 | Finalizar evento | Coord. Circuito |
 
 ---
 
@@ -389,6 +465,16 @@ Permite que coordenadores e assistentes (tanto do circuito quanto das congregaç
 10. **Dias do evento:** Cada dia do evento tem controle independente de ocupação. Um ônibus pode estar lotado na sexta mas ter vagas no domingo
 11. **Consistência financeira:** O valor pago nunca pode exceder o valor calculado. Se os dias forem reduzidos e o valor pago for maior que o novo valor calculado, o sistema deve alertar sobre crédito/reembolso
 12. **Permissões hierárquicas:** Coordenador do circuito pode fazer tudo que o coordenador da congregação faz, mas não o contrário
+13. **Prazos do evento:** Com o evento aberto, apenas o coordenador do circuito pode alterar o prazo de inscrição (`registrationDeadline`) e o prazo de pagamento (`paymentDeadline`). Assistentes do circuito não têm essa permissão
+14. **Gestão de ônibus — permissão:** Apenas coordenador e assistente do circuito podem criar, editar e remover ônibus e suas alocações de cotas
+15. **Gestão de ônibus — granularidade:** Ônibus são vinculados a um dia do evento (EventDay), não ao evento inteiro. A composição de ônibus pode variar entre os dias
+16. **Gestão de ônibus — capacidade padrão:** Existe uma capacidade padrão configurável (ex: 46 assentos). Cada ônibus pode ter sua capacidade editada individualmente
+17. **Gestão de ônibus — limite de cotas:** A soma das cotas de assentos alocadas em um ônibus não pode exceder a capacidade do ônibus
+18. **Gestão de ônibus — assentos livres:** Se a soma das cotas for menor que a capacidade, os assentos restantes ficam livres. O custo do ônibus é pago integralmente à empresa contratada independente da ocupação
+19. **Gestão de ônibus — compartilhamento:** Um ônibus pode ser compartilhado entre múltiplas congregações, com cotas formais de assentos por congregação
+20. **Gestão de ônibus — visibilidade:** Após a divisão, coordenadores e assistentes de congregação visualizam seus ônibus, cotas e as congregações com quem compartilham. Essa informação é necessária para planejamento de pontos de parada
+21. **Gestão de ônibus — valor:** O `ticketPrice` do evento é o valor por assento, já calculado pelo coordenador do circuito a partir do custo do ônibus dividido pela capacidade. O sistema de ônibus é logístico e não altera o cálculo financeiro dos passageiros
+22. **Gestão de ônibus — controle numérico:** Na versão atual, o controle é numérico (cotas de assentos por congregação). Não há atribuição de passageiro individual a ônibus específico
 
 ---
 
@@ -444,6 +530,7 @@ O sistema é composto por dois backends e um frontend:
 - **EventsModule** — criação, ciclo de vida e configuração de eventos
 - **EventDaysModule** — dias do evento, horários, status por dia
 - **PassengersModule** — cadastro base de passageiros e inscrições por evento/dia
+- **BusesModule** — gestão de ônibus por dia do evento, cotas de assentos por congregação, sugestão automática de alocação
 - **PaymentsModule** — registro e controle de pagamentos
 - **ReportsModule** — geração de relatórios e exportações (PDF, XLSX)
 - **NotificationsModule** — alertas e lembretes do sistema
@@ -543,7 +630,7 @@ O sistema é composto por dois backends e um frontend:
 
 ### 8.2 Priorização para MVP
 
-O MVP deve cobrir o fluxo essencial: criar evento (com suporte a multi-dia), cadastrar passageiros (com seleção de dias), registrar pagamentos, e visualizar dashboards. Funcionalidades como check-in, importação em lote, modo offline, gestão de ônibus e tracking em tempo real (Go) serão adicionadas em fases posteriores.
+O MVP deve cobrir o fluxo essencial: criar evento (com suporte a multi-dia), cadastrar passageiros (com seleção de dias), registrar pagamentos, gestão de ônibus (criação, cotas por congregação) e visualizar dashboards. Funcionalidades como check-in, importação em lote, modo offline, sugestão automática de alocação de ônibus e tracking em tempo real (Go) serão adicionadas em fases posteriores.
 
 ### 8.3 Observações
 
@@ -551,6 +638,15 @@ O MVP deve cobrir o fluxo essencial: criar evento (com suporte a multi-dia), cad
 - A interface deve ser clara, intuitiva e funcionar bem em celular, já que a maioria dos coordenadores usará o sistema pelo smartphone
 - Os dados dos irmãos (especialmente RG) devem ser tratados com o máximo de cuidado e em conformidade com a LGPD
 - O serviço de tracking em Go será o primeiro projeto real em Go do desenvolvedor, servindo também como aprendizado da linguagem
+
+---
+
+## 9. HISTÓRICO DE ALTERAÇÕES
+
+| Versão | Data | Descrição |
+|--------|------|-----------|
+| 2.0 | 14/05/2026 | Versão inicial v2: suporte multi-dia, inscrição por dia, cálculo automático de valor |
+| 2.1 | 27/05/2026 | Gestão de Ônibus promovida a requisito funcional (seção 2.7). Detalhamento de ônibus por dia, cotas por congregação, compartilhamento, visibilidade e modelo financeiro. Novas regras de negócio (14-22). Fluxos atualizados. BusesModule adicionado |
 
 ---
 

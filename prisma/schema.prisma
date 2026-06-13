@@ -40,6 +40,7 @@ enum EventStatus {
   OPEN
   CLOSED
   FINISHED
+  CANCELLED
 }
 
 enum EventDayStatus {
@@ -381,8 +382,8 @@ model AuditLog {
   details  Json?
   ip       String?  @db.VarChar(45)
 
-  userId String @map("user_id") @db.Uuid
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String? @map("user_id") @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @map("created_at")
 

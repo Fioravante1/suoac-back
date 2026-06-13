@@ -1,6 +1,8 @@
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import type { UserRole } from '../generated/prisma/enums';
@@ -104,6 +106,16 @@ function buildUserResponse(overrides: Partial<UserResponse> = {}): UserResponse 
   };
 }
 
+function buildCaller(overrides: Partial<JwtPayload> = {}): JwtPayload {
+  return {
+    sub: overrides.sub ?? USER_ID,
+    email: overrides.email ?? 'coordenador@example.com',
+    role: overrides.role ?? 'CIRCUIT_COORDINATOR',
+    circuitId: overrides.circuitId ?? CIRCUIT_ID,
+    congregationId: overrides.congregationId ?? null,
+  };
+}
+
 // ── Test Suite ───────────────────────────────────────────────────
 describe('UsersService', () => {
   let service: UsersService;
@@ -123,6 +135,7 @@ describe('UsersService', () => {
         UsersService,
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: HashingService, useValue: hashingMock },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
@@ -145,7 +158,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
       prismaMock.user.create.mockResolvedValue(buildUserRaw());
 
-      const result = await service.create(CIRCUIT_ID, baseDto);
+      const result = await service.create(CIRCUIT_ID, baseDto, buildCaller());
 
       expect(result).toEqual(buildUserResponse());
       expect(result).not.toHaveProperty('passwordHash');
@@ -167,7 +180,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
       prismaMock.user.create.mockResolvedValue(buildUserRaw());
 
-      await service.create(CIRCUIT_ID, baseDto);
+      await service.create(CIRCUIT_ID, baseDto, buildCaller());
 
       expect(hashingMock.hash).toHaveBeenCalledWith('Senh@123!');
     });
@@ -175,7 +188,7 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando circuito nao existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.create(CIRCUIT_ID, baseDto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(CIRCUIT_ID, baseDto, buildCaller())).rejects.toThrow(NotFoundException);
     });
 
     it('deve lancar ConflictException quando email ja existe', async () => {
@@ -183,21 +196,21 @@ describe('UsersService', () => {
       prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation());
       prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
 
-      await expect(service.create(CIRCUIT_ID, baseDto)).rejects.toThrow(ConflictException);
+      await expect(service.create(CIRCUIT_ID, baseDto, buildCaller())).rejects.toThrow(ConflictException);
     });
 
     it('deve lancar NotFoundException quando congregationId inexistente', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.congregation.findUnique.mockResolvedValue(null);
 
-      await expect(service.create(CIRCUIT_ID, baseDto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(CIRCUIT_ID, baseDto, buildCaller())).rejects.toThrow(NotFoundException);
     });
 
     it('deve lancar UnprocessableEntityException quando congregacao nao pertence ao circuito', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation({ circuitId: 'outro-circuito-id' }));
 
-      await expect(service.create(CIRCUIT_ID, baseDto)).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.create(CIRCUIT_ID, baseDto, buildCaller())).rejects.toThrow(UnprocessableEntityException);
     });
   });
 
@@ -239,7 +252,7 @@ describe('UsersService', () => {
     it('deve retornar usuario sem passwordHash', async () => {
       prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
 
-      const result = await service.findOne(USER_ID);
+      const result = await service.findOne(USER_ID, buildCaller());
 
       expect(result).toEqual(buildUserResponse());
       expect(result).not.toHaveProperty('passwordHash');
@@ -248,7 +261,16 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando usuario nao existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.findOne('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('id-inexistente', buildCaller())).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lancar ForbiddenException quando circuitId do usuario nao coincide', async () => {
+      const user = buildUserRaw();
+      prismaMock.user.findUnique.mockResolvedValue(user);
+
+      await expect(service.findOne(user.id, buildCaller({ circuitId: 'outro-circuito' }))).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -261,7 +283,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(existing);
       prismaMock.user.update.mockResolvedValue(updated);
 
-      const result = await service.update(USER_ID, { name: 'Novo Nome' });
+      const result = await service.update(USER_ID, { name: 'Novo Nome' }, buildCaller());
 
       expect(result.name).toBe('Novo Nome');
       expect(prismaMock.user.update).toHaveBeenCalledWith({
@@ -276,7 +298,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(existing);
       prismaMock.user.update.mockResolvedValue(existing);
 
-      const result = await service.update(USER_ID, {});
+      const result = await service.update(USER_ID, {}, buildCaller());
 
       expect(result).toEqual(buildUserResponse());
       expect(prismaMock.user.update).toHaveBeenCalledWith({
@@ -292,7 +314,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(existing);
       prismaMock.user.update.mockResolvedValue(updated);
 
-      await service.update(USER_ID, { password: 'NovaSenha@123' });
+      await service.update(USER_ID, { password: 'NovaSenha@123' }, buildCaller());
 
       expect(hashingMock.hash).toHaveBeenCalledWith('NovaSenha@123');
       expect(prismaMock.user.update).toHaveBeenCalledWith({
@@ -310,7 +332,7 @@ describe('UsersService', () => {
       prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation({ id: newCongId }));
       prismaMock.user.update.mockResolvedValue(updated);
 
-      const result = await service.update(USER_ID, { congregationId: newCongId });
+      const result = await service.update(USER_ID, { congregationId: newCongId }, buildCaller());
 
       expect(result.congregationId).toBe(newCongId);
     });
@@ -318,7 +340,9 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando usuario nao existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('id-inexistente', { name: 'Novo' })).rejects.toThrow(NotFoundException);
+      await expect(service.update('id-inexistente', { name: 'Novo' }, buildCaller())).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deve lancar ConflictException quando email duplicado', async () => {
@@ -330,7 +354,9 @@ describe('UsersService', () => {
       // ensureEmailUnique
       prismaMock.user.findUnique.mockResolvedValueOnce(conflict);
 
-      await expect(service.update(USER_ID, { email: 'outro@example.com' })).rejects.toThrow(ConflictException);
+      await expect(service.update(USER_ID, { email: 'outro@example.com' }, buildCaller())).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('deve lancar UnprocessableEntityException quando congregacao nao pertence ao circuito', async () => {
@@ -339,7 +365,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(existing);
       prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation({ circuitId: 'outro-circuito' }));
 
-      await expect(service.update(USER_ID, { congregationId: CONGREGATION_ID })).rejects.toThrow(
+      await expect(service.update(USER_ID, { congregationId: CONGREGATION_ID }, buildCaller())).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -355,7 +381,7 @@ describe('UsersService', () => {
       // update
       prismaMock.user.update.mockResolvedValue(updated);
 
-      const result = await service.update(USER_ID, { name: 'Novo Nome', email: 'novo@example.com' });
+      const result = await service.update(USER_ID, { name: 'Novo Nome', email: 'novo@example.com' }, buildCaller());
 
       expect(result.name).toBe('Novo Nome');
       expect(result.email).toBe('novo@example.com');
@@ -370,7 +396,7 @@ describe('UsersService', () => {
       prismaMock.user.findUnique.mockResolvedValue(existing);
       prismaMock.user.update.mockResolvedValue({ ...existing, isActive: false });
 
-      await service.remove(USER_ID);
+      await service.remove(USER_ID, buildCaller());
 
       expect(prismaMock.user.update).toHaveBeenCalledWith({
         where: { id: USER_ID },
@@ -381,7 +407,7 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando usuario nao existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.remove('id-inexistente')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('id-inexistente', buildCaller())).rejects.toThrow(NotFoundException);
     });
   });
 
