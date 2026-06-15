@@ -4,6 +4,7 @@ import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/ci
 import { CongregationListStatus, EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
+  DashboardDayCount,
   DashboardPaymentBreakdown,
   DashboardPendingPassenger,
   DashboardResponse,
@@ -200,7 +201,7 @@ export class DashboardService {
 
     const where = { eventId, congregationId };
 
-    const [breakdown, status, pendingPassengers, totalPendingPassengers] = await Promise.all([
+    const [breakdown, status, pendingPassengers, totalPendingPassengers, passengersByDay] = await Promise.all([
       this.prisma.client.eventPassenger.groupBy({
         by: ['paymentStatus'],
         where,
@@ -225,6 +226,7 @@ export class DashboardService {
           paymentStatus: { in: [PaymentStatus.PENDING, PaymentStatus.PARTIAL] },
         },
       }),
+      this.buildPassengersByDay(eventId, event.eventDays, congregationId),
     ]);
 
     const totals = this.computeFinancialTotals(breakdown);
@@ -244,6 +246,7 @@ export class DashboardService {
       paymentBreakdown: this.buildPaymentBreakdown(breakdown),
       pendingPassengers: pendingPassengers.map((ep) => this.toPendingPassengerResponse(ep)),
       totalPendingPassengers,
+      passengersByDay,
     };
   }
 
@@ -267,7 +270,7 @@ export class DashboardService {
   ): Promise<DashboardResponse> {
     const where = { eventId };
 
-    const [breakdown, pendingPassengers, totalPendingPassengers] = await Promise.all([
+    const [breakdown, pendingPassengers, totalPendingPassengers, passengersByDay] = await Promise.all([
       this.prisma.client.eventPassenger.groupBy({
         by: ['paymentStatus'],
         where,
@@ -289,6 +292,7 @@ export class DashboardService {
           paymentStatus: { in: [PaymentStatus.PENDING, PaymentStatus.PARTIAL] },
         },
       }),
+      this.buildPassengersByDay(eventId, event.eventDays),
     ]);
 
     const totals = this.computeFinancialTotals(breakdown);
@@ -302,6 +306,7 @@ export class DashboardService {
       paymentBreakdown: this.buildPaymentBreakdown(breakdown),
       pendingPassengers: pendingPassengers.map((ep) => this.toPendingPassengerResponse(ep)),
       totalPendingPassengers,
+      passengersByDay,
     };
   }
 
@@ -411,6 +416,33 @@ export class DashboardService {
       },
       { paid: 0, partial: 0, pending: 0, exempt: 0 },
     );
+  }
+
+  private async buildPassengersByDay(
+    eventId: string,
+    eventDays: Array<{ id: string; date: Date; label: string; dayNumber: number; status: string }>,
+    congregationId?: string,
+  ): Promise<DashboardDayCount[]> {
+    // Eventos de um único dia (assembleia) não precisam de quebra por dia — o total já atende.
+    if (eventDays.length <= 1) {
+      return [];
+    }
+
+    const grouped = await this.prisma.client.eventPassengerDay.groupBy({
+      by: ['eventDayId'],
+      where: { eventPassenger: { eventId, ...(congregationId ? { congregationId } : {}) } },
+      _count: true,
+    });
+
+    const countByDay = new Map<string, number>(grouped.map((g) => [g.eventDayId, g._count]));
+
+    return eventDays.map((day) => ({
+      eventDayId: day.id,
+      dayNumber: day.dayNumber,
+      label: day.label,
+      date: day.date,
+      totalPassengers: countByDay.get(day.id) ?? 0,
+    }));
   }
 
   private toPendingPassengerResponse(ep: {

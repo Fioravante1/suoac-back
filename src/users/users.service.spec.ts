@@ -61,6 +61,7 @@ function buildUserRaw(
     refreshTokenHash: string | null;
     role: UserRole;
     isActive: boolean;
+    mustChangePassword: boolean;
     circuitId: string;
     congregationId: string | null;
   }> = {},
@@ -72,6 +73,7 @@ function buildUserRaw(
   refreshTokenHash: string | null;
   role: UserRole;
   isActive: boolean;
+  mustChangePassword: boolean;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;
@@ -85,6 +87,7 @@ function buildUserRaw(
     refreshTokenHash: overrides.refreshTokenHash ?? null,
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
+    mustChangePassword: overrides.mustChangePassword ?? false,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -99,6 +102,7 @@ function buildUserResponse(overrides: Partial<UserResponse> = {}): UserResponse 
     email: overrides.email ?? 'joao@example.com',
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
+    mustChangePassword: overrides.mustChangePassword ?? false,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -170,6 +174,7 @@ describe('UsersService', () => {
           role: baseDto.role,
           circuitId: CIRCUIT_ID,
           congregationId: CONGREGATION_ID,
+          mustChangePassword: true,
         },
       });
     });
@@ -319,8 +324,35 @@ describe('UsersService', () => {
       expect(hashingMock.hash).toHaveBeenCalledWith('NovaSenha@123');
       expect(prismaMock.user.update).toHaveBeenCalledWith({
         where: { id: USER_ID },
-        data: { passwordHash: FAKE_HASH },
+        data: { passwordHash: FAKE_HASH, mustChangePassword: true, refreshTokenHash: null },
       });
+    });
+
+    it('deve forcar troca de senha e invalidar sessoes ao resetar senha (admin)', async () => {
+      const existing = buildUserRaw();
+
+      prismaMock.user.findUnique.mockResolvedValue(existing);
+      prismaMock.user.update.mockResolvedValue(buildUserRaw({ mustChangePassword: true }));
+
+      await service.update(USER_ID, { password: 'NovaSenha@123' }, buildCaller());
+
+      const updateData = (prismaMock.user.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+      expect(updateData.mustChangePassword).toBe(true);
+      expect(updateData.refreshTokenHash).toBeNull();
+    });
+
+    it('nao deve alterar mustChangePassword nem refreshTokenHash quando update sem senha', async () => {
+      const existing = buildUserRaw();
+      const updated = buildUserRaw({ name: 'Novo Nome' });
+
+      prismaMock.user.findUnique.mockResolvedValue(existing);
+      prismaMock.user.update.mockResolvedValue(updated);
+
+      await service.update(USER_ID, { name: 'Novo Nome' }, buildCaller());
+
+      const updateData = (prismaMock.user.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
+      expect(updateData).not.toHaveProperty('mustChangePassword');
+      expect(updateData).not.toHaveProperty('refreshTokenHash');
     });
 
     it('deve validar congregacao ao atualizar congregationId', async () => {

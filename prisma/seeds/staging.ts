@@ -1,9 +1,8 @@
 import type { PrismaClient } from '../../src/generated/prisma/client';
-import { type SeedContext, hashPassword } from './common';
+import { type SeedContext, defaultPassword, hashPassword } from './common';
 import { seedStagingPassengers } from './staging-passengers';
 
 export async function seedStaging(prisma: PrismaClient, context: SeedContext): Promise<void> {
-  const passwordHash = await hashPassword('UomgsvTiMPRLCDHfzZa*LenJEuKc@_*JTCw96p2v');
   const { circuit, congregations } = context;
 
   const firstCongregation = congregations[0];
@@ -13,23 +12,30 @@ export async function seedStaging(prisma: PrismaClient, context: SeedContext): P
     return;
   }
 
+  // Todos os usuários seedados entram com senha padrão (code + @Suoac) e troca obrigatória no
+  // primeiro acesso. A senha padrão é previsível, mas só vale até o primeiro login.
+  // Por segurança, NÃO logamos a senha em staging (apenas em dev).
+
   // --- Coordenador de Circuito ---
+  const coordCircuitHash = await hashPassword(defaultPassword(firstCongregation.code));
   const coordCircuit = await prisma.user.upsert({
     where: { email: 'coordenador@suoac.dev' },
     update: {
       name: 'Coordenador de Circuito',
-      passwordHash,
+      passwordHash: coordCircuitHash,
       role: 'CIRCUIT_COORDINATOR',
       circuitId: circuit.id,
       congregationId: firstCongregation.id,
+      mustChangePassword: true,
     },
     create: {
       name: 'Coordenador de Circuito',
       email: 'coordenador@suoac.dev',
-      passwordHash,
+      passwordHash: coordCircuitHash,
       role: 'CIRCUIT_COORDINATOR',
       circuitId: circuit.id,
       congregationId: firstCongregation.id,
+      mustChangePassword: true,
     },
   });
   console.log(`  User upserted: ${coordCircuit.name} (${coordCircuit.email})`);
@@ -40,6 +46,7 @@ export async function seedStaging(prisma: PrismaClient, context: SeedContext): P
   for (const cong of congregations) {
     const email = `coord.${cong.code}@suoac.dev`;
     const name = `Coordenador - ${cong.name}`;
+    const passwordHash = await hashPassword(defaultPassword(cong.code));
 
     const user = await prisma.user.upsert({
       where: { email },
@@ -49,6 +56,7 @@ export async function seedStaging(prisma: PrismaClient, context: SeedContext): P
         role: 'CONGREGATION_COORDINATOR',
         circuitId: circuit.id,
         congregationId: cong.id,
+        mustChangePassword: true,
       },
       create: {
         name,
@@ -57,6 +65,7 @@ export async function seedStaging(prisma: PrismaClient, context: SeedContext): P
         role: 'CONGREGATION_COORDINATOR',
         circuitId: circuit.id,
         congregationId: cong.id,
+        mustChangePassword: true,
       },
     });
     console.log(`  User upserted: ${user.name} (${user.email})`);

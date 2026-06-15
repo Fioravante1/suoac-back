@@ -21,6 +21,15 @@ function getPasswordPepper(): Buffer {
   throw new Error('PASSWORD_PEPPER environment variable is required for staging and production seeds');
 }
 
+/**
+ * Senha padrão de primeiro acesso para usuários seedados de congregação:
+ * `code` da congregação + sufixo fixo (ex.: code "80275" → "80275@Suoac").
+ * O usuário é obrigado a trocá-la no primeiro login (mustChangePassword=true).
+ */
+export function defaultPassword(code: string): string {
+  return `${code}@Suoac`;
+}
+
 export async function hashPassword(password: string): Promise<string> {
   const pepper = getPasswordPepper();
 

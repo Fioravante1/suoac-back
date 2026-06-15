@@ -1,9 +1,10 @@
 import * as crypto from 'crypto';
-import { UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { HashingService } from '../common/hashing/hashing.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +26,7 @@ function buildUserForAuth(
     passwordHash: string | null;
     isActive: boolean;
     refreshTokenHash: string | null;
+    mustChangePassword: boolean;
   }> = {},
 ): {
   id: string;
@@ -34,6 +36,7 @@ function buildUserForAuth(
   refreshTokenHash: string | null;
   role: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;
@@ -47,6 +50,7 @@ function buildUserForAuth(
     refreshTokenHash: overrides.refreshTokenHash ?? null,
     role: 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
+    mustChangePassword: overrides.mustChangePassword ?? false,
     circuitId: CIRCUIT_ID,
     congregationId: CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -58,9 +62,10 @@ function buildUserForAuth(
 describe('AuthService', () => {
   let service: AuthService;
   let usersServiceMock: jest.Mocked<Pick<UsersService, 'findByEmailForAuth'>>;
-  let hashingMock: jest.Mocked<Pick<HashingService, 'verify'>>;
+  let hashingMock: jest.Mocked<Pick<HashingService, 'verify' | 'hash'>>;
   let jwtServiceMock: jest.Mocked<Pick<JwtService, 'signAsync' | 'verifyAsync'>>;
   let prismaMock: DeepMockProxy<PrismaClientType>;
+  let auditLogMock: jest.Mocked<Pick<AuditLogService, 'log'>>;
 
   beforeEach(async () => {
     usersServiceMock = {
@@ -69,6 +74,11 @@ describe('AuthService', () => {
 
     hashingMock = {
       verify: jest.fn(),
+      hash: jest.fn(),
+    };
+
+    auditLogMock = {
+      log: jest.fn().mockResolvedValue(undefined),
     };
 
     jwtServiceMock = {
@@ -98,6 +108,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: jwtServiceMock },
         { provide: ConfigService, useValue: configMock },
         { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: AuditLogService, useValue: auditLogMock },
       ],
     }).compile();
 
@@ -285,6 +296,7 @@ describe('AuthService', () => {
           role: 'CIRCUIT_COORDINATOR',
           circuitId: CIRCUIT_ID,
           congregationId: CONGREGATION_ID,
+          mustChangePassword: false,
         },
         { secret: 'test-jwt-secret', expiresIn: 900 },
       );
@@ -303,6 +315,96 @@ describe('AuthService', () => {
         { sub: USER_ID },
         { secret: 'test-jwt-refresh-secret', expiresIn: 604800 },
       );
+    });
+  });
+
+  // ── changePassword ────────────────────────────────────────────
+  describe('changePassword', () => {
+    const dto = { currentPassword: '80275@Suoac', newPassword: 'NovaSenha@123' };
+
+    function arrangeSuccess(): void {
+      const user = buildUserForAuth({ mustChangePassword: true });
+      prismaMock.user.findUnique.mockResolvedValue(user as never);
+      hashingMock.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false); // atual ok, nova != atual
+      hashingMock.hash.mockResolvedValue('novo-hash');
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+      prismaMock.user.update.mockResolvedValue(user as never);
+    }
+
+    it('deve trocar a senha, zerar a flag e retornar novos tokens', async () => {
+      arrangeSuccess();
+
+      const result = await service.changePassword(USER_ID, dto);
+
+      expect(result.accessToken).toBe('new-access-token');
+      expect(result.refreshToken).toBe('new-refresh-token');
+      expect(result.user.mustChangePassword).toBe(false);
+    });
+
+    it('deve persistir novo hash, mustChangePassword=false e refreshTokenHash', async () => {
+      arrangeSuccess();
+
+      await service.changePassword(USER_ID, dto);
+
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
+        where: { id: USER_ID },
+        data: {
+          passwordHash: 'novo-hash',
+          mustChangePassword: false,
+          refreshTokenHash: expect.any(String) as string,
+        },
+      });
+    });
+
+    it('deve emitir access token com mustChangePassword=false no payload', async () => {
+      arrangeSuccess();
+
+      await service.changePassword(USER_ID, dto);
+
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: USER_ID, mustChangePassword: false }),
+        { secret: 'test-jwt-secret', expiresIn: 900 },
+      );
+    });
+
+    it('deve gravar audit log de UPDATE no User', async () => {
+      arrangeSuccess();
+
+      await service.changePassword(USER_ID, dto);
+
+      expect(auditLogMock.log).toHaveBeenCalledWith(
+        'UPDATE',
+        'User',
+        USER_ID,
+        USER_ID,
+        expect.objectContaining({ newValues: { mustChangePassword: false } }),
+      );
+    });
+
+    it('deve lancar UnauthorizedException quando usuario nao existe', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.changePassword(USER_ID, dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('deve lancar UnauthorizedException quando usuario esta inativo', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(buildUserForAuth({ isActive: false }) as never);
+
+      await expect(service.changePassword(USER_ID, dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('deve lancar UnauthorizedException quando senha atual incorreta', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(buildUserForAuth() as never);
+      hashingMock.verify.mockResolvedValue(false);
+
+      await expect(service.changePassword(USER_ID, dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('deve lancar UnprocessableEntityException quando nova senha igual a atual', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(buildUserForAuth() as never);
+      hashingMock.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(true); // atual ok, nova == atual
+
+      await expect(service.changePassword(USER_ID, dto)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });
