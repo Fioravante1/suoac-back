@@ -50,6 +50,14 @@ export interface DashboardPendingPassenger {
   paymentStatus: string;
 }
 
+export interface DashboardDayCount {
+  eventDayId: string;
+  dayNumber: number;
+  label: string;
+  date: Date;
+  totalPassengers: number;
+}
+
 export interface DashboardResponse {
   event: DashboardEventInfo;
   congregation: DashboardCongregationInfo | null;
@@ -57,4 +65,10 @@ export interface DashboardResponse {
   paymentBreakdown: DashboardPaymentBreakdown;
   pendingPassengers: DashboardPendingPassenger[];
   totalPendingPassengers: number;
+  /**
+   * Inscritos por dia do evento, escopado por role (circuito = evento inteiro;
+   * congregação = própria congregação). Vazio para eventos de um único dia
+   * (assembleia), pois o total de inscritos já atende.
+   */
+  passengersByDay: DashboardDayCount[];
 }

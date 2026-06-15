@@ -57,6 +57,7 @@ const CONGREGATION_ID = 'c1c2c3c4-0000-0000-0000-000000000001';
 const USER_ID = 'u1u2u3u4-0000-0000-0000-000000000001';
 const CIRCUIT_ID = 'circuit-1';
 const DAY_ID_1 = 'd1d2d3d4-0000-0000-0000-000000000001';
+const DAY_ID_2 = 'd1d2d3d4-0000-0000-0000-000000000002';
 const EP_ID_1 = 'ep000001-0000-0000-0000-000000000001';
 const EP_ID_2 = 'ep000002-0000-0000-0000-000000000002';
 
@@ -258,6 +259,76 @@ describe('DashboardService', () => {
       expect(result.event.id).toBe(EVENT_ID);
       expect(result.congregation).not.toBeNull();
       expect(result.congregation!.id).toBe(CONGREGATION_ID);
+    });
+
+    it('deve retornar passengersByDay vazio para evento de um único dia (assembleia)', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      setupCongregationMocks();
+
+      const result = await service.getDashboard(EVENT_ID, user);
+
+      expect(result.passengersByDay).toEqual([]);
+      expect(prismaMock.eventPassengerDay.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('deve retornar contagem por dia escopada à congregação em evento multi-dia', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      const multiDayEvent = buildEvent({
+        type: 'REGIONAL_CONVENTION',
+        eventDays: [
+          buildEventDay(),
+          buildEventDay({ id: DAY_ID_2, dayNumber: 2, label: 'Dia 2 - Domingo', date: new Date('2026-06-02') }),
+        ],
+      });
+      setupCongregationMocks({ event: multiDayEvent });
+      (prismaMock.eventPassengerDay.groupBy as unknown as jest.Mock).mockResolvedValue([
+        { eventDayId: DAY_ID_1, _count: 8 },
+        { eventDayId: DAY_ID_2, _count: 5 },
+      ]);
+
+      const result = await service.getDashboard(EVENT_ID, user);
+
+      expect(result.passengersByDay).toEqual([
+        {
+          eventDayId: DAY_ID_1,
+          dayNumber: 1,
+          label: 'Dia 1 - Sábado',
+          date: new Date('2026-06-01'),
+          totalPassengers: 8,
+        },
+        {
+          eventDayId: DAY_ID_2,
+          dayNumber: 2,
+          label: 'Dia 2 - Domingo',
+          date: new Date('2026-06-02'),
+          totalPassengers: 5,
+        },
+      ]);
+      expect(prismaMock.eventPassengerDay.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['eventDayId'],
+          where: { eventPassenger: { eventId: EVENT_ID, congregationId: CONGREGATION_ID } },
+        }),
+      );
+    });
+
+    it('deve retornar 0 para dia sem inscritos em evento multi-dia', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
+      const multiDayEvent = buildEvent({
+        type: 'REGIONAL_CONVENTION',
+        eventDays: [
+          buildEventDay(),
+          buildEventDay({ id: DAY_ID_2, dayNumber: 2, label: 'Dia 2 - Domingo', date: new Date('2026-06-02') }),
+        ],
+      });
+      setupCongregationMocks({ event: multiDayEvent });
+      (prismaMock.eventPassengerDay.groupBy as unknown as jest.Mock).mockResolvedValue([
+        { eventDayId: DAY_ID_1, _count: 8 },
+      ]);
+
+      const result = await service.getDashboard(EVENT_ID, user);
+
+      expect(result.passengersByDay[1]?.totalPassengers).toBe(0);
     });
 
     it('deve lançar NotFoundException quando evento não existe', async () => {
@@ -487,6 +558,44 @@ describe('DashboardService', () => {
 
       expect(result.congregation).toBeNull();
       expect(result.stats.totalPassengers).toBe(50);
+    });
+
+    it('deve retornar contagem por dia do circuito inteiro (sem filtro de congregação) em evento multi-dia', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      const multiDayEvent = buildEvent({
+        type: 'REGIONAL_CONVENTION',
+        eventDays: [
+          buildEventDay(),
+          buildEventDay({ id: DAY_ID_2, dayNumber: 2, label: 'Dia 2 - Domingo', date: new Date('2026-06-02') }),
+        ],
+      });
+      setupCircuitMocks({ event: multiDayEvent });
+      (prismaMock.eventPassengerDay.groupBy as unknown as jest.Mock).mockResolvedValue([
+        { eventDayId: DAY_ID_1, _count: 40 },
+        { eventDayId: DAY_ID_2, _count: 33 },
+      ]);
+
+      const result = await service.getDashboard(EVENT_ID, user);
+
+      expect(result.passengersByDay).toHaveLength(2);
+      expect(result.passengersByDay[0]?.totalPassengers).toBe(40);
+      expect(result.passengersByDay[1]?.totalPassengers).toBe(33);
+      expect(prismaMock.eventPassengerDay.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          by: ['eventDayId'],
+          where: { eventPassenger: { eventId: EVENT_ID } },
+        }),
+      );
+    });
+
+    it('deve retornar passengersByDay vazio em evento de um único dia (circuito)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      setupCircuitMocks();
+
+      const result = await service.getDashboard(EVENT_ID, user);
+
+      expect(result.passengersByDay).toEqual([]);
+      expect(prismaMock.eventPassengerDay.groupBy).not.toHaveBeenCalled();
     });
   });
 

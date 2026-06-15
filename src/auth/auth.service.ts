@@ -1,10 +1,5 @@
 import * as crypto from 'crypto';
-import {
-  Injectable,
-  Logger,
-  UnauthorizedException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditLogService } from '../audit-log/audit-log.service';

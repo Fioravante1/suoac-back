@@ -39,6 +39,7 @@ const MOCK_RESPONSE: DashboardResponse = {
   paymentBreakdown: { paid: 3, partial: 2, pending: 4, exempt: 1 },
   pendingPassengers: [],
   totalPendingPassengers: 6,
+  passengersByDay: [],
 };
 
 const MOCK_FINANCIAL_RESPONSE: FinancialSummaryResponse = {
