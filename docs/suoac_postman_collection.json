@@ -125,6 +125,48 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Change Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"80275@Suoac\",\n  \"newPassword\": \"NovaSenha@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "change-password"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -1493,8 +1535,14 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses",
-              "host": ["{{baseUrl}}"],
-              "path": ["events", "{{eventId}}", "congregation-statuses"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "congregation-statuses"
+              ]
             },
             "description": "Lista o status de finalização de todas as congregações do circuito para um evento. Restrito a CC/CA."
           },
@@ -1516,8 +1564,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses/{{congregationId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["events", "{{eventId}}", "congregation-statuses", "{{congregationId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "congregation-statuses",
+                "{{congregationId}}"
+              ]
             },
             "description": "Finaliza ou reabre a lista de uma congregação para um evento. FINALIZED cria/atualiza o registro; PENDING deleta o registro (retorno à ausência implícita). Reabrir (PENDING) restrito a CC/CA."
           },

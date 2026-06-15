@@ -17,6 +17,7 @@ function buildUserResponse(): UserResponse {
     email: 'joao@example.com',
     role: 'CIRCUIT_COORDINATOR',
     isActive: true,
+    mustChangePassword: false,
     circuitId: CIRCUIT_ID,
     congregationId: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -35,13 +36,14 @@ function buildAuthResponse(): AuthResponse {
 // ── Test Suite ───────────────────────────────────────────────────
 describe('AuthController', () => {
   let controller: AuthController;
-  let serviceMock: jest.Mocked<Pick<AuthService, 'login' | 'refreshTokens' | 'logout'>>;
+  let serviceMock: jest.Mocked<Pick<AuthService, 'login' | 'refreshTokens' | 'logout' | 'changePassword'>>;
 
   beforeEach(async () => {
     serviceMock = {
       login: jest.fn(),
       refreshTokens: jest.fn(),
       logout: jest.fn(),
+      changePassword: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -116,6 +118,27 @@ describe('AuthController', () => {
       serviceMock.logout.mockRejectedValue(new Error('Unexpected error'));
 
       await expect(controller.logout(USER_ID)).rejects.toThrow('Unexpected error');
+    });
+  });
+
+  // ── changePassword ─────────────────────────────────────────────
+  describe('changePassword', () => {
+    const dto = { currentPassword: '80275@Suoac', newPassword: 'NovaSenha@123' };
+
+    it('deve delegar ao service com userId do @CurrentUser e retornar AuthResponse', async () => {
+      const expected = buildAuthResponse();
+      serviceMock.changePassword.mockResolvedValue(expected);
+
+      const result = await controller.changePassword(USER_ID, dto);
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.changePassword).toHaveBeenCalledWith(USER_ID, dto);
+    });
+
+    it('deve propagar UnauthorizedException do service', async () => {
+      serviceMock.changePassword.mockRejectedValue(new UnauthorizedException('Senha atual incorreta'));
+
+      await expect(controller.changePassword(USER_ID, dto)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

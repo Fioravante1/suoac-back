@@ -121,6 +121,7 @@ model User {
   refreshTokenHash String?  @map("refresh_token_hash") @db.VarChar(255)
   role             UserRole
   isActive     Boolean  @default(true) @map("is_active")
+  mustChangePassword Boolean @default(false) @map("must_change_password")
 
   circuitId      String  @map("circuit_id") @db.Uuid
   circuit        Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)

@@ -6,6 +6,7 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthModule } from './auth/auth.module';
 import { CircuitOwnershipGuard } from './auth/guards/circuit-ownership.guard';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { MustChangePasswordGuard } from './auth/guards/must-change-password.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CircuitsModule } from './circuits/circuits.module';
 import { EncryptionModule } from './common/encryption/encryption.module';
@@ -53,6 +54,7 @@ import { UsersModule } from './users/users.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: CircuitOwnershipGuard },
+    { provide: APP_GUARD, useClass: MustChangePasswordGuard },
   ],
 })
 export class AppModule {}

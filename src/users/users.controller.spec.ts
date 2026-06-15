@@ -17,6 +17,7 @@ function buildUserResponse(overrides: Partial<UserResponse> = {}): UserResponse 
     email: overrides.email ?? 'joao@example.com',
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
+    mustChangePassword: overrides.mustChangePassword ?? false,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId ?? null,
     createdAt: new Date('2026-01-01T00:00:00Z'),

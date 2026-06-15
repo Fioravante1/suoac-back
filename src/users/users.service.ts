@@ -35,6 +35,8 @@ export class UsersService {
         role: dto.role,
         circuitId,
         congregationId: dto.congregationId,
+        // Senha definida pelo coordenador (não pelo próprio usuário) → troca obrigatória no 1º acesso.
+        mustChangePassword: true,
       },
     });
 
@@ -105,6 +107,7 @@ export class UsersService {
     }
 
     const passwordHash = dto.password ? await this.hashing.hash(dto.password) : undefined;
+    const isPasswordReset = passwordHash !== undefined;
 
     const updated = await this.prisma.client.user.update({
       where: { id },
@@ -114,6 +117,9 @@ export class UsersService {
         ...(passwordHash !== undefined && { passwordHash }),
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.congregationId !== undefined && { congregationId: dto.congregationId }),
+        // Reset de senha por admin → força troca no próximo acesso e invalida sessões ativas
+        // (limpa o refreshTokenHash para o usuário não renovar tokens com a flag desatualizada).
+        ...(isPasswordReset && { mustChangePassword: true, refreshTokenHash: null }),
       },
     });
 
@@ -154,6 +160,7 @@ export class UsersService {
     passwordHash: string | null;
     role: string;
     isActive: boolean;
+    mustChangePassword: boolean;
     circuitId: string;
     congregationId: string | null;
     createdAt: Date;
@@ -174,6 +181,7 @@ export class UsersService {
       passwordHash: user.passwordHash,
       role: user.role,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
       createdAt: user.createdAt,
@@ -256,6 +264,7 @@ export class UsersService {
     email: string;
     role: string;
     isActive: boolean;
+    mustChangePassword: boolean;
     circuitId: string;
     congregationId: string | null;
     createdAt: Date;
@@ -267,6 +276,7 @@ export class UsersService {
       email: user.email,
       role: user.role,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
       createdAt: user.createdAt,

@@ -9,6 +9,7 @@ export interface UserResponse {
   email: string;
   role: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;

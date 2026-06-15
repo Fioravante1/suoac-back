@@ -1,11 +1,18 @@
 import * as crypto from 'crypto';
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { HashingService } from '../common/hashing/hashing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UserResponse } from '../users/interfaces/user-response.interface';
 import { UsersService } from '../users/users.service';
+import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RefreshTokenDto } from './dto/refresh-token.dto';
 import type { AuthResponse } from './interfaces/auth-response.interface';
@@ -25,6 +32,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly auditLogService: AuditLogService,
   ) {
     const jwtSecret = this.configService.get<string>('JWT_SECRET');
     const jwtRefreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
@@ -127,12 +135,62 @@ export class AuthService {
     this.logger.log(`Logout — userId=${userId}`);
   }
 
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<AuthResponse> {
+    const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
+
+    if (!user || !user.isActive || !user.passwordHash) {
+      this.logger.warn(`Troca de senha falhou — usuário inválido userId=${userId}`);
+      throw new UnauthorizedException('Credenciais invalidas');
+    }
+
+    const isCurrentValid = await this.hashingService.verify(user.passwordHash, dto.currentPassword);
+
+    if (!isCurrentValid) {
+      this.logger.warn(`Senha atual incorreta na troca de senha — userId=${userId}`);
+      throw new UnauthorizedException('Senha atual incorreta');
+    }
+
+    const isSamePassword = await this.hashingService.verify(user.passwordHash, dto.newPassword);
+
+    if (isSamePassword) {
+      throw new UnprocessableEntityException('A nova senha deve ser diferente da atual');
+    }
+
+    const newPasswordHash = await this.hashingService.hash(dto.newPassword);
+    const updatedUser = { ...user, passwordHash: newPasswordHash, mustChangePassword: false };
+    const tokens = await this.generateTokens(updatedUser);
+
+    await this.prisma.client.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: newPasswordHash,
+        mustChangePassword: false,
+        refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+      },
+    });
+
+    this.logger.log(`Senha alterada — userId=${userId}`);
+
+    void this.auditLogService
+      .log('UPDATE', 'User', userId, userId, {
+        oldValues: { mustChangePassword: user.mustChangePassword },
+        newValues: { mustChangePassword: false },
+      })
+      .catch((err: unknown) => this.logger.error({ err, entityId: userId }, 'Falha ao gravar audit log'));
+
+    return {
+      ...tokens,
+      user: this.toUserResponse(updatedUser),
+    };
+  }
+
   private async generateTokens(user: {
     id: string;
     email: string;
     role: string;
     circuitId: string;
     congregationId: string | null;
+    mustChangePassword: boolean;
   }): Promise<{ accessToken: string; refreshToken: string }> {
     const payload: JwtPayload = {
       sub: user.id,
@@ -140,6 +198,7 @@ export class AuthService {
       role: user.role,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
+      mustChangePassword: user.mustChangePassword,
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -169,6 +228,7 @@ export class AuthService {
     email: string;
     role: string;
     isActive: boolean;
+    mustChangePassword: boolean;
     circuitId: string;
     congregationId: string | null;
     createdAt: Date;
@@ -180,6 +240,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
       createdAt: user.createdAt,
