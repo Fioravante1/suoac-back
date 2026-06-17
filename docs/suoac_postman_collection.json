@@ -1414,7 +1414,7 @@
                 }
               ]
             },
-            "description": "Gera e baixa um PDF com a lista de passageiros inscritos, agrupada por congregação (Nome, Telefone, Observações da inscrição; RG apenas com includeSensitive=true para roles de circuito). O PDF contém marca d'água com o nome do usuário e a data. Resposta binária (application/pdf) — no Postman use 'Send and Download' para salvar o arquivo. O front deve consumir como blob/arraybuffer e respeitar o header Content-Disposition. Acima de 2000 inscritos sem filtro de congregação, retorna 422."
+            "description": "Gera e baixa um PDF com a lista de passageiros inscritos, agrupada por congregação (Nome, Telefone, Observações; RG apenas com includeSensitive=true para roles de circuito). O PDF contém marca d'água com o nome do usuário e a data. Resposta binária (application/pdf) — no Postman use 'Send and Download' para salvar o arquivo. O front deve consumir como blob/arraybuffer e respeitar o header Content-Disposition. Acima de 2000 inscritos sem filtro de congregação, retorna 422."
           },
           "response": []
         },

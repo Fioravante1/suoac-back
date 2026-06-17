@@ -93,6 +93,14 @@ describe('PdfService', () => {
     expect(watermark.text).toContain('16/06/2026');
   });
 
+  it("deve registrar o horário da marca d'água no fuso de São Paulo (BRT)", async () => {
+    // 20:00 UTC → 17:00 em America/Sao_Paulo (UTC-3)
+    await service.generatePassengerList(buildData({ generatedAt: new Date('2026-06-16T20:00:00Z') }));
+
+    const watermark = capturedDocs[0]!.watermark as { text: string };
+    expect(watermark.text).toContain('16/06/2026 às 17:00');
+  });
+
   it('deve renderizar o título de cada congregação com nome, código e circuito', async () => {
     await service.generatePassengerList(
       buildData({
@@ -106,6 +114,69 @@ describe('PdfService', () => {
     const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('Cong A (111) - SP019');
     expect(serialized).toContain('Cong B (222) - SP019');
+  });
+
+  it('deve aplicar máscara de celular (11 dígitos) no telefone', async () => {
+    await service.generatePassengerList(buildData({ includeSensitive: true }));
+
+    const serialized = serialize(capturedDocs[0]!);
+    expect(serialized).toContain('11 99999-0000');
+    expect(serialized).not.toContain('11999990000');
+  });
+
+  it('deve aplicar máscara de telefone fixo (10 dígitos)', async () => {
+    await service.generatePassengerList(
+      buildData({
+        congregations: [
+          {
+            congregationName: 'Cong A',
+            congregationCode: '111',
+            circuitName: 'SP019',
+            passengers: [{ index: 1, name: 'Ana Maria', rg: null, phone: '1125557709', observations: null }],
+          },
+        ],
+      }),
+    );
+
+    const serialized = serialize(capturedDocs[0]!);
+    expect(serialized).toContain('11 2555-7709');
+    expect(serialized).not.toContain('1125557709');
+  });
+
+  it('deve normalizar telefones já formatados removendo símbolos', async () => {
+    await service.generatePassengerList(
+      buildData({
+        congregations: [
+          {
+            congregationName: 'Cong A',
+            congregationCode: '111',
+            circuitName: 'SP019',
+            passengers: [{ index: 1, name: 'Ana Maria', rg: null, phone: '(11) 97753-0630', observations: null }],
+          },
+        ],
+      }),
+    );
+
+    const serialized = serialize(capturedDocs[0]!);
+    expect(serialized).toContain('11 97753-0630');
+  });
+
+  it('deve exibir "—" quando o telefone é nulo', async () => {
+    await service.generatePassengerList(
+      buildData({
+        congregations: [
+          {
+            congregationName: 'Cong A',
+            congregationCode: '111',
+            circuitName: 'SP019',
+            passengers: [{ index: 1, name: 'Ana Maria', rg: null, phone: null, observations: null }],
+          },
+        ],
+      }),
+    );
+
+    const serialized = serialize(capturedDocs[0]!);
+    expect(serialized).toContain('—');
   });
 
   it('deve exibir mensagem de vazio quando não há congregações', async () => {

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import PdfPrinter from 'pdfmake';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
+import { formatPhone } from '../phone/phone.util';
 import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
 
 const BRAND_COLOR = '#1e3a5f';
@@ -102,7 +103,7 @@ export class PdfService {
   private buildPageHeader(data: PassengerListPdfData): Content {
     return {
       columns: [
-        { image: this.logoDataUri, width: 90, margin: [40, 25, 0, 0] },
+        { image: this.logoDataUri, width: 90, margin: [40, 15, 0, 0] },
         {
           stack: [
             { text: data.eventTitle, fontSize: 14, bold: true, color: BRAND_COLOR },
@@ -133,22 +134,23 @@ export class PdfService {
           { text: 'Nome', style: 'tableHeader' },
           { text: 'RG', style: 'tableHeader' },
           { text: 'Telefone', style: 'tableHeader' },
-          { text: 'Observações da inscrição', style: 'tableHeader' },
+          { text: 'Observações', style: 'tableHeader' },
         ]
       : [
           { text: '#', style: 'tableHeader' },
           { text: 'Nome', style: 'tableHeader' },
           { text: 'Telefone', style: 'tableHeader' },
-          { text: 'Observações da inscrição', style: 'tableHeader' },
+          { text: 'Observações', style: 'tableHeader' },
         ];
 
     const bodyRows: TableCell[][] = block.passengers.map((p) =>
       includeSensitive
-        ? [String(p.index), p.name, p.rg ?? '—', p.phone ?? '—', p.observations ?? '—']
-        : [String(p.index), p.name, p.phone ?? '—', p.observations ?? '—'],
+        ? [String(p.index), p.name, p.rg ?? '—', formatPhone(p.phone) ?? '—', p.observations ?? '—']
+        : [String(p.index), p.name, formatPhone(p.phone) ?? '—', p.observations ?? '—'],
     );
 
-    const widths = includeSensitive ? ['auto', '*', 'auto', 'auto', '*'] : ['auto', '*', 'auto', '*'];
+    // Telefone com largura fixa para acomodar "11 99999-0000" sem quebra de linha.
+    const widths = includeSensitive ? ['auto', '*', 'auto', 80, '*'] : ['auto', '*', 80, '*'];
 
     return [
       { text: title, style: 'sectionTitle' },
@@ -172,17 +174,28 @@ export class PdfService {
           paddingBottom: (): number => 4,
         },
       },
-      { text: `Total: ${block.passengers.length} inscrito(s)`, style: 'sectionTotal' },
+      { text: `Total: ${block.passengers.length} passageiro(s)`, style: 'sectionTotal' },
     ];
   }
 
+  /**
+   * Formata a data no fuso `America/Sao_Paulo`, independente do fuso do
+   * servidor (em produção normalmente UTC), garantindo que o horário
+   * registrado no PDF corresponda ao horário local de quem imprimiu.
+   */
   private formatDateTime(date: Date): string {
-    const pad = (n: number): string => String(n).padStart(2, '0');
-    const day = pad(date.getDate());
-    const month = pad(date.getMonth() + 1);
-    const year = date.getFullYear();
-    const hours = pad(date.getHours());
-    const minutes = pad(date.getMinutes());
-    return `${day}/${month}/${year} às ${hours}:${minutes}`;
+    const parts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+
+    const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '';
+
+    return `${get('day')}/${get('month')}/${get('year')} às ${get('hour')}:${get('minute')}`;
   }
 }

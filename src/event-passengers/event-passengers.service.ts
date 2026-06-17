@@ -23,6 +23,7 @@ import type {
   PassengerPdfRow,
 } from '../common/pdf/interfaces/passenger-list-pdf.interface';
 import { PdfService } from '../common/pdf/pdf.service';
+import { formatPhone } from '../common/phone/phone.util';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { Prisma } from '../generated/prisma/client';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
@@ -298,7 +299,7 @@ export class EventPassengersService {
     });
 
     const data: PassengerListPdfData = {
-      eventTitle: event.title,
+      eventTitle: `${this.getEventTypeLabel(event.type)} ${event.title}`,
       eventVenue: event.venue,
       eventCity: event.city,
       eventState: event.state,
@@ -409,6 +410,18 @@ export class EventPassengersService {
     }
 
     return [...blocks.values()];
+  }
+
+  /**
+   * Rótulo legível do tipo de evento, usado para compor o título no PDF
+   * (ex.: "Congresso Felicidade Eterna", "Assembleia Ouça o que o espírito...").
+   */
+  private getEventTypeLabel(type: EventType): string {
+    const labels: Record<EventType, string> = {
+      [EventType.REGIONAL_CONVENTION]: 'Congresso',
+      [EventType.ASSEMBLY]: 'Assembleia',
+    };
+    return labels[type];
   }
 
   async findOne(id: string, user: JwtPayload): Promise<EventPassengerResponse> {
@@ -816,7 +829,7 @@ export class EventPassengersService {
         id: ep.passenger.id,
         name: ep.passenger.name,
         rg: this.encryption.decrypt(ep.passenger.rgEncrypted),
-        phone: ep.passenger.phone,
+        phone: formatPhone(ep.passenger.phone),
       },
       totalAmount: String(ep.totalAmount),
       paidAmount: String(ep.paidAmount),

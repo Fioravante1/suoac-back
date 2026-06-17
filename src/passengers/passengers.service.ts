@@ -11,6 +11,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
+import { formatPhone } from '../common/phone/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePassengerDto } from './dto/create-passenger.dto';
 import type { PassengerFilterQueryDto } from './dto/passenger-filter-query.dto';
@@ -358,7 +359,7 @@ export class PassengersService {
       id: passenger.id,
       name: passenger.name,
       rg: this.encryption.decrypt(passenger.rgEncrypted),
-      phone: passenger.phone,
+      phone: formatPhone(passenger.phone),
       observations: passenger.observations,
       congregationId: passenger.congregationId,
       ...(congregationName !== undefined && { congregationName }),

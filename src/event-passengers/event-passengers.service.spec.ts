@@ -1257,6 +1257,36 @@ describe('EventPassengersService', () => {
       );
     });
 
+    it('deve compor o eventTitle com o rótulo "Assembleia" para eventos do tipo ASSEMBLY', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({ type: 'ASSEMBLY', title: 'Ouça o que o espírito tem a dizer' }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: 'Assembleia Ouça o que o espírito tem a dizer' }),
+      );
+    });
+
+    it('deve compor o eventTitle com o rótulo "Congresso" para eventos do tipo REGIONAL_CONVENTION', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({ type: 'REGIONAL_CONVENTION', title: 'Felicidade Eterna' }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: 'Congresso Felicidade Eterna' }),
+      );
+    });
+
     it('deve usar "Usuário desconhecido" quando o requester não é encontrado', async () => {
       setupHappyPath();
       prismaMock.user.findUnique.mockResolvedValue(null);
