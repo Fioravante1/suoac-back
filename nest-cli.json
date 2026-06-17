@@ -5,8 +5,8 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "assets": [
-      { "include": "common/pdf/fonts/**/*", "outDir": "dist/src" },
-      { "include": "common/pdf/assets/**/*", "outDir": "dist/src" }
+      { "include": "common/pdf/fonts/**/*", "outDir": "dist" },
+      { "include": "common/pdf/assets/**/*", "outDir": "dist" }
     ],
     "watchAssets": true,
     "plugins": [
