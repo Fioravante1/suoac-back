@@ -47,13 +47,7 @@ export class EventPassengersController {
     @Query() query: EventPassengerQueryDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedPassengerResponse> {
-    return this.eventPassengersService.findByEvent(
-      eventId,
-      query.page ?? 1,
-      query.limit ?? 20,
-      user,
-      query.paymentStatus,
-    );
+    return this.eventPassengersService.findByEvent(eventId, user, query);
   }
 
   @Get('circuits/:circuitId/events/:eventId/passengers/export.pdf')

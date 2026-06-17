@@ -1356,7 +1356,25 @@
                 {
                   "key": "paymentStatus",
                   "value": "PENDING",
-                  "description": "Filtro opcional por status de pagamento (PENDING, PARTIAL, PAID, EXEMPT)",
+                  "description": "Filtro opcional por status de pagamento (PENDING, PARTIAL, PAID, EXEMPT). Todos os roles.",
+                  "disabled": true
+                },
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Filtro por congregação. Apenas roles de circuito; role de congregação só pode informar a própria (diferente → 403).",
+                  "disabled": true
+                },
+                {
+                  "key": "name",
+                  "value": "joão",
+                  "description": "Busca parcial case-insensitive pelo nome do passageiro. Todos os roles.",
+                  "disabled": true
+                },
+                {
+                  "key": "eventDayIds",
+                  "value": "{{eventDayId}}",
+                  "description": "Filtra inscritos de ao menos um dos dias informados (união). Aceita repetido (eventDayIds=a&eventDayIds=b) ou CSV (eventDayIds=a,b). Todos os roles.",
                   "disabled": true
                 }
               ],
@@ -1367,7 +1385,7 @@
                 }
               ]
             },
-            "description": "Lista paginada de passageiros inscritos no evento. Resposta inclui financialSummary com totais financeiros (sem filtro de paymentStatus). O filtro paymentStatus afeta apenas data e meta.total."
+            "description": "Lista paginada de passageiros inscritos no evento. Para roles de circuito, cada item inclui congregationName. Filtros (todos opcionais e combináveis com AND): paymentStatus, name e eventDayIds para todos os roles; congregationId apenas para roles de circuito. meta.total reflete os filtros aplicados; financialSummary reflete apenas o escopo (evento + congregação selecionada), sem os filtros de busca."
           },
           "response": []
         },

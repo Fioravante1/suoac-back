@@ -79,6 +79,7 @@ interface PrismaEventPassenger {
   createdAt: Date;
   updatedAt: Date;
   passenger: PrismaPassenger;
+  congregation: { name: string };
   eventPassengerDays: PrismaEventPassengerDay[];
 }
 
@@ -175,6 +176,7 @@ function buildEventPassenger(overrides: Partial<PrismaEventPassenger> = {}): Pri
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
     passenger: overrides.passenger ?? buildPassenger(),
+    congregation: overrides.congregation ?? { name: 'Congregação Cidade Popular' },
     eventPassengerDays: overrides.eventPassengerDays ?? [
       {
         id: 'epd-1',
@@ -769,11 +771,14 @@ describe('EventPassengersService', () => {
       );
     }
 
+    const OTHER_CONGREGATION_ID = 'c9c9c9c9-0000-0000-0000-000000000009';
+    const CIRCUIT_ID = 'circuit-1';
+
     it('deve retornar lista paginada de inscrições com financialSummary (EXEMPT excluído dos monetários)', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
       setupFindByEventMocks();
 
-      const result = await service.findByEvent(EVENT_ID, 1, 20, user);
+      const result = await service.findByEvent(EVENT_ID, user, {});
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0]!.passenger.rg).toBe(DECRYPTED_RG);
@@ -787,11 +792,29 @@ describe('EventPassengersService', () => {
       expect(result.financialSummary.byStatus).toEqual({ paid: 3, partial: 2, pending: 4, exempt: 1 });
     });
 
+    it('deve incluir congregationName para role de circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks();
+
+      const result = await service.findByEvent(EVENT_ID, user, {});
+
+      expect(result.data[0]!.congregationName).toBe('Congregação Cidade Popular');
+    });
+
+    it('não deve incluir congregationName para role de congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      setupFindByEventMocks();
+
+      const result = await service.findByEvent(EVENT_ID, user, {});
+
+      expect(result.data[0]!.congregationName).toBeUndefined();
+    });
+
     it('deve filtrar por congregação para role de congregação', async () => {
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
       setupFindByEventMocks({ passengers: [], count: 0 });
 
-      await service.findByEvent(EVENT_ID, 1, 20, user);
+      await service.findByEvent(EVENT_ID, user, {});
 
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -804,7 +827,7 @@ describe('EventPassengersService', () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
       setupFindByEventMocks({ passengers: [], count: 0 });
 
-      await service.findByEvent(EVENT_ID, 1, 20, user);
+      await service.findByEvent(EVENT_ID, user, {});
 
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -813,26 +836,114 @@ describe('EventPassengersService', () => {
       );
     });
 
-    it('deve filtrar por paymentStatus quando fornecido', async () => {
+    it('deve permitir role de circuito filtrar por congregação do circuito', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
       setupFindByEventMocks({ passengers: [], count: 0 });
+      prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
 
-      await service.findByEvent(EVENT_ID, 1, 20, user, 'PENDING');
+      await service.findByEvent(EVENT_ID, user, { congregationId: CONGREGATION_ID });
 
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { eventId: EVENT_ID, paymentStatus: 'PENDING' },
+          where: { eventId: EVENT_ID, congregationId: CONGREGATION_ID },
         }),
       );
     });
 
-    it('deve calcular financialSummary sem filtro de paymentStatus', async () => {
+    it('deve lançar NotFoundException quando congregação filtrada não pertence ao circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+      prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: 'circuit-outro' } as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, { congregationId: OTHER_CONGREGATION_ID })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+
+      await expect(service.findByEvent(EVENT_ID, user, { congregationId: OTHER_CONGREGATION_ID })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('deve filtrar por nome do passageiro (parcial, case-insensitive)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+
+      await service.findByEvent(EVENT_ID, user, { name: 'joão' });
+
+      expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventId: EVENT_ID, passenger: { name: { contains: 'joão', mode: 'insensitive' } } },
+        }),
+      );
+    });
+
+    it('deve filtrar por dias de evento em combo (união)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+      prismaMock.eventDay.findMany.mockResolvedValue([{ id: DAY_ID_1 }, { id: DAY_ID_2 }] as never);
+
+      await service.findByEvent(EVENT_ID, user, { eventDayIds: [DAY_ID_1, DAY_ID_2] });
+
+      expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            eventId: EVENT_ID,
+            eventPassengerDays: { some: { eventDayId: { in: [DAY_ID_1, DAY_ID_2] } } },
+          },
+        }),
+      );
+    });
+
+    it('deve aceitar dia cancelado que pertence ao evento no filtro', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+      // findMany retorna o dia mesmo cancelado (validação não filtra por status)
+      prismaMock.eventDay.findMany.mockResolvedValue([{ id: DAY_ID_1 }] as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, { eventDayIds: [DAY_ID_1] })).resolves.toBeDefined();
+    });
+
+    it('deve lançar UnprocessableEntityException quando um dia não pertence ao evento', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+      prismaMock.eventDay.findMany.mockResolvedValue([{ id: DAY_ID_1 }] as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, { eventDayIds: [DAY_ID_1, DAY_ID_3] })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('deve combinar filtros (name + paymentStatus + dias) com AND', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
+      setupFindByEventMocks({ passengers: [], count: 0 });
+      prismaMock.eventDay.findMany.mockResolvedValue([{ id: DAY_ID_1 }] as never);
+
+      await service.findByEvent(EVENT_ID, user, { name: 'ana', paymentStatus: 'PENDING', eventDayIds: [DAY_ID_1] });
+
+      expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            eventId: EVENT_ID,
+            paymentStatus: 'PENDING',
+            passenger: { name: { contains: 'ana', mode: 'insensitive' } },
+            eventPassengerDays: { some: { eventDayId: { in: [DAY_ID_1] } } },
+          },
+        }),
+      );
+    });
+
+    it('deve calcular financialSummary sobre o escopo, sem os filtros de busca', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR' });
       setupFindByEventMocks();
 
-      await service.findByEvent(EVENT_ID, 1, 20, user, 'PENDING');
+      await service.findByEvent(EVENT_ID, user, { paymentStatus: 'PENDING', name: 'ana' });
 
-      // groupBy é chamado com baseWhere (sem paymentStatus), não filteredWhere
+      // groupBy (financialSummary) usa baseWhere (escopo), não filteredWhere
       expect(prismaMock.eventPassenger.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { eventId: EVENT_ID },
@@ -844,13 +955,13 @@ describe('EventPassengersService', () => {
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: null });
       prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
 
-      await expect(service.findByEvent(EVENT_ID, 1, 20, user)).rejects.toThrow(ForbiddenException);
+      await expect(service.findByEvent(EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByEvent(EVENT_ID, 1, 20, buildUser())).rejects.toThrow(NotFoundException);
+      await expect(service.findByEvent(EVENT_ID, buildUser(), {})).rejects.toThrow(NotFoundException);
     });
   });
 
