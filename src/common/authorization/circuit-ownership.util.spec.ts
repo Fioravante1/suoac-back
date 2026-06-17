@@ -1,6 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership, checkCongregationPermission, isCircuitRole } from './circuit-ownership.util';
+import {
+  canExportSensitivePassengerData,
+  checkCircuitOwnership,
+  checkCongregationPermission,
+  isCircuitRole,
+} from './circuit-ownership.util';
 
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 const CONGREGATION_ID = 'c1c2c3c4-0000-0000-0000-000000000001';
@@ -30,6 +35,24 @@ describe('isCircuitRole', () => {
 
   it('deve retornar false para CONGREGATION_ASSISTANT', () => {
     expect(isCircuitRole('CONGREGATION_ASSISTANT')).toBe(false);
+  });
+});
+
+describe('canExportSensitivePassengerData', () => {
+  it('deve permitir CIRCUIT_COORDINATOR', () => {
+    expect(canExportSensitivePassengerData('CIRCUIT_COORDINATOR')).toBe(true);
+  });
+
+  it('deve permitir CIRCUIT_ASSISTANT', () => {
+    expect(canExportSensitivePassengerData('CIRCUIT_ASSISTANT')).toBe(true);
+  });
+
+  it('deve negar CONGREGATION_COORDINATOR', () => {
+    expect(canExportSensitivePassengerData('CONGREGATION_COORDINATOR')).toBe(false);
+  });
+
+  it('deve negar CONGREGATION_ASSISTANT', () => {
+    expect(canExportSensitivePassengerData('CONGREGATION_ASSISTANT')).toBe(false);
   });
 });
 

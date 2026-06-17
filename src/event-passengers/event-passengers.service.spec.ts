@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { PdfService } from '../common/pdf/pdf.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PassengersService } from '../passengers/passengers.service';
@@ -194,6 +195,8 @@ describe('EventPassengersService', () => {
   let encryptionMock: jest.Mocked<EncryptionService>;
   let passengersServiceMock: jest.Mocked<PassengersService>;
   let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
+  let pdfServiceMock: jest.Mocked<PdfService>;
+  let auditLogMock: { log: jest.Mock; buildCreateData: jest.Mock };
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
@@ -215,6 +218,19 @@ describe('EventPassengersService', () => {
       updateStatus: jest.fn(),
       ensureNotFinalized: jest.fn(),
     } as unknown as jest.Mocked<CongregationEventStatusService>;
+    pdfServiceMock = {
+      generatePassengerList: jest.fn().mockResolvedValue(Buffer.from('%PDF-fake')),
+    } as unknown as jest.Mocked<PdfService>;
+    auditLogMock = {
+      log: jest.fn().mockResolvedValue(undefined),
+      buildCreateData: jest.fn().mockReturnValue({
+        action: 'CREATE',
+        entity: 'test',
+        entityId: 'test-id',
+        userId: USER_ID,
+        details: {},
+      }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -223,19 +239,8 @@ describe('EventPassengersService', () => {
         { provide: EncryptionService, useValue: encryptionMock },
         { provide: PassengersService, useValue: passengersServiceMock },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
-        {
-          provide: AuditLogService,
-          useValue: {
-            log: jest.fn().mockResolvedValue(undefined),
-            buildCreateData: jest.fn().mockReturnValue({
-              action: 'CREATE',
-              entity: 'test',
-              entityId: 'test-id',
-              userId: USER_ID,
-              details: {},
-            }),
-          },
-        },
+        { provide: PdfService, useValue: pdfServiceMock },
+        { provide: AuditLogService, useValue: auditLogMock },
       ],
     }).compile();
 
@@ -1094,6 +1099,220 @@ describe('EventPassengersService', () => {
       );
 
       await expect(service.remove(EP_ID, user)).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
+  // ── exportPdf ──────────────────────────────────────────────────
+  describe('exportPdf', () => {
+    const CIRCUIT_ID = 'circuit-1';
+    const OTHER_CONGREGATION_ID = 'c9c9c9c9-0000-0000-0000-000000000009';
+
+    interface PdfEnrollment {
+      observations: string | null;
+      passenger: { name: string; rgEncrypted: string; phone: string | null };
+      congregation: { name: string; code: string; circuit: { name: string } };
+    }
+
+    function buildEventWithCircuit(overrides: Partial<PrismaEvent> = {}): PrismaEvent & { circuit: { name: string } } {
+      return { ...buildEvent({ circuitId: CIRCUIT_ID, ...overrides }), circuit: { name: 'SP019' } };
+    }
+
+    function buildEnrollment(overrides: Partial<PdfEnrollment> = {}): PdfEnrollment {
+      return {
+        observations: overrides.observations ?? null,
+        passenger: overrides.passenger ?? { name: 'Ana Maria', rgEncrypted: ENCRYPTED_RG, phone: '11999990000' },
+        congregation: overrides.congregation ?? {
+          name: 'Congregação Cidade Popular',
+          code: '105478',
+          circuit: { name: 'SP019' },
+        },
+      };
+    }
+
+    function setupHappyPath(enrollments: PdfEnrollment[] = [buildEnrollment()]): void {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(enrollments.length);
+      prismaMock.eventPassenger.findMany.mockResolvedValue(enrollments as never);
+    }
+
+    const circuitUser = (): JwtPayload =>
+      buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: CIRCUIT_ID, congregationId: null });
+
+    it('deve lançar NotFoundException quando o evento não existe', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar NotFoundException quando o evento pertence a outro circuito (path)', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit({ circuitId: 'circuit-2' }) as never);
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: 'circuit-2', congregationId: null });
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando o circuito do JWT diverge do evento', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: 'circuit-outro', congregationId: null });
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede includeSensitive', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { includeSensitive: true })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação não tem congregationId no JWT', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID, congregationId: null });
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+      await expect(
+        service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: OTHER_CONGREGATION_ID }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve permitir role de congregação exportando a própria congregação', async () => {
+      setupHappyPath();
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID });
+
+      expect(result.buffer).toBeInstanceOf(Buffer);
+      expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { eventId: EVENT_ID, congregationId: CONGREGATION_ID } }),
+      );
+    });
+
+    it('deve buscar todos os inscritos para role de circuito sem filtro', async () => {
+      setupHappyPath();
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { eventId: EVENT_ID } }),
+      );
+    });
+
+    it('deve lançar NotFoundException quando role de circuito filtra congregação de outro circuito', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: 'circuit-2' } as never);
+
+      await expect(
+        service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { congregationId: OTHER_CONGREGATION_ID }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar UnprocessableEntityException quando excede o teto de passageiros', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(2001);
+
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {})).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('não deve descriptografar RG quando includeSensitive=false', async () => {
+      setupHappyPath();
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: false });
+
+      expect(encryptionMock.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('deve descriptografar RG de cada passageiro quando includeSensitive=true', async () => {
+      setupHappyPath([
+        buildEnrollment(),
+        buildEnrollment({ passenger: { name: 'Bruno', rgEncrypted: ENCRYPTED_RG, phone: null } }),
+      ]);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+
+      expect(encryptionMock.decrypt).toHaveBeenCalledTimes(2);
+    });
+
+    it('deve chamar generatePassengerList com generatedByName e includeSensitive corretos', async () => {
+      setupHappyPath();
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({
+          generatedByName: 'João Coordenador',
+          includeSensitive: true,
+          circuitName: 'SP019',
+        }),
+      );
+    });
+
+    it('deve usar "Usuário desconhecido" quando o requester não é encontrado', async () => {
+      setupHappyPath();
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ generatedByName: 'Usuário desconhecido' }),
+      );
+    });
+
+    it('deve retornar congregationCode quando filtrado por congregação', async () => {
+      setupHappyPath();
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID });
+
+      expect(result.congregationCode).toBe('105478');
+    });
+
+    it('não deve retornar congregationCode quando sem filtro de congregação', async () => {
+      setupHappyPath();
+
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(result.congregationCode).toBeUndefined();
+    });
+
+    it('deve gravar audit log EXPORT com metadados (sem dados de passageiros)', async () => {
+      setupHappyPath();
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+
+      expect(auditLogMock.log).toHaveBeenCalledWith(
+        'EXPORT',
+        'EventPassengerPdf',
+        EVENT_ID,
+        USER_ID,
+        expect.objectContaining({
+          newValues: expect.objectContaining({
+            eventId: EVENT_ID,
+            circuitId: CIRCUIT_ID,
+            includeSensitive: true,
+            totalPassengers: 1,
+          }),
+        }),
+      );
+    });
+
+    it('não deve interromper o export quando o audit log falha (fire-and-forget)', async () => {
+      setupHappyPath();
+      auditLogMock.log.mockRejectedValue(new Error('db down'));
+
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+
+      expect(result.buffer).toBeInstanceOf(Buffer);
     });
   });
 });

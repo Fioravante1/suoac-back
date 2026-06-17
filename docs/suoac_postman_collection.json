@@ -1372,6 +1372,53 @@
           "response": []
         },
         {
+          "name": "Export EventPassengers PDF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/events/:eventId/passengers/export.pdf?congregationId=&includeSensitive=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "events",
+                ":eventId",
+                "passengers",
+                "export.pdf"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "",
+                  "description": "Opcional. Roles de circuito: filtra por congregação. Roles de congregação: deve ser a própria congregação ou ausente (403 se divergir).",
+                  "disabled": true
+                },
+                {
+                  "key": "includeSensitive",
+                  "value": "false",
+                  "description": "Opcional (true/false). Inclui o RG no PDF. Permitido apenas para CIRCUIT_COORDINATOR e CIRCUIT_ASSISTANT (403 para roles de congregação). Valor inválido retorna 400.",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            },
+            "description": "Gera e baixa um PDF com a lista de passageiros inscritos, agrupada por congregação (Nome, Telefone, Observações da inscrição; RG apenas com includeSensitive=true para roles de circuito). O PDF contém marca d'água com o nome do usuário e a data. Resposta binária (application/pdf) — no Postman use 'Send and Download' para salvar o arquivo. O front deve consumir como blob/arraybuffer e respeitar o header Content-Disposition. Acima de 2000 inscritos sem filtro de congregação, retorna 422."
+          },
+          "response": []
+        },
+        {
           "name": "Get EventPassenger by ID",
           "request": {
             "method": "GET",
