@@ -51,7 +51,8 @@ function buildExpectedResponse(overrides: Partial<PassengerResponse> = {}): Pass
     id: overrides.id ?? PASSENGER_ID,
     name: overrides.name ?? 'João Silva',
     rg: overrides.rg ?? DECRYPTED_RG,
-    phone: overrides.phone ?? '11999999999',
+    // Response sempre mascarado (entidade Prisma armazena cru: '11999999999')
+    phone: overrides.phone ?? '11 99999-9999',
     observations: overrides.observations ?? null,
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),

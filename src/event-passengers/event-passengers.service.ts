@@ -9,11 +9,21 @@ import {
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import {
+  canExportSensitivePassengerData,
   checkCircuitOwnership,
   checkCongregationPermission,
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
+import type {
+  CongregationPdfBlock,
+  ExportPdfResult,
+  PassengerListPdfData,
+  PassengerPdfRow,
+} from '../common/pdf/interfaces/passenger-list-pdf.interface';
+import { PdfService } from '../common/pdf/pdf.service';
+import { formatPhone } from '../common/phone/phone.util';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { Prisma } from '../generated/prisma/client';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
@@ -38,6 +48,7 @@ export class EventPassengersService {
     private readonly encryption: EncryptionService,
     private readonly congregationEventStatusService: CongregationEventStatusService,
     private readonly auditLogService: AuditLogService,
+    private readonly pdfService: PdfService,
   ) {}
 
   async create(eventId: string, user: JwtPayload, dto: CreateEventPassengerDto): Promise<EventPassengerResponse> {
@@ -220,6 +231,197 @@ export class EventPassengersService {
       },
       financialSummary,
     };
+  }
+
+  async exportPdf(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    dto: { congregationId?: string; includeSensitive?: boolean },
+  ): Promise<ExportPdfResult> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      include: { circuit: true },
+    });
+
+    if (!event) {
+      this.logger.warn(`Evento não encontrado — id=${eventId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    // Evento de outro circuito → NotFound (não revela que existe em outro circuito)
+    if (event.circuitId !== circuitId) {
+      this.logger.warn(`Evento fora do circuito do path — eventId=${eventId}, circuitId=${circuitId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const includeSensitive = dto.includeSensitive ?? false;
+
+    if (includeSensitive && !canExportSensitivePassengerData(user.role)) {
+      this.logger.warn(`Tentativa de exportar RG sem permissão — userId=${user.sub}, role=${user.role}`);
+      throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
+    }
+
+    const effectiveCongregationId = await this.resolveExportCongregationScope(
+      user,
+      event.circuitId,
+      dto.congregationId,
+    );
+
+    const where: Prisma.EventPassengerWhereInput = {
+      eventId,
+      ...(effectiveCongregationId ? { congregationId: effectiveCongregationId } : {}),
+    };
+
+    const total = await this.prisma.client.eventPassenger.count({ where });
+
+    if (total > PDF_EXPORT_MAX_PASSENGERS) {
+      throw new UnprocessableEntityException(
+        `O evento possui ${total} inscritos. Exporte por congregação usando o parâmetro congregationId.`,
+      );
+    }
+
+    const requester = await this.prisma.client.user.findUnique({
+      where: { id: user.sub },
+      select: { name: true },
+    });
+    const generatedByName = requester?.name ?? 'Usuário desconhecido';
+
+    const enrollments = await this.prisma.client.eventPassenger.findMany({
+      where,
+      orderBy: [{ congregation: { name: 'asc' } }, { passenger: { name: 'asc' } }],
+      include: {
+        passenger: true,
+        congregation: { include: { circuit: true } },
+      },
+    });
+
+    const data: PassengerListPdfData = {
+      eventTitle: `${this.getEventTypeLabel(event.type)} ${event.title}`,
+      eventVenue: event.venue,
+      eventCity: event.city,
+      eventState: event.state,
+      circuitName: event.circuit.name,
+      generatedAt: new Date(),
+      generatedByName,
+      includeSensitive,
+      congregations: this.groupForPdf(enrollments, includeSensitive),
+    };
+
+    const buffer = await this.pdfService.generatePassengerList(data);
+
+    this.logger.log(
+      `PDF de inscritos exportado — eventId=${eventId}, total=${total}, includeSensitive=${includeSensitive}`,
+    );
+
+    void this.auditLogService
+      .log('EXPORT', 'EventPassengerPdf', eventId, user.sub, {
+        oldValues: null,
+        newValues: {
+          eventId,
+          circuitId,
+          congregationId: effectiveCongregationId ?? null,
+          includeSensitive,
+          totalPassengers: total,
+        },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export PDF'));
+
+    let congregationCode: string | undefined;
+    if (effectiveCongregationId) {
+      congregationCode =
+        enrollments[0]?.congregation.code ??
+        (
+          await this.prisma.client.congregation.findUnique({
+            where: { id: effectiveCongregationId },
+            select: { code: true },
+          })
+        )?.code;
+    }
+
+    return { buffer, congregationCode };
+  }
+
+  private async resolveExportCongregationScope(
+    user: JwtPayload,
+    eventCircuitId: string,
+    requestedCongregationId?: string,
+  ): Promise<string | undefined> {
+    if (!isCircuitRole(user.role)) {
+      if (!user.congregationId) {
+        throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
+      }
+
+      if (requestedCongregationId && requestedCongregationId !== user.congregationId) {
+        throw new ForbiddenException('Sem permissão para exportar inscritos de outra congregação');
+      }
+      return user.congregationId;
+    }
+
+    if (!requestedCongregationId) {
+      return undefined;
+    }
+
+    const congregation = await this.prisma.client.congregation.findUnique({
+      where: { id: requestedCongregationId },
+      select: { circuitId: true },
+    });
+
+    if (!congregation || congregation.circuitId !== eventCircuitId) {
+      throw new NotFoundException('Congregação não encontrada neste circuito');
+    }
+
+    return requestedCongregationId;
+  }
+
+  private groupForPdf(
+    enrollments: Array<{
+      observations: string | null;
+      passenger: { name: string; rgEncrypted: string; phone: string | null };
+      congregation: { name: string; code: string; circuit: { name: string } };
+    }>,
+    includeSensitive: boolean,
+  ): CongregationPdfBlock[] {
+    const blocks = new Map<string, CongregationPdfBlock>();
+
+    for (const ep of enrollments) {
+      const key = ep.congregation.code;
+      let block = blocks.get(key);
+      if (!block) {
+        block = {
+          congregationName: ep.congregation.name,
+          congregationCode: ep.congregation.code,
+          circuitName: ep.congregation.circuit.name,
+          passengers: [],
+        };
+        blocks.set(key, block);
+      }
+
+      const row: PassengerPdfRow = {
+        index: block.passengers.length + 1,
+        name: ep.passenger.name,
+        rg: includeSensitive ? this.encryption.decrypt(ep.passenger.rgEncrypted) : null,
+        phone: ep.passenger.phone,
+        observations: ep.observations,
+      };
+      block.passengers.push(row);
+    }
+
+    return [...blocks.values()];
+  }
+
+  /**
+   * Rótulo legível do tipo de evento, usado para compor o título no PDF
+   * (ex.: "Congresso Felicidade Eterna", "Assembleia Ouça o que o espírito...").
+   */
+  private getEventTypeLabel(type: EventType): string {
+    const labels: Record<EventType, string> = {
+      [EventType.REGIONAL_CONVENTION]: 'Congresso',
+      [EventType.ASSEMBLY]: 'Assembleia',
+    };
+    return labels[type];
   }
 
   async findOne(id: string, user: JwtPayload): Promise<EventPassengerResponse> {
@@ -627,7 +829,7 @@ export class EventPassengersService {
         id: ep.passenger.id,
         name: ep.passenger.name,
         rg: this.encryption.decrypt(ep.passenger.rgEncrypted),
-        phone: ep.passenger.phone,
+        phone: formatPhone(ep.passenger.phone),
       },
       totalAmount: String(ep.totalAmount),
       paidAmount: String(ep.paidAmount),

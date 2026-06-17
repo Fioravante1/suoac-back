@@ -10,12 +10,15 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
 import { EventPassengerQueryDto } from './dto/event-passenger-query.dto';
+import { ExportPassengersQueryDto } from './dto/export-passengers-query.dto';
 import { UpdateEventPassengerDaysDto } from './dto/update-event-passenger-days.dto';
 import { EventPassengersService } from './event-passengers.service';
 import type {
@@ -51,6 +54,29 @@ export class EventPassengersController {
       user,
       query.paymentStatus,
     );
+  }
+
+  @Get('circuits/:circuitId/events/:eventId/passengers/export.pdf')
+  async exportPdf(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query() query: ExportPassengersQueryDto,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const result = await this.eventPassengersService.exportPdf(circuitId, eventId, user, {
+      congregationId: query.congregationId,
+      includeSensitive: query.includeSensitive,
+    });
+
+    // [ACHADO #7] sanitiza o código da congregação antes de compor o filename
+    const safeCode = result.congregationCode?.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const filename = safeCode ? `inscritos-${safeCode}-${eventId}.pdf` : `inscritos-${eventId}.pdf`;
+
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(result.buffer);
   }
 
   @Get('event-passengers/:id')

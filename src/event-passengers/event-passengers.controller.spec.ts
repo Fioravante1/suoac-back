@@ -1,9 +1,23 @@
 import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { EventPassengerResponse } from './interfaces/event-passenger-response.interface';
 import { EventPassengersController } from './event-passengers.controller';
 import { EventPassengersService } from './event-passengers.service';
+
+interface ReplyMock {
+  header: jest.Mock;
+  send: jest.Mock;
+}
+
+function buildReplyMock(): ReplyMock {
+  const reply: ReplyMock = {
+    header: jest.fn(() => reply),
+    send: jest.fn(() => reply),
+  };
+  return reply;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 const USER: JwtPayload = {
@@ -41,6 +55,7 @@ describe('EventPassengersController', () => {
     serviceMock = {
       create: jest.fn(),
       findByEvent: jest.fn(),
+      exportPdf: jest.fn(),
       findOne: jest.fn(),
       updateDays: jest.fn(),
       remove: jest.fn(),
@@ -196,6 +211,94 @@ describe('EventPassengersController', () => {
       serviceMock.remove.mockRejectedValue(new NotFoundException('Inscrição não encontrada'));
 
       await expect(controller.remove('non-existent', USER)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── exportPdf ──────────────────────────────────────────────────
+  describe('exportPdf', () => {
+    const CIRCUIT_ID = 'c0000000-0000-0000-0000-0000000000c1';
+    const EVENT_ID = 'e0000000-0000-0000-0000-0000000000e1';
+
+    it('deve delegar ao service repassando circuitId, eventId, user e dto', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockResolvedValue({ buffer: Buffer.from('%PDF-x') });
+
+      await controller.exportPdf(
+        CIRCUIT_ID,
+        EVENT_ID,
+        { congregationId: 'cong-1', includeSensitive: true },
+        USER,
+        reply as unknown as FastifyReply,
+      );
+
+      expect(serviceMock.exportPdf).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, {
+        congregationId: 'cong-1',
+        includeSensitive: true,
+      });
+    });
+
+    it('deve responder com Content-Type application/pdf e body Buffer', async () => {
+      const reply = buildReplyMock();
+      const buffer = Buffer.from('%PDF-conteudo');
+      serviceMock.exportPdf.mockResolvedValue({ buffer });
+
+      await controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+      // toHaveBeenCalledWith(buffer) garante que o body enviado é exatamente o Buffer do service
+      expect(reply.send).toHaveBeenCalledWith(buffer);
+      expect(buffer).toBeInstanceOf(Buffer);
+    });
+
+    it('deve usar filename apenas com eventId quando não há congregationCode', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockResolvedValue({ buffer: Buffer.from('%PDF-x') });
+
+      await controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="inscritos-${EVENT_ID}.pdf"`,
+      );
+    });
+
+    it('deve usar o código sanitizado da congregação no filename', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockResolvedValue({ buffer: Buffer.from('%PDF-x'), congregationCode: '105/478' });
+
+      await controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="inscritos-105-478-${EVENT_ID}.pdf"`,
+      );
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+
+      await expect(
+        controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve propagar ForbiddenException do service', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockRejectedValue(new ForbiddenException('Sem permissão'));
+
+      await expect(
+        controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve propagar UnprocessableEntityException do service', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockRejectedValue(new UnprocessableEntityException('Excede o teto'));
+
+      await expect(
+        controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

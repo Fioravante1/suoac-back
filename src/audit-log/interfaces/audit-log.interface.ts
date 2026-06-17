@@ -1,4 +1,4 @@
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'DEACTIVATE';
+export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'DEACTIVATE' | 'EXPORT';
 
 export interface AuditLogDetails {
   oldValues: Record<string, unknown> | null;
