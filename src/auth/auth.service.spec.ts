@@ -73,7 +73,8 @@ describe('AuthService', () => {
     };
 
     hashingMock = {
-      verify: jest.fn(),
+      // Default false: cobre o verify "dummy" de equalização de timing nos caminhos de falha.
+      verify: jest.fn().mockResolvedValue(false),
       hash: jest.fn(),
     };
 
@@ -138,6 +139,13 @@ describe('AuthService', () => {
       usersServiceMock.findByEmailForAuth.mockResolvedValue(null);
 
       await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('deve executar verify mesmo quando email nao existe (mitigacao de timing)', async () => {
+      usersServiceMock.findByEmailForAuth.mockResolvedValue(null);
+
+      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+      expect(hashingMock.verify).toHaveBeenCalledTimes(1);
     });
 
     it('deve lancar UnauthorizedException quando usuario esta inativo', async () => {

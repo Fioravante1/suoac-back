@@ -1,4 +1,5 @@
-import { IsEmail, IsEnum, IsString, IsUUID, Length, MaxLength } from 'class-validator';
+import { IsEmail, IsEnum, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
 
 export const USER_ROLES = [
   'CIRCUIT_COORDINATOR',
@@ -18,6 +19,7 @@ export class CreateUserDto {
 
   @IsString()
   @Length(8, 100)
+  @Matches(PASSWORD_COMPLEXITY_REGEX, { message: PASSWORD_COMPLEXITY_MESSAGE })
   password!: string;
 
   @IsEnum(USER_ROLES)

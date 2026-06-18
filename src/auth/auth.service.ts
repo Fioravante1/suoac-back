@@ -13,6 +13,12 @@ import type { RefreshTokenDto } from './dto/refresh-token.dto';
 import type { AuthResponse } from './interfaces/auth-response.interface';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
 
+// Hash Argon2id válido (mesmos parâmetros do projeto) usado apenas para equalizar
+// o tempo de resposta do login quando o usuário não existe / não tem senha,
+// evitando enumeração de usuários por timing. Não corresponde a nenhuma senha real.
+const DUMMY_PASSWORD_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=1$UUeNV1VU3Ys5g15MkztWiw$EA9uTWeToONrxVCW6rzSJt6DW2YOFy2C52jXe8A/k5M';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -48,13 +54,11 @@ export class AuthService {
   async login(dto: LoginDto): Promise<AuthResponse> {
     const user = await this.usersService.findByEmailForAuth(dto.email);
 
-    if (!user || !user.isActive) {
+    if (!user || !user.isActive || !user.passwordHash) {
+      // Executa um verify "dummy" para que o tempo de resposta seja indistinguível
+      // do caminho de senha incorreta, prevenindo enumeração de usuários por timing.
+      await this.hashingService.verify(DUMMY_PASSWORD_HASH, dto.password).catch(() => false);
       this.logger.warn(`Tentativa de login falhou — email="${dto.email}"`);
-      throw new UnauthorizedException('Credenciais invalidas');
-    }
-
-    if (!user.passwordHash) {
-      this.logger.warn(`Tentativa de login sem senha configurada — userId=${user.id}`);
       throw new UnauthorizedException('Credenciais invalidas');
     }
 
