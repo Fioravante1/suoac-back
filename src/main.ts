@@ -44,10 +44,26 @@ async function bootstrap(): Promise<void> {
   // Helmet — security headers
   await app.register(helmet, { contentSecurityPolicy: isProduction });
 
-  // Rate limiting
+  // Rate limiting global
   const parsedRateLimit = parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10);
   const rateLimitMax = Number.isInteger(parsedRateLimit) && parsedRateLimit > 0 ? parsedRateLimit : 100;
   await app.register(rateLimit, { max: rateLimitMax, timeWindow: '1 minute' });
+
+  // Rate limiting reforçado para rotas de autenticação (anti brute-force / credential stuffing).
+  // O limiter estrito roda em um hook onRequest global (antes dos hooks por rota), marca o request
+  // como já processado e faz o limiter global ser ignorado nessas rotas — então elas usam APENAS
+  // este limite, bem mais baixo que o global.
+  const parsedAuthRateLimit = parseInt(process.env.AUTH_RATE_LIMIT_MAX ?? '10', 10);
+  const authRateLimitMax = Number.isInteger(parsedAuthRateLimit) && parsedAuthRateLimit > 0 ? parsedAuthRateLimit : 10;
+  const fastifyInstance = app.getHttpAdapter().getInstance();
+  const authRateLimiter = fastifyInstance.rateLimit({ max: authRateLimitMax, timeWindow: '1 minute' });
+  const authThrottledPaths = new Set(['/auth/login', '/auth/refresh', '/auth/change-password']);
+  fastifyInstance.addHook('onRequest', async (request, reply) => {
+    const path = request.url.split('?')[0];
+    if (path && authThrottledPaths.has(path)) {
+      await authRateLimiter.call(fastifyInstance, request, reply);
+    }
+  });
 
   // Pipe global: valida automaticamente todo request body contra o DTO.
   app.useGlobalPipes(
