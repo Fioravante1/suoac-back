@@ -100,10 +100,11 @@ describe('UsersController', () => {
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);
 
-      const result = await controller.findByCircuit(CIRCUIT_ID, {});
+      const user = buildUser();
+      const result = await controller.findByCircuit(CIRCUIT_ID, {}, user);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, 1, 20);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, user, 1, 20);
     });
 
     it('deve passar parametros de paginacao customizados', async () => {
@@ -113,10 +114,11 @@ describe('UsersController', () => {
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);
 
-      const result = await controller.findByCircuit(CIRCUIT_ID, { page: 2, limit: 10 });
+      const user = buildUser();
+      const result = await controller.findByCircuit(CIRCUIT_ID, { page: 2, limit: 10 }, user);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, 2, 10);
+      expect(serviceMock.findByCircuit).toHaveBeenCalledWith(CIRCUIT_ID, user, 2, 10);
     });
   });
 

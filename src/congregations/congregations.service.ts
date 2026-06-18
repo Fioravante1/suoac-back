@@ -56,9 +56,13 @@ export class CongregationsService {
 
   async findByCircuit(
     circuitId: string,
+    user: JwtPayload,
     page: number,
     limit: number,
   ): Promise<PaginatedResponse<CongregationResponse>> {
+    // Defense-in-depth: além do CircuitOwnershipGuard (que valida :circuitId no path),
+    // o service valida o escopo pelo claim do token — nunca confiando apenas na URL.
+    checkCircuitOwnership(user, circuitId);
     await this.ensureCircuitExists(circuitId);
 
     this.logger.debug(`Listando congregações — circuitId=${circuitId}, page=${page}, limit=${limit}`);

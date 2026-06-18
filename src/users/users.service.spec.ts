@@ -228,11 +228,18 @@ describe('UsersService', () => {
       prismaMock.user.findMany.mockResolvedValue(users);
       prismaMock.user.count.mockResolvedValue(2);
 
-      const result = await service.findByCircuit(CIRCUIT_ID, 1, 20);
+      const result = await service.findByCircuit(CIRCUIT_ID, buildCaller(), 1, 20);
 
       expect(result.data).toHaveLength(2);
       expect(result.meta).toEqual({ total: 2, page: 1, limit: 20, totalPages: 1 });
       expect(result.data[0]).not.toHaveProperty('passwordHash');
+    });
+
+    it('deve lancar ForbiddenException quando o circuito do path difere do circuito do token', async () => {
+      const callerDeOutroCircuito = buildCaller({ circuitId: 'b2c3d4e5-9999-9999-9999-999999999999' });
+
+      await expect(service.findByCircuit(CIRCUIT_ID, callerDeOutroCircuito, 1, 20)).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.user.findMany).not.toHaveBeenCalled();
     });
 
     it('deve calcular totalPages corretamente', async () => {
@@ -240,7 +247,7 @@ describe('UsersService', () => {
       prismaMock.user.findMany.mockResolvedValue([buildUserRaw()]);
       prismaMock.user.count.mockResolvedValue(45);
 
-      const result = await service.findByCircuit(CIRCUIT_ID, 1, 20);
+      const result = await service.findByCircuit(CIRCUIT_ID, buildCaller(), 1, 20);
 
       expect(result.meta.totalPages).toBe(3);
     });
@@ -248,7 +255,7 @@ describe('UsersService', () => {
     it('deve lancar NotFoundException quando circuito nao existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByCircuit(CIRCUIT_ID, 1, 20)).rejects.toThrow(NotFoundException);
+      await expect(service.findByCircuit(CIRCUIT_ID, buildCaller(), 1, 20)).rejects.toThrow(NotFoundException);
     });
   });
 
