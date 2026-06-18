@@ -30,6 +30,7 @@ import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../genera
 import { PassengersService } from '../passengers/passengers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
+import type { EventPassengerQueryDto } from './dto/event-passenger-query.dto';
 import type { UpdateEventPassengerDaysDto } from './dto/update-event-passenger-days.dto';
 import type {
   EventPassengerDayResponse,
@@ -174,10 +175,8 @@ export class EventPassengersService {
 
   async findByEvent(
     eventId: string,
-    page: number,
-    limit: number,
     user: JwtPayload,
-    paymentStatus?: PaymentStatus,
+    query: EventPassengerQueryDto,
   ): Promise<PaginatedPassengerResponse> {
     const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
 
@@ -188,22 +187,34 @@ export class EventPassengersService {
 
     checkCircuitOwnership(user, event.circuitId);
 
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const isCircuit = isCircuitRole(user.role);
+
     this.logger.debug(`Listando inscrições — eventId=${eventId}, page=${page}, limit=${limit}`);
 
-    const isCongregationRole = !isCircuitRole(user.role);
+    // Escopo de congregação: roles de congregação ficam restritas à própria; roles de circuito
+    // podem filtrar por uma congregação do circuito (validada). Reusa o mesmo helper do export.
+    const congregationScope = await this.resolveCongregationScope(user, event.circuitId, query.congregationId);
 
-    if (isCongregationRole && !user.congregationId) {
-      throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
-    }
+    // Valida que os dias informados pertencem ao evento (422 caso contrário).
+    const eventDayIds =
+      query.eventDayIds && query.eventDayIds.length > 0
+        ? await this.validateEventDaysFilter(eventId, query.eventDayIds)
+        : undefined;
 
+    // baseWhere = escopo (evento + congregação) — usado no financialSummary.
     const baseWhere: Prisma.EventPassengerWhereInput = {
       eventId,
-      ...(isCongregationRole ? { congregationId: user.congregationId! } : {}),
+      ...(congregationScope ? { congregationId: congregationScope } : {}),
     };
 
+    // filteredWhere = baseWhere + filtros de busca — usado em findMany/count (meta.total).
     const filteredWhere: Prisma.EventPassengerWhereInput = {
       ...baseWhere,
-      ...(paymentStatus ? { paymentStatus } : {}),
+      ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
+      ...(query.name ? { passenger: { name: { contains: query.name, mode: 'insensitive' } } } : {}),
+      ...(eventDayIds ? { eventPassengerDays: { some: { eventDayId: { in: eventDayIds } } } } : {}),
     };
 
     const [data, total, financialSummary] = await Promise.all([
@@ -214,6 +225,7 @@ export class EventPassengersService {
         take: limit,
         include: {
           passenger: true,
+          congregation: { select: { name: true } },
           eventPassengerDays: { include: { eventDay: true } },
         },
       }),
@@ -222,7 +234,7 @@ export class EventPassengersService {
     ]);
 
     return {
-      data: data.map((ep) => this.toResponse(ep)),
+      data: data.map((ep) => this.toResponse(ep, isCircuit ? ep.congregation.name : undefined)),
       meta: {
         total,
         page,
@@ -264,11 +276,7 @@ export class EventPassengersService {
       throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
     }
 
-    const effectiveCongregationId = await this.resolveExportCongregationScope(
-      user,
-      event.circuitId,
-      dto.congregationId,
-    );
+    const effectiveCongregationId = await this.resolveCongregationScope(user, event.circuitId, dto.congregationId);
 
     const where: Prisma.EventPassengerWhereInput = {
       eventId,
@@ -344,7 +352,12 @@ export class EventPassengersService {
     return { buffer, congregationCode };
   }
 
-  private async resolveExportCongregationScope(
+  /**
+   * Resolve o escopo de congregação para listagem/exportação:
+   * - Role de congregação: restrita à própria; pedir outra → 403.
+   * - Role de circuito: sem filtro → todas; com filtro → valida pertencimento ao circuito (404).
+   */
+  private async resolveCongregationScope(
     user: JwtPayload,
     eventCircuitId: string,
     requestedCongregationId?: string,
@@ -355,7 +368,7 @@ export class EventPassengersService {
       }
 
       if (requestedCongregationId && requestedCongregationId !== user.congregationId) {
-        throw new ForbiddenException('Sem permissão para exportar inscritos de outra congregação');
+        throw new ForbiddenException('Sem permissão para acessar inscritos de outra congregação');
       }
       return user.congregationId;
     }
@@ -374,6 +387,30 @@ export class EventPassengersService {
     }
 
     return requestedCongregationId;
+  }
+
+  /**
+   * Valida que todos os dias informados no filtro pertencem ao evento. UUIDs
+   * malformados já foram barrados na DTO (400); aqui, um UUID válido que não
+   * pertence ao evento é semanticamente inválido → 422. Dias cancelados são
+   * aceitos (operação de leitura). Retorna os IDs deduplicados validados.
+   */
+  private async validateEventDaysFilter(eventId: string, requestedDayIds: string[]): Promise<string[]> {
+    const uniqueDayIds = [...new Set(requestedDayIds)];
+
+    const eventDays = await this.prisma.client.eventDay.findMany({
+      where: { eventId, id: { in: uniqueDayIds } },
+      select: { id: true },
+    });
+
+    const foundIds = new Set(eventDays.map((d) => d.id));
+    const invalidDayId = uniqueDayIds.find((id) => !foundIds.has(id));
+
+    if (invalidDayId) {
+      throw new UnprocessableEntityException(`Dia não pertence ao evento: ${invalidDayId}`);
+    }
+
+    return uniqueDayIds;
   }
 
   private groupForPdf(
@@ -793,36 +830,39 @@ export class EventPassengersService {
     return dayIds;
   }
 
-  private toResponse(ep: {
-    id: string;
-    totalAmount: unknown;
-    paidAmount: unknown;
-    paymentStatus: string;
-    exemptionReason: string | null;
-    observations: string | null;
-    eventId: string;
-    congregationId: string;
-    registeredById: string;
-    createdAt: Date;
-    updatedAt: Date;
-    passenger: {
+  private toResponse(
+    ep: {
       id: string;
-      name: string;
-      rgEncrypted: string;
-      phone: string | null;
-    };
-    eventPassengerDays: Array<{
-      id: string;
-      checkedIn: boolean;
-      checkedInAt: Date | null;
-      eventDayId: string;
-      eventDay: {
-        dayNumber: number;
-        date: Date;
-        label: string;
+      totalAmount: unknown;
+      paidAmount: unknown;
+      paymentStatus: string;
+      exemptionReason: string | null;
+      observations: string | null;
+      eventId: string;
+      congregationId: string;
+      registeredById: string;
+      createdAt: Date;
+      updatedAt: Date;
+      passenger: {
+        id: string;
+        name: string;
+        rgEncrypted: string;
+        phone: string | null;
       };
-    }>;
-  }): EventPassengerResponse {
+      eventPassengerDays: Array<{
+        id: string;
+        checkedIn: boolean;
+        checkedInAt: Date | null;
+        eventDayId: string;
+        eventDay: {
+          dayNumber: number;
+          date: Date;
+          label: string;
+        };
+      }>;
+    },
+    congregationName?: string,
+  ): EventPassengerResponse {
     return {
       id: ep.id,
       passenger: {
@@ -838,6 +878,7 @@ export class EventPassengersService {
       observations: ep.observations,
       eventId: ep.eventId,
       congregationId: ep.congregationId,
+      ...(congregationName !== undefined && { congregationName }),
       registeredById: ep.registeredById,
       createdAt: ep.createdAt,
       updatedAt: ep.updatedAt,

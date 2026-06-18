@@ -127,13 +127,14 @@ describe('EventPassengersController', () => {
       };
       serviceMock.findByEvent.mockResolvedValue(expected);
 
-      const result = await controller.findByEvent('event-1', {}, USER);
+      const query = {};
+      const result = await controller.findByEvent('event-1', query, USER);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', 1, 20, USER, undefined);
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', USER, query);
     });
 
-    it('deve repassar paymentStatus ao service', async () => {
+    it('deve repassar o query completo (filtros) ao service', async () => {
       const expected = {
         data: [],
         meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
@@ -147,9 +148,17 @@ describe('EventPassengersController', () => {
       };
       serviceMock.findByEvent.mockResolvedValue(expected);
 
-      await controller.findByEvent('event-1', { paymentStatus: 'PENDING' as const }, USER);
+      const query = {
+        page: 2,
+        limit: 50,
+        paymentStatus: 'PENDING' as const,
+        congregationId: 'cong-1',
+        name: 'joão',
+        eventDayIds: ['day-1', 'day-2'],
+      };
+      await controller.findByEvent('event-1', query, USER);
 
-      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', 1, 20, USER, 'PENDING');
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', USER, query);
     });
 
     it('deve propagar NotFoundException do service', async () => {

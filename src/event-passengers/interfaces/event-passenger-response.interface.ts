@@ -20,6 +20,8 @@ export interface EventPassengerResponse {
   observations: string | null;
   eventId: string;
   congregationId: string;
+  /** Nome da congregação — presente apenas para roles de circuito. */
+  congregationName?: string;
   registeredById: string;
   createdAt: Date;
   updatedAt: Date;
