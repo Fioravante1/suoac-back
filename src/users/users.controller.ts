@@ -40,8 +40,9 @@ export class UsersController {
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Query() query: PaginationQueryDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponse<UserResponse>> {
-    return this.usersService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20);
+    return this.usersService.findByCircuit(circuitId, user, query.page ?? 1, query.limit ?? 20);
   }
 
   @Get('users/:id')

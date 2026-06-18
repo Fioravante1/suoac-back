@@ -52,7 +52,15 @@ export class UsersService {
     return this.toUserResponse(user);
   }
 
-  async findByCircuit(circuitId: string, page: number, limit: number): Promise<PaginatedResponse<UserResponse>> {
+  async findByCircuit(
+    circuitId: string,
+    user: JwtPayload,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedResponse<UserResponse>> {
+    // Defense-in-depth: além do CircuitOwnershipGuard (que valida :circuitId no path),
+    // o service valida o escopo pelo claim do token — nunca confiando apenas na URL.
+    checkCircuitOwnership(user, circuitId);
     await this.ensureCircuitExists(circuitId);
 
     this.logger.debug(`Listando usuarios — circuitId=${circuitId}, page=${page}, limit=${limit}`);

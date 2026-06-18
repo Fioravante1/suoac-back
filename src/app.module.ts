@@ -10,6 +10,7 @@ import { MustChangePasswordGuard } from './auth/guards/must-change-password.guar
 import { RolesGuard } from './auth/guards/roles.guard';
 import { CircuitsModule } from './circuits/circuits.module';
 import { EncryptionModule } from './common/encryption/encryption.module';
+import { validateEnv } from './common/config/env.validation';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { HashingModule } from './common/hashing/hashing.module';
 import { getLoggerConfig } from './common/logger/logger.config';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [`.env.${process.env.NODE_ENV ?? 'development'}`, '.env'],
+      validate: validateEnv,
     }),
     LoggerModule.forRoot(getLoggerConfig()),
     PrismaModule,

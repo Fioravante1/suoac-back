@@ -157,7 +157,7 @@ describe('CongregationsService', () => {
       prismaMock.congregation.findMany.mockResolvedValue(prismaRows);
       prismaMock.congregation.count.mockResolvedValue(2);
 
-      const result = await service.findByCircuit(circuitId, 1, 20);
+      const result = await service.findByCircuit(circuitId, buildUser({ circuitId }), 1, 20);
 
       expect(result.data).toHaveLength(2);
       expect(result.data[0]).not.toHaveProperty('isActive');
@@ -174,7 +174,7 @@ describe('CongregationsService', () => {
       prismaMock.congregation.findMany.mockResolvedValue([buildPrismaCongregation()]);
       prismaMock.congregation.count.mockResolvedValue(45);
 
-      const result = await service.findByCircuit(circuitId, 1, 20);
+      const result = await service.findByCircuit(circuitId, buildUser({ circuitId }), 1, 20);
 
       expect(result.meta.totalPages).toBe(3);
     });
@@ -182,7 +182,16 @@ describe('CongregationsService', () => {
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 
-      await expect(service.findByCircuit(circuitId, 1, 20)).rejects.toThrow(NotFoundException);
+      await expect(service.findByCircuit(circuitId, buildUser({ circuitId }), 1, 20)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando o circuito do path difere do circuito do token', async () => {
+      const userDeOutroCircuito = buildUser({ circuitId: 'b2c3d4e5-9999-9999-9999-999999999999' });
+
+      await expect(service.findByCircuit(circuitId, userDeOutroCircuito, 1, 20)).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.congregation.findMany).not.toHaveBeenCalled();
     });
   });
 
