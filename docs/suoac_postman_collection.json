@@ -1571,6 +1571,40 @@
           "response": []
         },
         {
+          "name": "List Event Payments (Extrato consolidado)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/payments?page=1&limit=20&congregationId={{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Opcional. Role de circuito filtra por congregação (validada); role de congregação é auto-restrita à própria."
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Delete Payment",
           "request": {
             "method": "DELETE",

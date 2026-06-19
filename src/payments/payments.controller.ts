@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ListEventPaymentsQueryDto } from './dto/list-event-payments-query.dto';
+import type { EventPaymentsResponse } from './interfaces/event-payment-row.interface';
 import type { PaymentResponse } from './interfaces/payment-response.interface';
 import { PaymentsService } from './payments.service';
 
@@ -27,6 +29,15 @@ export class PaymentsController {
     @CurrentUser() user: JwtPayload,
   ): Promise<PaymentResponse[]> {
     return this.paymentsService.findByEventPassenger(eventPassengerId, user);
+  }
+
+  @Get('events/:eventId/payments')
+  async findByEvent(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListEventPaymentsQueryDto,
+  ): Promise<EventPaymentsResponse> {
+    return this.paymentsService.findByEvent(eventId, user, query);
   }
 
   @Delete('payments/:id')

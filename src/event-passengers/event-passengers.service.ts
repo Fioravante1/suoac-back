@@ -14,6 +14,7 @@ import {
   checkCongregationPermission,
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
+import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
 import type {
@@ -195,7 +196,7 @@ export class EventPassengersService {
 
     // Escopo de congregação: roles de congregação ficam restritas à própria; roles de circuito
     // podem filtrar por uma congregação do circuito (validada). Reusa o mesmo helper do export.
-    const congregationScope = await this.resolveCongregationScope(user, event.circuitId, query.congregationId);
+    const congregationScope = await resolveCongregationScope(this.prisma, user, event.circuitId, query.congregationId);
 
     // Valida que os dias informados pertencem ao evento (422 caso contrário).
     const eventDayIds =
@@ -276,7 +277,7 @@ export class EventPassengersService {
       throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
     }
 
-    const effectiveCongregationId = await this.resolveCongregationScope(user, event.circuitId, dto.congregationId);
+    const effectiveCongregationId = await resolveCongregationScope(this.prisma, user, event.circuitId, dto.congregationId);
 
     const where: Prisma.EventPassengerWhereInput = {
       eventId,
@@ -350,43 +351,6 @@ export class EventPassengersService {
     }
 
     return { buffer, congregationCode };
-  }
-
-  /**
-   * Resolve o escopo de congregação para listagem/exportação:
-   * - Role de congregação: restrita à própria; pedir outra → 403.
-   * - Role de circuito: sem filtro → todas; com filtro → valida pertencimento ao circuito (404).
-   */
-  private async resolveCongregationScope(
-    user: JwtPayload,
-    eventCircuitId: string,
-    requestedCongregationId?: string,
-  ): Promise<string | undefined> {
-    if (!isCircuitRole(user.role)) {
-      if (!user.congregationId) {
-        throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
-      }
-
-      if (requestedCongregationId && requestedCongregationId !== user.congregationId) {
-        throw new ForbiddenException('Sem permissão para acessar inscritos de outra congregação');
-      }
-      return user.congregationId;
-    }
-
-    if (!requestedCongregationId) {
-      return undefined;
-    }
-
-    const congregation = await this.prisma.client.congregation.findUnique({
-      where: { id: requestedCongregationId },
-      select: { circuitId: true },
-    });
-
-    if (!congregation || congregation.circuitId !== eventCircuitId) {
-      throw new NotFoundException('Congregação não encontrada neste circuito');
-    }
-
-    return requestedCongregationId;
   }
 
   /**

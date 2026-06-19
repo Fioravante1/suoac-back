@@ -7,10 +7,14 @@ import {
   checkCongregationPermission,
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
+import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
+import { formatMoney } from '../common/money/money.util';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import { EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
+import type { ListEventPaymentsQueryDto } from './dto/list-event-payments-query.dto';
+import type { EventPaymentRow, EventPaymentsResponse } from './interfaces/event-payment-row.interface';
 import type { PaymentResponse } from './interfaces/payment-response.interface';
 
 @Injectable()
@@ -123,6 +127,74 @@ export class PaymentsService {
     return payments.map((p) => this.toResponse(p));
   }
 
+  /**
+   * Extrato consolidado de pagamentos do evento (livro de movimento): quem pagou,
+   * quanto, quando, por congregação.
+   * - Role de circuito: todos os pagamentos do evento; `congregationId` filtra (validado).
+   * - Role de congregação: auto-restrito ao próprio `congregationId`.
+   */
+  async findByEvent(
+    eventId: string,
+    user: JwtPayload,
+    query: ListEventPaymentsQueryDto,
+  ): Promise<EventPaymentsResponse> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { circuitId: true },
+    });
+
+    if (!event) {
+      this.logger.warn(`Evento não encontrado — id=${eventId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const scope = await resolveCongregationScope(this.prisma, user, event.circuitId, query.congregationId);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    this.logger.debug(`Listando pagamentos do evento — eventId=${eventId}, page=${page}, limit=${limit}`);
+
+    const where: Prisma.PaymentWhereInput = {
+      eventPassenger: {
+        eventId,
+        ...(scope ? { congregationId: scope } : {}),
+      },
+    };
+
+    const [payments, total, aggregate] = await Promise.all([
+      this.prisma.client.payment.findMany({
+        where,
+        orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          eventPassenger: {
+            select: {
+              passenger: { select: { name: true } },
+              congregation: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.client.payment.count({ where }),
+      this.prisma.client.payment.aggregate({ where, _sum: { amount: true } }),
+    ]);
+
+    return {
+      data: payments.map((p) => this.toEventPaymentRow(p)),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        totalReceived: formatMoney(aggregate._sum.amount),
+      },
+    };
+  }
+
   async remove(id: string, user: JwtPayload): Promise<void> {
     const payment = await this.prisma.client.payment.findUnique({
       where: { id },
@@ -189,6 +261,33 @@ export class PaymentsService {
       paidAt: payment.paidAt,
       observations: payment.observations,
       eventPassengerId: payment.eventPassengerId,
+      registeredById: payment.registeredById,
+      createdAt: payment.createdAt,
+    };
+  }
+
+  private toEventPaymentRow(payment: {
+    id: string;
+    amount: Prisma.Decimal;
+    paidAt: Date;
+    observations: string | null;
+    eventPassengerId: string;
+    registeredById: string;
+    createdAt: Date;
+    eventPassenger: {
+      passenger: { name: string };
+      congregation: { id: string; name: string };
+    };
+  }): EventPaymentRow {
+    return {
+      id: payment.id,
+      amount: formatMoney(payment.amount),
+      paidAt: payment.paidAt,
+      observations: payment.observations,
+      eventPassengerId: payment.eventPassengerId,
+      passengerName: payment.eventPassenger.passenger.name,
+      congregationId: payment.eventPassenger.congregation.id,
+      congregationName: payment.eventPassenger.congregation.name,
       registeredById: payment.registeredById,
       createdAt: payment.createdAt,
     };

@@ -35,6 +35,7 @@ describe('PaymentsController', () => {
     serviceMock = {
       create: jest.fn(),
       findByEventPassenger: jest.fn(),
+      findByEvent: jest.fn(),
       remove: jest.fn(),
     } as unknown as jest.Mocked<PaymentsService>;
 
@@ -94,6 +95,29 @@ describe('PaymentsController', () => {
       serviceMock.findByEventPassenger.mockRejectedValue(new NotFoundException('Inscrição não encontrada'));
 
       await expect(controller.findByEventPassenger('non-existent', USER)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── findByEvent ─────────────────────────────────────────────────
+  describe('findByEvent', () => {
+    it('deve delegar o extrato ao service repassando query completo', async () => {
+      const expected = {
+        data: [],
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0, totalReceived: '0.00' },
+      };
+      serviceMock.findByEvent.mockResolvedValue(expected);
+
+      const query = { page: 1, limit: 20, congregationId: 'c1c2c3c4-0000-0000-0000-000000000001' };
+      const result = await controller.findByEvent('event-1', USER, query);
+
+      expect(result).toEqual(expected);
+      expect(serviceMock.findByEvent).toHaveBeenCalledWith('event-1', USER, query);
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      serviceMock.findByEvent.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+
+      await expect(controller.findByEvent('non-existent', USER, {})).rejects.toThrow(NotFoundException);
     });
   });
 
