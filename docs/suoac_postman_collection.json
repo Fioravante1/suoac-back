@@ -1605,6 +1605,36 @@
           "response": []
         },
         {
+          "name": "Generate Payment Receipt PDF (S-24-T)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/events/{{eventId}}/payments/receipt.pdf?congregationId={{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "events",
+                "{{eventId}}",
+                "payments",
+                "receipt.pdf"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Obrigatório para role de circuito (um recibo por congregação). Role de congregação usa a própria."
+                }
+              ]
+            },
+            "description": "Gera o recibo de pagamento (formulário oficial S-24-T) consolidando o total recebido da congregação no evento. Retorna application/pdf."
+          },
+          "response": []
+        },
+        {
           "name": "Delete Payment",
           "request": {
             "method": "DELETE",

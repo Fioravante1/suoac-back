@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PdfService } from './pdf.service';
 import type { PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
+import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 
 // Captura a última docDefinition passada ao printer e simula o stream PDFKit.
 const capturedDocs: TDocumentDefinitions[] = [];
@@ -184,5 +185,41 @@ describe('PdfService', () => {
 
     const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('Nenhum inscrito encontrado');
+  });
+
+  // ── generatePaymentReceipt (template S-24-T via pdf-lib) ────────
+  describe('generatePaymentReceipt', () => {
+    function buildReceiptData(overrides: Partial<PaymentReceiptPdfData> = {}): PaymentReceiptPdfData {
+      return {
+        date: overrides.date ?? new Date('2026-06-19T12:00:00Z'),
+        eventTypeLabel: overrides.eventTypeLabel ?? 'Assembleia',
+        eventTitle: overrides.eventTitle ?? 'Ouça o que o espírito diz',
+        congregationName: overrides.congregationName ?? 'Congregação Cidade Popular',
+        totalReceived: overrides.totalReceived ?? '1500.00',
+        filledByName: overrides.filledByName ?? 'João da Silva',
+        coordinatorName: overrides.coordinatorName !== undefined ? overrides.coordinatorName : 'Carlos Pereira',
+      };
+    }
+
+    it('deve gerar um Buffer com header de PDF a partir do template', async () => {
+      const buffer = await service.generatePaymentReceipt(buildReceiptData());
+
+      expect(buffer).toBeInstanceOf(Buffer);
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar o recibo mesmo sem nome de coordenador (Conferido por vazio)', async () => {
+      const buffer = await service.generatePaymentReceipt(buildReceiptData({ coordinatorName: null }));
+
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar o recibo truncando título de evento muito longo', async () => {
+      const buffer = await service.generatePaymentReceipt(
+        buildReceiptData({ eventTitle: 'Título extremamente longo '.repeat(10) }),
+      );
+
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
   });
 });

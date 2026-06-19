@@ -54,6 +54,7 @@
     "class-validator": "^0.15.1",
     "fastify": "^5.8.5",
     "nestjs-pino": "^4.6.1",
+    "pdf-lib": "^1.17.1",
     "pdfmake": "^0.2.23",
     "pg": "^8.20.0",
     "pino-http": "^11.0.0",

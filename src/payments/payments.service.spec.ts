@@ -1,9 +1,10 @@
-import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
+import { PdfService } from '../common/pdf/pdf.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from './payments.service';
@@ -99,6 +100,7 @@ describe('PaymentsService', () => {
   let service: PaymentsService;
   let prismaMock: DeepMockProxy<PrismaClientType>;
   let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
+  let pdfServiceMock: jest.Mocked<PdfService>;
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
@@ -107,12 +109,16 @@ describe('PaymentsService', () => {
       updateStatus: jest.fn(),
       ensureNotFinalized: jest.fn(),
     } as unknown as jest.Mocked<CongregationEventStatusService>;
+    pdfServiceMock = {
+      generatePaymentReceipt: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7')),
+    } as unknown as jest.Mocked<PdfService>;
 
     const module = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
+        { provide: PdfService, useValue: pdfServiceMock },
         {
           provide: AuditLogService,
           useValue: {
@@ -518,6 +524,117 @@ describe('PaymentsService', () => {
 
       expect(prismaMock.payment.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20 }));
       expect(result.meta.totalPages).toBe(3);
+    });
+  });
+
+  // ── generateReceipt (recibo PDF S-24-T) ────────────────────────
+  describe('generateReceipt', () => {
+    const CONGREGATION_ID_2 = 'c1c2c3c4-0000-0000-0000-000000000002';
+
+    function mockReceiptData(): void {
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Ouça o que o espírito diz',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+      // Atende às duas chamadas a congregation.findUnique:
+      // resolveCongregationScope (circuitId) e generateReceipt (name/code).
+      prismaMock.congregation.findUnique.mockResolvedValue({
+        circuitId: CIRCUIT_ID,
+        name: 'Congregação Cidade Popular',
+        code: 'CCP-01',
+      } as never);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: 1500.0 } } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João da Silva' } as never);
+      prismaMock.user.findFirst.mockResolvedValue({ name: 'Carlos Pereira' } as never);
+    }
+
+    it('deve gerar o recibo com os dados consolidados da congregação', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+
+      const result = await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(result.congregationCode).toBe('CCP-01');
+      expect(result.buffer).toBeInstanceOf(Buffer);
+      expect(pdfServiceMock.generatePaymentReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventTypeLabel: 'Assembleia',
+          eventTitle: 'Ouça o que o espírito diz',
+          congregationName: 'Congregação Cidade Popular',
+          totalReceived: '1500.00',
+          filledByName: 'João da Silva',
+          coordinatorName: 'Carlos Pereira',
+        }),
+      );
+    });
+
+    it('deve registrar audit log de EXPORT', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+      const auditSpy = jest.spyOn(service['auditLogService'], 'log');
+
+      await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(auditSpy).toHaveBeenCalledWith('EXPORT', 'PaymentReceipt', EVENT_ID, user.sub, expect.anything());
+    });
+
+    it('deve lançar BadRequestException quando role de circuito não informa congregationId', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user)).rejects.toThrow(BadRequestException);
+    });
+
+    it('deve lançar NotFoundException quando o evento é de outro circuito (path)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: 'outro-circuito',
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar NotFoundException quando o evento não existe', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID_2)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('deve usar coordinatorName nulo quando não há coordenador ativo no circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+      prismaMock.user.findFirst.mockResolvedValue(null);
+
+      await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(pdfServiceMock.generatePaymentReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ coordinatorName: null }),
+      );
     });
   });
 

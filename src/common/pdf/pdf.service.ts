@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import PdfPrinter from 'pdfmake';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
+import { formatMoneyPtBR } from '../money/money.util';
 import { formatPhone } from '../phone/phone.util';
+import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
 
 const BRAND_COLOR = '#1e3a5f';
@@ -13,9 +16,11 @@ const MUTED_COLOR = '#666666';
 export class PdfService {
   private readonly printer: InstanceType<typeof PdfPrinter>;
   private readonly logoDataUri: string;
+  private readonly baseDir: string;
 
   constructor() {
     const baseDir = PdfService.resolveAssetBaseDir();
+    this.baseDir = baseDir;
     const fontsDir = join(baseDir, 'fonts');
     this.printer = new PdfPrinter({
       Roboto: {
@@ -55,6 +60,107 @@ export class PdfService {
   async generatePassengerList(data: PassengerListPdfData): Promise<Buffer> {
     const docDefinition = this.buildDocDefinition(data);
     return this.renderToBuffer(docDefinition);
+  }
+
+  /**
+   * Preenche o formulário oficial S-24-T ("RECIBO") com os dados de pagamento de
+   * uma congregação. O template é um PDF "chapado" (sem campos AcroForm), então o
+   * preenchimento é feito desenhando texto por coordenadas (origem inferior-esquerda).
+   */
+  async generatePaymentReceipt(data: PaymentReceiptPdfData): Promise<Buffer> {
+    const templateBytes = readFileSync(join(this.baseDir, 'assets', 'recibo.pdf'));
+    const pdf = await PDFDocument.load(templateBytes);
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+
+    const page = pdf.getPages()[0];
+    if (!page) {
+      throw new Error('PdfService: template do recibo (recibo.pdf) sem páginas');
+    }
+
+    const valorBR = `R$ ${formatMoneyPtBR(data.totalReceived)}`;
+    const description = `Pagamento Ref. Arranjo de ônibus ${data.eventTypeLabel} ${data.eventTitle}`;
+
+    // Data (à direita do rótulo "Data:")
+    PdfService.drawText(page, font, this.formatDateBR(data.date), { x: 312, y: 191, size: 9 });
+
+    // "X" na caixinha de "Pagamento" (linha 1, coluna 2)
+    PdfService.drawText(page, fontBold, 'X', { x: 167, y: 175, size: 11 });
+
+    // Linha livre 1: descrição da referência do pagamento (logo acima da congregação)
+    PdfService.drawTextFit(page, font, description, { x: 35, y: 103, size: 8, maxWidth: 262 });
+    // Linha livre 2 ("linha de cima do total"): congregação (esq.) + valor (coluna de valor)
+    PdfService.drawTextFit(page, font, data.congregationName, { x: 35, y: 90, size: 9, maxWidth: 200 });
+    PdfService.drawRightAligned(page, font, valorBR, { right: 356, y: 90, size: 9 });
+    // TOTAL (coluna de valor)
+    PdfService.drawRightAligned(page, fontBold, valorBR, { right: 356, y: 75, size: 10 });
+
+    // Assinaturas: nome sobre a linha de "(Preenchido por)" / "(Conferido por)"
+    PdfService.drawCentered(page, font, data.filledByName, { center: 108, y: 51, size: 8 });
+    if (data.coordinatorName) {
+      PdfService.drawCentered(page, font, data.coordinatorName, { center: 290, y: 51, size: 8 });
+    }
+
+    const bytes = await pdf.save();
+    return Buffer.from(bytes);
+  }
+
+  private static drawText(
+    page: PDFPage,
+    font: PDFFont,
+    text: string,
+    opts: { x: number; y: number; size: number },
+  ): void {
+    page.drawText(text, { x: opts.x, y: opts.y, size: opts.size, font, color: rgb(0, 0, 0) });
+  }
+
+  /** Desenha texto truncando com reticências se exceder `maxWidth`. */
+  private static drawTextFit(
+    page: PDFPage,
+    font: PDFFont,
+    text: string,
+    opts: { x: number; y: number; size: number; maxWidth: number },
+  ): void {
+    let value = text;
+    if (font.widthOfTextAtSize(value, opts.size) > opts.maxWidth) {
+      while (value.length > 1 && font.widthOfTextAtSize(`${value}…`, opts.size) > opts.maxWidth) {
+        value = value.slice(0, -1);
+      }
+      value = `${value.trimEnd()}…`;
+    }
+    page.drawText(value, { x: opts.x, y: opts.y, size: opts.size, font, color: rgb(0, 0, 0) });
+  }
+
+  private static drawRightAligned(
+    page: PDFPage,
+    font: PDFFont,
+    text: string,
+    opts: { right: number; y: number; size: number },
+  ): void {
+    const width = font.widthOfTextAtSize(text, opts.size);
+    page.drawText(text, { x: opts.right - width, y: opts.y, size: opts.size, font, color: rgb(0, 0, 0) });
+  }
+
+  private static drawCentered(
+    page: PDFPage,
+    font: PDFFont,
+    text: string,
+    opts: { center: number; y: number; size: number },
+  ): void {
+    const width = font.widthOfTextAtSize(text, opts.size);
+    page.drawText(text, { x: opts.center - width / 2, y: opts.y, size: opts.size, font, color: rgb(0, 0, 0) });
+  }
+
+  /** Data (somente dia/mês/ano) no fuso America/Sao_Paulo. */
+  private formatDateBR(date: Date): string {
+    const parts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '';
+    return `${get('day')}/${get('month')}/${get('year')}`;
   }
 
   private renderToBuffer(docDefinition: TDocumentDefinitions): Promise<Buffer> {

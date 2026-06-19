@@ -1,5 +1,6 @@
-import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { PaymentResponse } from './interfaces/payment-response.interface';
 import { PaymentsController } from './payments.controller';
@@ -36,6 +37,7 @@ describe('PaymentsController', () => {
       create: jest.fn(),
       findByEventPassenger: jest.fn(),
       findByEvent: jest.fn(),
+      generateReceipt: jest.fn(),
       remove: jest.fn(),
     } as unknown as jest.Mocked<PaymentsService>;
 
@@ -118,6 +120,41 @@ describe('PaymentsController', () => {
       serviceMock.findByEvent.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
       await expect(controller.findByEvent('non-existent', USER, {})).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── generateReceipt ─────────────────────────────────────────────
+  describe('generateReceipt', () => {
+    function buildReply(): FastifyReply {
+      const reply = {
+        header: jest.fn().mockReturnThis(),
+        send: jest.fn().mockReturnThis(),
+      };
+      return reply as unknown as FastifyReply;
+    }
+
+    it('deve enviar o PDF com Content-Type e filename sanitizado', async () => {
+      const buffer = Buffer.from('%PDF-1.7');
+      serviceMock.generateReceipt.mockResolvedValue({ buffer, congregationCode: 'CCP/01' });
+      const reply = buildReply();
+
+      await controller.generateReceipt('circuit-1', 'event-1', { congregationId: 'cong-1' }, USER, reply);
+
+      expect(serviceMock.generateReceipt).toHaveBeenCalledWith('circuit-1', 'event-1', USER, 'cong-1');
+      expect(reply.header).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="recibo-CCP-01-event-1.pdf"',
+      );
+      expect(reply.send).toHaveBeenCalledWith(buffer);
+    });
+
+    it('deve propagar BadRequestException do service', async () => {
+      serviceMock.generateReceipt.mockRejectedValue(new BadRequestException('Informe congregationId'));
+
+      await expect(controller.generateReceipt('circuit-1', 'event-1', {}, USER, buildReply())).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

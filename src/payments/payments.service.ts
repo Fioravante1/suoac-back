@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import type { Prisma } from '../generated/prisma/client';
@@ -9,13 +15,15 @@ import {
 } from '../common/authorization/circuit-ownership.util';
 import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
 import { formatMoney } from '../common/money/money.util';
+import { PdfService } from '../common/pdf/pdf.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
-import { EventStatus, PaymentStatus } from '../generated/prisma/enums';
+import { EventStatus, EventType, PaymentStatus, UserRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
 import type { ListEventPaymentsQueryDto } from './dto/list-event-payments-query.dto';
 import type { EventPaymentRow, EventPaymentsResponse } from './interfaces/event-payment-row.interface';
 import type { PaymentResponse } from './interfaces/payment-response.interface';
+import type { PaymentReceiptResult } from './interfaces/payment-receipt-result.interface';
 
 @Injectable()
 export class PaymentsService {
@@ -25,6 +33,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly congregationEventStatusService: CongregationEventStatusService,
     private readonly auditLogService: AuditLogService,
+    private readonly pdfService: PdfService,
   ) {}
 
   async create(eventPassengerId: string, user: JwtPayload, dto: CreatePaymentDto): Promise<PaymentResponse> {
@@ -193,6 +202,96 @@ export class PaymentsService {
         totalReceived: formatMoney(aggregate._sum.amount),
       },
     };
+  }
+
+  /**
+   * Gera o recibo de pagamento (formulário S-24-T) de uma congregação no evento,
+   * consolidando o total recebido. Rota sob `:circuitId` — valida que o evento
+   * pertence ao circuito do path. Recibo é por congregação: role de circuito
+   * DEVE informar `congregationId`; role de congregação usa a própria.
+   */
+  async generateReceipt(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    congregationId?: string,
+  ): Promise<PaymentReceiptResult> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { title: true, type: true, circuitId: true },
+    });
+
+    if (!event) {
+      this.logger.warn(`Evento não encontrado — id=${eventId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    // Evento de outro circuito → 404 (não revela existência em outro circuito)
+    if (event.circuitId !== circuitId) {
+      this.logger.warn(`Evento fora do circuito do path — eventId=${eventId}, circuitId=${circuitId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const scope = await resolveCongregationScope(this.prisma, user, event.circuitId, congregationId);
+
+    // Recibo é por congregação: role de circuito sem filtro → contrato incompleto.
+    if (!scope) {
+      throw new BadRequestException('Informe congregationId para gerar o recibo da congregação');
+    }
+
+    const congregation = await this.prisma.client.congregation.findUnique({
+      where: { id: scope },
+      select: { name: true, code: true },
+    });
+
+    if (!congregation) {
+      throw new NotFoundException('Congregação não encontrada');
+    }
+
+    const [aggregate, requester, coordinator] = await Promise.all([
+      this.prisma.client.payment.aggregate({
+        where: { eventPassenger: { eventId, congregationId: scope } },
+        _sum: { amount: true },
+      }),
+      this.prisma.client.user.findUnique({ where: { id: user.sub }, select: { name: true } }),
+      this.prisma.client.user.findFirst({
+        where: { circuitId: event.circuitId, role: UserRole.CIRCUIT_COORDINATOR, isActive: true },
+        select: { name: true },
+      }),
+    ]);
+
+    const totalReceived = formatMoney(aggregate._sum.amount);
+
+    const buffer = await this.pdfService.generatePaymentReceipt({
+      date: new Date(),
+      eventTypeLabel: this.getEventTypeLabel(event.type),
+      eventTitle: event.title,
+      congregationName: congregation.name,
+      totalReceived,
+      filledByName: requester?.name ?? 'Usuário desconhecido',
+      coordinatorName: coordinator?.name ?? null,
+    });
+
+    this.logger.log(`Recibo de pagamento gerado — eventId=${eventId}, congregationId=${scope}`);
+
+    void this.auditLogService
+      .log('EXPORT', 'PaymentReceipt', eventId, user.sub, {
+        oldValues: null,
+        newValues: { eventId, circuitId, congregationId: scope, totalReceived },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de recibo'));
+
+    return { buffer, congregationCode: congregation.code };
+  }
+
+  private getEventTypeLabel(type: EventType): string {
+    const labels: Record<EventType, string> = {
+      [EventType.REGIONAL_CONVENTION]: 'Congresso',
+      [EventType.ASSEMBLY]: 'Assembleia',
+    };
+    return labels[type];
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
