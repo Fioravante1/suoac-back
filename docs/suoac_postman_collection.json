@@ -1655,6 +1655,150 @@
       ]
     },
     {
+      "name": "Expenses",
+      "item": [
+        {
+          "name": "Create Expense",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Pagamento dos ônibus à empresa contratada\",\n  \"amount\": 1500.00,\n  \"category\": \"BUS_PAYMENT\",\n  \"incurredAt\": \"2026-06-15T10:00:00Z\",\n  \"observations\": \"2 ônibus - ida e volta\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/expenses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "expenses"
+              ]
+            },
+            "description": "Registra uma despesa do evento. Restrito a roles de circuito (CC/CA). category: BUS_PAYMENT | OTHER. incurredAt não pode ser futura (422). Evento DRAFT/CANCELLED → 422."
+          },
+          "response": []
+        },
+        {
+          "name": "List Event Expenses",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/expenses?page=1&limit=20&category=BUS_PAYMENT&from=2026-06-01T00:00:00Z&to=2026-06-30T23:59:59Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "expenses"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "category",
+                  "value": "BUS_PAYMENT",
+                  "description": "Opcional. Filtra por categoria (BUS_PAYMENT | OTHER)."
+                },
+                {
+                  "key": "from",
+                  "value": "2026-06-01T00:00:00Z",
+                  "description": "Opcional. Filtro inclusivo: incurredAt >= from. from > to → 400."
+                },
+                {
+                  "key": "to",
+                  "value": "2026-06-30T23:59:59Z",
+                  "description": "Opcional. Filtro inclusivo: incurredAt <= to."
+                }
+              ]
+            },
+            "description": "Lista paginada das despesas do evento (apenas não deletadas). meta.totalExpenses traz o total agregado do recorte. Restrito a roles de circuito."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Expense by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Expense",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1800.00,\n  \"observations\": \"Reajuste do valor combinado com a empresa\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            },
+            "description": "Atualização parcial. Mesmas regras de status/data futura do create."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Expense (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/expenses/{{expenseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "expenses",
+                "{{expenseId}}"
+              ]
+            },
+            "description": "Soft-delete (marca deletedAt). Retorna 204. Registro já deletado → 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "CongregationEventStatus",
       "item": [
         {
@@ -1704,6 +1848,40 @@
               ]
             },
             "description": "Finaliza ou reabre a lista de uma congregação para um evento. FINALIZED cria/atualiza o registro; PENDING deleta o registro (retorno à ausência implícita). Reabrir (PENDING) restrito a CC/CA."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "FinancialReports",
+      "item": [
+        {
+          "name": "Event Financial Report (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/events/{{eventId}}/financial-report?format=json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "events",
+                "{{eventId}}",
+                "financial-report"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "json",
+                  "description": "Opcional (default json). format=pdf (S-26/S-44) entra na Fase 4b."
+                }
+              ]
+            },
+            "description": "Relatório financeiro consolidado do evento: receitas (esperado/recebido/pendente por congregação), despesas por categoria, e os dois saldos (cashBalance = recebido−gasto; projectedBalance = esperado−gasto). Restrito a roles de circuito (CC/CA). Evento de outro circuito → 404; evento em DRAFT → 422."
           },
           "response": []
         }

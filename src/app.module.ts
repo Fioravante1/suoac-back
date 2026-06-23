@@ -20,6 +20,8 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { EventDaysModule } from './event-days/event-days.module';
 import { EventPassengersModule } from './event-passengers/event-passengers.module';
 import { EventsModule } from './events/events.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { FinancialReportsModule } from './financial-reports/financial-reports.module';
 import { HealthModule } from './health/health.module';
 import { PassengersModule } from './passengers/passengers.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -46,6 +48,8 @@ import { UsersModule } from './users/users.module';
     EventsModule,
     EventDaysModule,
     EventPassengersModule,
+    ExpensesModule,
+    FinancialReportsModule,
     UsersModule,
     AuthModule,
     PassengersModule,

@@ -1,4 +1,4 @@
-import { formatMoney, formatMoneyPtBR } from './money.util';
+import { addMoney, formatMoney, formatMoneyPtBR, subtractMoney } from './money.util';
 
 describe('formatMoney', () => {
   it('deve formatar inteiro com 2 casas decimais', () => {
@@ -47,5 +47,50 @@ describe('formatMoneyPtBR', () => {
 
   it('deve preservar sinal negativo', () => {
     expect(formatMoneyPtBR('-1500.00')).toBe('-1.500,00');
+  });
+});
+
+describe('addMoney', () => {
+  it('deve somar múltiplos valores com precisão exata', () => {
+    expect(addMoney('0.10', '0.20')).toBe('0.30');
+    expect(addMoney('1500.00', '250.50', '0.50')).toBe('1751.00');
+  });
+
+  it('deve tratar null/undefined como zero', () => {
+    expect(addMoney('100.00', null, undefined)).toBe('100.00');
+    expect(addMoney()).toBe('0.00');
+  });
+
+  it('deve aceitar Decimal-like (toFixed) — compatível com _sum do Prisma', () => {
+    const decimalLike = { toFixed: (d: number): string => (1840).toFixed(d) };
+    expect(addMoney(decimalLike, '160.00')).toBe('2000.00');
+  });
+
+  it('deve somar valores negativos corretamente', () => {
+    expect(addMoney('100.00', '-30.00')).toBe('70.00');
+  });
+
+  it('deve rejeitar string com mais de 2 casas decimais (em vez de truncar)', () => {
+    expect(() => addMoney('1.999')).toThrow('Valor monetário inválido');
+  });
+
+  it('deve rejeitar string não numérica', () => {
+    expect(() => addMoney('abc')).toThrow('Valor monetário inválido');
+  });
+});
+
+describe('subtractMoney', () => {
+  it('deve subtrair com precisão exata', () => {
+    expect(subtractMoney('1500.00', '250.50')).toBe('1249.50');
+    expect(subtractMoney('0.30', '0.10')).toBe('0.20');
+  });
+
+  it('deve retornar resultado negativo quando b > a (saldo deficitário)', () => {
+    expect(subtractMoney('100.00', '150.00')).toBe('-50.00');
+  });
+
+  it('deve tratar null/undefined como zero', () => {
+    expect(subtractMoney('100.00', null)).toBe('100.00');
+    expect(subtractMoney(null, '40.00')).toBe('-40.00');
   });
 });
