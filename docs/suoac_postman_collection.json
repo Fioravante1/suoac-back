@@ -1877,11 +1877,40 @@
                 {
                   "key": "format",
                   "value": "json",
-                  "description": "Opcional (default json). format=pdf (S-26/S-44) entra na Fase 4b."
+                  "description": "Opcional (default json). O PDF oficial é o endpoint financial-report.pdf."
                 }
               ]
             },
             "description": "Relatório financeiro consolidado do evento: receitas (esperado/recebido/pendente por congregação), despesas por categoria, e os dois saldos (cashBalance = recebido−gasto; projectedBalance = esperado−gasto). Restrito a roles de circuito (CC/CA). Evento de outro circuito → 404; evento em DRAFT → 422."
+          },
+          "response": []
+        },
+        {
+          "name": "Event Financial Report PDF (S-26 / S-44)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/events/{{eventId}}/financial-report.pdf?form=s26",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "events",
+                "{{eventId}}",
+                "financial-report.pdf"
+              ],
+              "query": [
+                {
+                  "key": "form",
+                  "value": "s26",
+                  "description": "Obrigatório: s26 (Folha de Contas) ou s44 (Relatório Mensal de Contas). Ausente/inválido → 400."
+                }
+              ]
+            },
+            "description": "Gera o formulário oficial preenchido (S-26 ou S-44) em PDF. S-26: consolidado por congregação na coluna OUTRA (ENTRADA = recebido; SAÍDA = despesas). S-44: ENTRADAS por congregação, DESPESAS linha a linha, saldos calculados. Retorna application/pdf. Restrito a roles de circuito; evento de outro circuito → 404; DRAFT → 422."
           },
           "response": []
         }

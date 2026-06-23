@@ -41,6 +41,7 @@ describe('FinancialReportsController', () => {
   beforeEach(async () => {
     serviceMock = {
       buildEventFinancialReport: jest.fn(),
+      generateReport: jest.fn(),
     } as unknown as jest.Mocked<FinancialReportsService>;
 
     const module = await Test.createTestingModule({
@@ -59,5 +60,23 @@ describe('FinancialReportsController', () => {
 
     expect(result).toEqual(expected);
     expect(serviceMock.buildEventFinancialReport).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER);
+  });
+
+  it('deve gerar o PDF com headers e filename corretos', async () => {
+    serviceMock.generateReport.mockResolvedValue({ buffer: Buffer.from('%PDF-1.7'), eventTitle: 'Congresso 2026' });
+    const reply = {
+      header: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
+    } as unknown as Parameters<typeof controller.getEventFinancialReportPdf>[4];
+
+    await controller.getEventFinancialReportPdf(CIRCUIT_ID, EVENT_ID, { form: 's44' }, USER, reply);
+
+    expect(serviceMock.generateReport).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, 's44');
+    expect(reply.header).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    expect(reply.header).toHaveBeenCalledWith(
+      'Content-Disposition',
+      `attachment; filename="relatorio-s44-${EVENT_ID}.pdf"`,
+    );
+    expect(reply.send).toHaveBeenCalled();
   });
 });

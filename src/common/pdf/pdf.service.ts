@@ -1,13 +1,43 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+  PDFString,
+  StandardFonts,
+  rgb,
+  type PDFFont,
+  type PDFForm,
+  type PDFPage,
+} from 'pdf-lib';
 import PdfPrinter from 'pdfmake';
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
-import { formatMoneyPtBR } from '../money/money.util';
+import { addMoney, formatMoneyPtBR } from '../money/money.util';
 import { formatPhone } from '../phone/phone.util';
+import type {
+  FinancialReportExpenseLine,
+  FinancialReportPdfData,
+  FinancialReportRevenueLine,
+} from './interfaces/financial-report-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
+
+/** Posição de um campo de formulário (widget annotation) numa página. */
+interface FieldPosition {
+  name: string;
+  page: number;
+  x: number;
+  y: number;
+}
+
+const FORM_FONT_SIZE = 8;
+const FORM_DATE_FONT_SIZE = 6;
 
 const BRAND_COLOR = '#1e3a5f';
 const MUTED_COLOR = '#666666';
@@ -103,6 +133,240 @@ export class PdfService {
 
     const bytes = await pdf.save();
     return Buffer.from(bytes);
+  }
+
+  /**
+   * Preenche o formulário oficial S-26 (Folha de Contas) com os lançamentos do evento.
+   * Consolidado por congregação na coluna OUTRA: ENTRADA = recebido por congregação;
+   * SAÍDA = uma linha por despesa. Campos preenchidos por nome (Cenário A) após registrar
+   * os widgets órfãos no AcroForm.
+   */
+  async generateS26Report(data: FinancialReportPdfData): Promise<Buffer> {
+    const pdf = await PDFDocument.load(readFileSync(join(this.baseDir, 'assets', 's26.pdf')));
+    const page1 = PdfService.buildFieldIndex(pdf).filter((f) => f.page === 0);
+
+    const sortTop = (fields: FieldPosition[]): string[] => fields.sort((a, b) => b.y - a.y).map((f) => f.name);
+    const dataCells = sortTop(page1.filter((f) => f.name.endsWith('_Text_C') && f.x <= 25 && f.y < 745));
+    const descCells = sortTop(page1.filter((f) => /_Text$/.test(f.name) && f.x >= 40 && f.x <= 60 && f.y < 745));
+    const entradaCells = sortTop(page1.filter((f) => f.name.endsWith('S26Value') && f.x >= 460 && f.x < 515));
+    const saidaCells = sortTop(page1.filter((f) => f.name.endsWith('S26Value') && f.x >= 515));
+    // OUTRA: ENTRADA total ≈ x468, SAÍDA total ≈ x522 (DONATIVOS/CONTA BANCÁRIA ficam à esquerda)
+    const entradaTotal = page1.find((f) => f.name.endsWith('S26TotalValue') && f.x >= 460 && f.x < 515)?.name;
+    const saidaTotal = page1.find((f) => f.name.endsWith('S26TotalValue') && f.x >= 515)?.name;
+
+    const header = page1.filter((f) => f.name.endsWith('_Text_C') && f.y > 745);
+    const headerEvento = header.find((f) => f.x < 100)?.name;
+    const headerCidade = header.find((f) => f.x >= 200 && f.x < 300)?.name;
+    const headerEstado = header.find((f) => f.x >= 300 && f.x < 420)?.name;
+    const headerDatas = header.find((f) => f.x >= 420)?.name;
+
+    return this.fillAndRender(pdf, (form, present) => {
+      const set = PdfService.fieldSetter(form, present);
+
+      set(headerEvento, data.eventTitle);
+      set(headerCidade, data.city);
+      set(headerEstado, data.state);
+      set(headerDatas, data.eventDates);
+
+      const capacity = descCells.length;
+      const revenue = PdfService.fitRevenue(data.revenueByCongregation, Math.max(1, capacity - data.expenses.length));
+      const expenses = PdfService.fitExpenses(data.expenses, capacity - revenue.length);
+
+      let row = 0;
+      for (const rev of revenue) {
+        set(descCells[row], rev.congregationName);
+        set(entradaCells[row], formatMoneyPtBR(rev.received));
+        row += 1;
+      }
+      for (const exp of expenses) {
+        // Coluna DATA é estreita (~23pt) → fonte menor para caber "dd/mm".
+        set(dataCells[row], exp.date, FORM_DATE_FONT_SIZE);
+        set(descCells[row], exp.description);
+        set(saidaCells[row], formatMoneyPtBR(exp.amount));
+        row += 1;
+      }
+
+      set(entradaTotal, formatMoneyPtBR(data.totalReceived));
+      set(saidaTotal, formatMoneyPtBR(data.totalExpenses));
+    });
+  }
+
+  /**
+   * Preenche o formulário oficial S-44 (Relatório Mensal de Contas) com os dados do evento:
+   * ENTRADAS = recebido por congregação; DESPESAS = uma linha por despesa; saldos calculados.
+   * Saldo inicial e fundos reservados são "0,00" (não se aplicam ao escopo do evento).
+   */
+  async generateS44Report(data: FinancialReportPdfData): Promise<Buffer> {
+    const pdf = await PDFDocument.load(readFileSync(join(this.baseDir, 'assets', 's44.pdf')));
+
+    const entradaDesc = Array.from({ length: 8 }, (_, i) => `900_${4 + i * 2}_Text`);
+    const entradaVal = Array.from({ length: 8 }, (_, i) => `901_${5 + i * 2}_S44Rec`);
+    const despesaDesc = Array.from({ length: 13 }, (_, i) => `900_${21 + i * 2}_Text`);
+    const despesaVal = Array.from({ length: 13 }, (_, i) => `901_${22 + i * 2}_S44Ex`);
+
+    return this.fillAndRender(pdf, (form, present) => {
+      const set = PdfService.fieldSetter(form, present);
+
+      set('900_1_Text', data.eventTitle);
+      set('900_2_Text', data.monthYearLabel);
+      set('901_3_S44BOM', formatMoneyPtBR('0.00')); // (a) saldo inicial
+
+      const revenue = PdfService.fitRevenue(data.revenueByCongregation, entradaVal.length);
+      revenue.forEach((rev, i) => {
+        set(entradaDesc[i], rev.congregationName);
+        set(entradaVal[i], formatMoneyPtBR(rev.received));
+      });
+      set('901_20_S44TotalRec', formatMoneyPtBR(data.totalReceived)); // (b)
+
+      const expenses = PdfService.fitExpenses(data.expenses, despesaVal.length);
+      expenses.forEach((exp, i) => {
+        set(despesaDesc[i], exp.description);
+        set(despesaVal[i], formatMoneyPtBR(exp.amount));
+      });
+      set('901_47_S44TotalEx', formatMoneyPtBR(data.totalExpenses)); // (c)
+
+      set('901_48_S44SurDef', formatMoneyPtBR(data.balance)); // (d) = (b) − (c)
+      set('901_49_S44EOM', formatMoneyPtBR(data.balance)); // (e) = (a) + (d)
+      set('901_54_S44TotalSpec', formatMoneyPtBR('0.00')); // (f) fundos reservados
+      set('901_55_S44TotalFunds', formatMoneyPtBR(data.balance)); // (g) = (e) − (f)
+    });
+  }
+
+  /** Registra widgets, preenche via callback, achata (não editável) e devolve o Buffer. */
+  private async fillAndRender(
+    pdf: PDFDocument,
+    fill: (form: PDFForm, present: Set<string>) => void,
+  ): Promise<Buffer> {
+    PdfService.registerOrphanWidgets(pdf);
+    const helvetica = await pdf.embedFont(StandardFonts.Helvetica);
+    const form = pdf.getForm();
+    const present = new Set(form.getFields().map((f) => f.getName()));
+
+    fill(form, present);
+
+    form.updateFieldAppearances(helvetica);
+    form.flatten();
+    return Buffer.from(await pdf.save());
+  }
+
+  /** Closure que preenche um campo de texto por nome (com tamanho de fonte opcional), se existir. */
+  private static fieldSetter(
+    form: PDFForm,
+    present: Set<string>,
+  ): (name: string | undefined, value: string, fontSize?: number) => void {
+    return (name, value, fontSize = FORM_FONT_SIZE) => {
+      if (!name || !present.has(name)) {
+        return;
+      }
+      const field = form.getTextField(name);
+      field.setText(value);
+      field.setFontSize(fontSize);
+    };
+  }
+
+  /**
+   * Registra no `/Fields` do AcroForm os widgets que existem nas páginas mas estão
+   * "órfãos" (não referenciados) — caso dos modelos S-26/S-44. Sem isso o `pdf-lib`
+   * não enxerga os campos. Idempotente.
+   */
+  private static registerOrphanWidgets(pdf: PDFDocument): void {
+    const acroForm = pdf.catalog.lookup(PDFName.of('AcroForm'), PDFDict);
+    if (!acroForm) {
+      return;
+    }
+
+    let fields = acroForm.lookup(PDFName.of('Fields'), PDFArray);
+    if (!fields) {
+      fields = pdf.context.obj([]);
+      acroForm.set(PDFName.of('Fields'), fields);
+    }
+
+    const existing = new Set<string>();
+    for (let i = 0; i < fields.size(); i += 1) {
+      existing.add(fields.get(i).toString());
+    }
+
+    for (const page of pdf.getPages()) {
+      const annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
+      if (!annots) {
+        continue;
+      }
+      for (let i = 0; i < annots.size(); i += 1) {
+        const ref = annots.get(i);
+        const annot = annots.lookup(i, PDFDict);
+        if (!annot) {
+          continue;
+        }
+        const subtype = annot.lookup(PDFName.of('Subtype'), PDFName);
+        if (!subtype || subtype.toString() !== '/Widget') {
+          continue;
+        }
+        if (ref instanceof PDFRef && !existing.has(ref.toString())) {
+          fields.push(ref);
+          existing.add(ref.toString());
+        }
+      }
+    }
+  }
+
+  /** Lê nome + posição de cada widget de texto (decodifica nomes em UTF-16BE, ex.: S-44). */
+  private static buildFieldIndex(pdf: PDFDocument): FieldPosition[] {
+    const out: FieldPosition[] = [];
+
+    pdf.getPages().forEach((page, pageIndex) => {
+      const annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
+      if (!annots) {
+        return;
+      }
+      for (let i = 0; i < annots.size(); i += 1) {
+        const annot = annots.lookup(i, PDFDict);
+        if (!annot) {
+          continue;
+        }
+        const subtype = annot.lookup(PDFName.of('Subtype'), PDFName);
+        if (!subtype || subtype.toString() !== '/Widget') {
+          continue;
+        }
+        const titleObj = annot.get(PDFName.of('T'));
+        const rect = annot.lookup(PDFName.of('Rect'), PDFArray);
+        if (!(titleObj instanceof PDFString || titleObj instanceof PDFHexString) || !rect) {
+          continue;
+        }
+        out.push({
+          name: titleObj.decodeText(),
+          page: pageIndex,
+          x: Math.round(rect.lookup(0, PDFNumber).asNumber()),
+          y: Math.round(rect.lookup(1, PDFNumber).asNumber()),
+        });
+      }
+    });
+
+    return out;
+  }
+
+  /** Encaixa N linhas em `capacity`; o excedente vira uma linha agregada. */
+  private static fitRevenue(items: FinancialReportRevenueLine[], capacity: number): FinancialReportRevenueLine[] {
+    if (capacity <= 0 || items.length <= capacity) {
+      return items.slice(0, Math.max(0, capacity));
+    }
+    const head = items.slice(0, capacity - 1);
+    const rest = items.slice(capacity - 1);
+    return [
+      ...head,
+      { congregationName: `Demais congregações (${rest.length})`, received: addMoney(...rest.map((r) => r.received)) },
+    ];
+  }
+
+  private static fitExpenses(items: FinancialReportExpenseLine[], capacity: number): FinancialReportExpenseLine[] {
+    if (capacity <= 0 || items.length <= capacity) {
+      return items.slice(0, Math.max(0, capacity));
+    }
+    const head = items.slice(0, capacity - 1);
+    const rest = items.slice(capacity - 1);
+    return [
+      ...head,
+      { date: '', description: `Outras despesas (${rest.length})`, amount: addMoney(...rest.map((e) => e.amount)) },
+    ];
   }
 
   private static drawText(

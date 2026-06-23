@@ -1,7 +1,10 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { addMoney, formatMoney, subtractMoney } from '../common/money/money.util';
+import { PdfService } from '../common/pdf/pdf.service';
+import type { FinancialReportPdfData } from '../common/pdf/interfaces/financial-report-pdf.interface';
 import { EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -9,6 +12,9 @@ import type {
   EventFinancialReportResponse,
   ExpenseCategoryBreakdown,
 } from './interfaces/event-financial-report-response.interface';
+import type { FinancialReportPdfResult } from './interfaces/financial-report-pdf-result.interface';
+
+export type FinancialReportForm = 's26' | 's44';
 
 /** Linha do groupBy de receitas (eventPassenger por congregação + status). */
 interface RevenueGroup {
@@ -29,7 +35,11 @@ interface ExpenseGroup {
 export class FinancialReportsService {
   private readonly logger = new Logger(FinancialReportsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfService: PdfService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   /**
    * Relatório financeiro consolidado do evento: receitas (Payments via EventPassenger)
@@ -107,6 +117,110 @@ export class FinancialReportsService {
       generatedAt: new Date(),
       generatedByName: requester?.name ?? 'Usuário desconhecido',
     };
+  }
+
+  /**
+   * Gera o relatório financeiro oficial (S-26 Folha de Contas ou S-44 Relatório Mensal)
+   * em PDF, preenchendo o formulário por nome. Reaproveita `buildEventFinancialReport`
+   * para autorização + receitas/totais e busca as despesas individuais (linha a linha).
+   * Audit log `EXPORT` (fire-and-forget).
+   */
+  async generateReport(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    form: FinancialReportForm,
+  ): Promise<FinancialReportPdfResult> {
+    const report = await this.buildEventFinancialReport(circuitId, eventId, user);
+
+    const [event, expenses] = await Promise.all([
+      this.prisma.client.event.findUnique({
+        where: { id: eventId },
+        select: { title: true, city: true, state: true, eventDays: { select: { date: true }, orderBy: { date: 'asc' } } },
+      }),
+      this.prisma.client.expense.findMany({
+        where: { eventId, deletedAt: null },
+        orderBy: { incurredAt: 'asc' },
+        select: { description: true, incurredAt: true, amount: true },
+      }),
+    ]);
+
+    if (!event) {
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    const days = event.eventDays.map((d) => d.date);
+
+    const data: FinancialReportPdfData = {
+      eventTitle: event.title,
+      city: event.city,
+      state: event.state,
+      eventDates: this.formatDateRange(days),
+      monthYearLabel: days[0] ? this.formatMonthYear(days[0]) : '',
+      revenueByCongregation: report.revenue.byCongregation.map((r) => ({
+        congregationName: r.congregationName,
+        received: r.totalReceived,
+      })),
+      expenses: expenses.map((e) => ({
+        date: this.formatDayMonth(e.incurredAt),
+        description: e.description,
+        amount: formatMoney(e.amount),
+      })),
+      totalReceived: report.revenue.totalReceived,
+      totalExpenses: report.expenses.total,
+      balance: report.cashBalance,
+    };
+
+    const buffer =
+      form === 's26' ? await this.pdfService.generateS26Report(data) : await this.pdfService.generateS44Report(data);
+
+    this.logger.log(`Relatório financeiro ${form.toUpperCase()} gerado — eventId=${eventId}, circuitId=${circuitId}`);
+
+    void this.auditLogService
+      .log('EXPORT', 'FinancialReport', eventId, user.sub, {
+        oldValues: null,
+        newValues: {
+          form,
+          eventId,
+          circuitId,
+          totalReceived: data.totalReceived,
+          totalExpenses: data.totalExpenses,
+        },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de relatório financeiro'));
+
+    return { buffer, eventTitle: event.title };
+  }
+
+  /** Intervalo de datas do evento (date-only, UTC) — "dd/mm/aaaa" ou "dd/mm/aaaa a dd/mm/aaaa". */
+  private formatDateRange(days: Date[]): string {
+    const first = days[0];
+    const last = days[days.length - 1];
+    if (!first || !last) {
+      return '—';
+    }
+    return first === last || days.length === 1
+      ? this.formatFullDate(first)
+      : `${this.formatFullDate(first)} a ${this.formatFullDate(last)}`;
+  }
+
+  /** "dd/mm/aaaa" para datas date-only (timezone UTC para não deslocar o dia). */
+  private formatFullDate(date: Date): string {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' }).format(
+      date,
+    );
+  }
+
+  /** "MM/AAAA" para o campo "Mês/Ano" do S-44 (date-only, UTC). */
+  private formatMonthYear(date: Date): string {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', month: '2-digit', year: 'numeric' }).format(date);
+  }
+
+  /** "dd/mm" para a coluna estreita de DATA do S-26 (incurredAt é DateTime → BRT). */
+  private formatDayMonth(date: Date): string {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(
+      date,
+    );
   }
 
   /**

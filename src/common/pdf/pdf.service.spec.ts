@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PdfService } from './pdf.service';
+import type { FinancialReportPdfData } from './interfaces/financial-report-pdf.interface';
 import type { PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 
@@ -218,6 +219,69 @@ describe('PdfService', () => {
       const buffer = await service.generatePaymentReceipt(
         buildReceiptData({ eventTitle: 'Título extremamente longo '.repeat(10) }),
       );
+
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+  });
+
+  // ── Relatórios financeiros oficiais (templates S-26/S-44 via pdf-lib) ────────
+  describe('relatórios financeiros (S-26 / S-44)', () => {
+    function buildReportData(overrides: Partial<FinancialReportPdfData> = {}): FinancialReportPdfData {
+      return {
+        eventTitle: overrides.eventTitle ?? 'Congresso Regional 2026',
+        city: overrides.city ?? 'São Paulo',
+        state: overrides.state ?? 'SP',
+        eventDates: overrides.eventDates ?? '13/06/2026 a 15/06/2026',
+        monthYearLabel: overrides.monthYearLabel ?? '06/2026',
+        revenueByCongregation: overrides.revenueByCongregation ?? [
+          { congregationName: 'Congregação Central', received: '920.00' },
+          { congregationName: 'Congregação Norte', received: '640.00' },
+        ],
+        expenses: overrides.expenses ?? [
+          { date: '16/06', description: 'Pagamento dos ônibus', amount: '1500.00' },
+          { date: '14/06', description: 'Material de limpeza', amount: '80.00' },
+        ],
+        totalReceived: overrides.totalReceived ?? '1560.00',
+        totalExpenses: overrides.totalExpenses ?? '1580.00',
+        balance: overrides.balance ?? '-20.00',
+      };
+    }
+
+    it('deve gerar o S-26 (Folha de Contas) como Buffer de PDF', async () => {
+      const buffer = await service.generateS26Report(buildReportData());
+
+      expect(buffer).toBeInstanceOf(Buffer);
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar o S-44 (Relatório Mensal) como Buffer de PDF', async () => {
+      const buffer = await service.generateS44Report(buildReportData());
+
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar mesmo sem receitas e sem despesas (estado vazio)', async () => {
+      const data = buildReportData({
+        revenueByCongregation: [],
+        expenses: [],
+        totalReceived: '0.00',
+        totalExpenses: '0.00',
+        balance: '0.00',
+      });
+
+      expect((await service.generateS26Report(data)).subarray(0, 5).toString()).toBe('%PDF-');
+      expect((await service.generateS44Report(data)).subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve agregar o excedente quando há mais despesas que linhas no S-44 (capacidade 13)', async () => {
+      const expenses = Array.from({ length: 20 }, (_, i) => ({
+        date: '10/06',
+        description: `Despesa ${i + 1}`,
+        amount: '10.00',
+      }));
+      const data = buildReportData({ expenses, totalExpenses: '200.00' });
+
+      const buffer = await service.generateS44Report(data);
 
       expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
     });
