@@ -1,6 +1,8 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import { addMoney, formatMoney, subtractMoney } from '../common/money/money.util';
+import type { Prisma } from '../generated/prisma/client';
 import { CongregationListStatus, EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -18,7 +20,7 @@ import type {
 interface BreakdownEntry {
   paymentStatus: string;
   _count: number;
-  _sum: { totalAmount: unknown; paidAmount: unknown };
+  _sum: { totalAmount: Prisma.Decimal | null; paidAmount: Prisma.Decimal | null };
 }
 
 @Injectable()
@@ -94,9 +96,9 @@ export class DashboardService {
       ticketPrice: String(event.ticketPrice),
       totals: {
         totalPassengers: totals.totalPassengers,
-        totalExpected: totals.totalExpected.toFixed(2),
-        totalReceived: totals.totalReceived.toFixed(2),
-        totalPending: totals.totalPending.toFixed(2),
+        totalExpected: totals.totalExpected,
+        totalReceived: totals.totalReceived,
+        totalPending: totals.totalPending,
         byStatus: this.buildPaymentBreakdown(breakdown),
       },
       congregations: congregationRows,
@@ -148,11 +150,9 @@ export class DashboardService {
       row.totalPassengers += entry._count;
 
       if (entry.paymentStatus !== PaymentStatus.EXEMPT) {
-        const expected = Number(row.totalExpected) + Number(entry._sum.totalAmount ?? 0);
-        const received = Number(row.totalReceived) + Number(entry._sum.paidAmount ?? 0);
-        row.totalExpected = expected.toFixed(2);
-        row.totalReceived = received.toFixed(2);
-        row.totalPending = (expected - received).toFixed(2);
+        row.totalExpected = addMoney(row.totalExpected, entry._sum.totalAmount);
+        row.totalReceived = addMoney(row.totalReceived, entry._sum.paidAmount);
+        row.totalPending = subtractMoney(row.totalExpected, row.totalReceived);
       }
 
       const statusToKey: Record<string, keyof CongregationFinancialRow['byStatus']> = {
@@ -336,29 +336,29 @@ export class DashboardService {
 
   private computeFinancialTotals(breakdown: BreakdownEntry[]): {
     totalPassengers: number;
-    totalExpected: number;
-    totalReceived: number;
-    totalPending: number;
+    totalExpected: string;
+    totalReceived: string;
+    totalPending: string;
   } {
     const billable = breakdown.filter((e) => e.paymentStatus !== PaymentStatus.EXEMPT);
     const totalPassengers = breakdown.reduce((sum, e) => sum + e._count, 0);
-    const totalExpected = billable.reduce((sum, e) => sum + Number(e._sum.totalAmount ?? 0), 0);
-    const totalReceived = billable.reduce((sum, e) => sum + Number(e._sum.paidAmount ?? 0), 0);
+    const totalExpected = addMoney(...billable.map((e) => e._sum.totalAmount));
+    const totalReceived = addMoney(...billable.map((e) => e._sum.paidAmount));
 
-    return { totalPassengers, totalExpected, totalReceived, totalPending: totalExpected - totalReceived };
+    return { totalPassengers, totalExpected, totalReceived, totalPending: subtractMoney(totalExpected, totalReceived) };
   }
 
   private toStatsResponse(totals: {
     totalPassengers: number;
-    totalExpected: number;
-    totalReceived: number;
-    totalPending: number;
+    totalExpected: string;
+    totalReceived: string;
+    totalPending: string;
   }): DashboardStats {
     return {
       totalPassengers: totals.totalPassengers,
-      totalExpected: totals.totalExpected.toFixed(2),
-      totalReceived: totals.totalReceived.toFixed(2),
-      totalPending: totals.totalPending.toFixed(2),
+      totalExpected: totals.totalExpected,
+      totalReceived: totals.totalReceived,
+      totalPending: totals.totalPending,
     };
   }
 
@@ -447,20 +447,17 @@ export class DashboardService {
 
   private toPendingPassengerResponse(ep: {
     id: string;
-    totalAmount: unknown;
-    paidAmount: unknown;
+    totalAmount: Prisma.Decimal;
+    paidAmount: Prisma.Decimal;
     paymentStatus: string;
     passenger: { name: string };
   }): DashboardPendingPassenger {
-    const total = Number(ep.totalAmount);
-    const paid = Number(ep.paidAmount);
-
     return {
       id: ep.id,
       passengerName: ep.passenger.name,
-      totalAmount: total.toFixed(2),
-      paidAmount: paid.toFixed(2),
-      pendingAmount: (total - paid).toFixed(2),
+      totalAmount: formatMoney(ep.totalAmount),
+      paidAmount: formatMoney(ep.paidAmount),
+      pendingAmount: subtractMoney(ep.totalAmount, ep.paidAmount),
       paymentStatus: ep.paymentStatus,
     };
   }

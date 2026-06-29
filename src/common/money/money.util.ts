@@ -2,7 +2,7 @@
  * Tipo estrutural mínimo satisfeito tanto pelo `Decimal` do Prisma (decimal.js)
  * quanto por `number` nativo — ambos expõem `toFixed(digits): string`.
  */
-type MoneyLike = { toFixed: (digits: number) => string };
+export type MoneyLike = { toFixed: (digits: number) => string };
 
 /**
  * Formata um valor monetário como string com 2 casas decimais (ex.: `"50.00"`).
@@ -69,6 +69,38 @@ export function subtractMoney(
   b: MoneyLike | string | null | undefined,
 ): string {
   return formatCents(toCents(a) - toCents(b));
+}
+
+/**
+ * Multiplica um valor monetário por um `factor` **inteiro não-negativo** (ex.: preço do
+ * ingresso × nº de dias), com precisão exata em centavos, devolvendo `"NN.NN"`. `factor`
+ * não-inteiro ou negativo lança erro (coerente com a validação estrita de {@link toCents}).
+ */
+export function multiplyMoney(value: MoneyLike | string | null | undefined, factor: number): string {
+  if (!Number.isInteger(factor) || factor < 0) {
+    throw new Error(`Fator inválido para multiplicação monetária: "${factor}" (esperado inteiro não-negativo)`);
+  }
+  return formatCents(toCents(value) * factor);
+}
+
+/**
+ * Compara dois valores monetários por centavos inteiros (sem ponto flutuante).
+ * Retorna `-1` se `a < b`, `1` se `a > b`, `0` se iguais. Substitui comparações diretas
+ * (`<`, `>`, `<=`, `>=`) sobre dinheiro. Aceita `Decimal`/string/`null`/`undefined` (→ 0).
+ */
+export function compareMoney(
+  a: MoneyLike | string | null | undefined,
+  b: MoneyLike | string | null | undefined,
+): -1 | 0 | 1 {
+  const ca = toCents(a);
+  const cb = toCents(b);
+  if (ca < cb) {
+    return -1;
+  }
+  if (ca > cb) {
+    return 1;
+  }
+  return 0;
 }
 
 /**

@@ -267,7 +267,7 @@ describe('EventPassengersService', () => {
 
       expect(result.id).toBe(EP_ID);
       expect(result.passenger.rg).toBe(DECRYPTED_RG);
-      expect(result.totalAmount).toBe('25');
+      expect(result.totalAmount).toBe('25.00');
       expect(result.days).toHaveLength(1);
       expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -367,7 +367,7 @@ describe('EventPassengersService', () => {
 
       expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ totalAmount: 90 }),
+          data: expect.objectContaining({ totalAmount: '90.00' }),
         }),
       );
     });

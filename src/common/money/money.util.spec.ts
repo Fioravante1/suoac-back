@@ -1,4 +1,4 @@
-import { addMoney, formatMoney, formatMoneyPtBR, subtractMoney } from './money.util';
+import { addMoney, compareMoney, formatMoney, formatMoneyPtBR, multiplyMoney, subtractMoney } from './money.util';
 
 describe('formatMoney', () => {
   it('deve formatar inteiro com 2 casas decimais', () => {
@@ -92,5 +92,67 @@ describe('subtractMoney', () => {
   it('deve tratar null/undefined como zero', () => {
     expect(subtractMoney('100.00', null)).toBe('100.00');
     expect(subtractMoney(null, '40.00')).toBe('-40.00');
+  });
+});
+
+describe('multiplyMoney', () => {
+  it('deve multiplicar por fator inteiro com precisão exata', () => {
+    expect(multiplyMoney('25.00', 3)).toBe('75.00');
+    expect(multiplyMoney('30.50', 2)).toBe('61.00');
+  });
+
+  it('deve retornar "0.00" quando o fator é zero', () => {
+    expect(multiplyMoney('25.00', 0)).toBe('0.00');
+  });
+
+  it('deve tratar valor null/undefined como zero', () => {
+    expect(multiplyMoney(null, 5)).toBe('0.00');
+    expect(multiplyMoney(undefined, 5)).toBe('0.00');
+  });
+
+  it('deve aceitar Decimal-like (toFixed) — compatível com ticketPrice do Prisma', () => {
+    const decimalLike = { toFixed: (d: number): string => (12.5).toFixed(d) };
+    expect(multiplyMoney(decimalLike, 4)).toBe('50.00');
+  });
+
+  it('deve suportar fator grande sem perda de precisão', () => {
+    expect(multiplyMoney('0.01', 100000)).toBe('1000.00');
+  });
+
+  it('deve rejeitar fator não-inteiro', () => {
+    expect(() => multiplyMoney('25.00', 1.5)).toThrow('Fator inválido');
+  });
+
+  it('deve rejeitar fator negativo', () => {
+    expect(() => multiplyMoney('25.00', -1)).toThrow('Fator inválido');
+  });
+});
+
+describe('compareMoney', () => {
+  it('deve retornar -1 quando a < b', () => {
+    expect(compareMoney('10.00', '10.01')).toBe(-1);
+  });
+
+  it('deve retornar 1 quando a > b', () => {
+    expect(compareMoney('10.01', '10.00')).toBe(1);
+  });
+
+  it('deve retornar 0 quando a == b (igualdade exata em centavos)', () => {
+    expect(compareMoney('50.00', '50.00')).toBe(0);
+    expect(compareMoney('50', '50.00')).toBe(0);
+  });
+
+  it('deve tratar null/undefined como zero', () => {
+    expect(compareMoney(null, '0.00')).toBe(0);
+    expect(compareMoney('0.01', undefined)).toBe(1);
+  });
+
+  it('deve comparar valores negativos corretamente', () => {
+    expect(compareMoney('-50.00', '-10.00')).toBe(-1);
+  });
+
+  it('deve aceitar Decimal-like (toFixed)', () => {
+    const decimalLike = { toFixed: (d: number): string => (75.5).toFixed(d) };
+    expect(compareMoney(decimalLike, '75.50')).toBe(0);
   });
 });

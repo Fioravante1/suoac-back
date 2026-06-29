@@ -14,7 +14,8 @@ import {
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
 import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
-import { formatMoney } from '../common/money/money.util';
+import { addMoney, compareMoney, formatMoney, subtractMoney } from '../common/money/money.util';
+import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PdfService } from '../common/pdf/pdf.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import { EventStatus, EventType, PaymentStatus, UserRole } from '../generated/prisma/enums';
@@ -62,20 +63,18 @@ export class PaymentsService {
       throw new UnprocessableEntityException('A data do pagamento não pode ser futura');
     }
 
-    const paidAmount = Number(ep.paidAmount);
-    const totalAmount = Number(ep.totalAmount);
-    const remainingBalance = totalAmount - paidAmount;
+    const remainingBalance = subtractMoney(ep.totalAmount, ep.paidAmount);
 
-    if (remainingBalance <= 0) {
+    if (compareMoney(remainingBalance, 0) <= 0) {
       throw new UnprocessableEntityException('Passageiro já quitou o pagamento');
     }
 
-    if (dto.amount > remainingBalance) {
-      throw new UnprocessableEntityException(`Valor excede o saldo restante de R$ ${remainingBalance.toFixed(2)}`);
+    if (compareMoney(dto.amount, remainingBalance) > 0) {
+      throw new UnprocessableEntityException(`Valor excede o saldo restante de R$ ${remainingBalance}`);
     }
 
-    const newPaidAmount = paidAmount + dto.amount;
-    const newPaymentStatus = this.calculatePaymentStatus(newPaidAmount, totalAmount);
+    const newPaidAmount = addMoney(ep.paidAmount, dto.amount);
+    const newPaymentStatus = paymentStatusFromAmounts(newPaidAmount, ep.totalAmount);
 
     const payment = await this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.payment.create({
@@ -316,12 +315,8 @@ export class PaymentsService {
       'pagamentos',
     );
 
-    const paidAmount = Number(payment.eventPassenger.paidAmount);
-    const totalAmount = Number(payment.eventPassenger.totalAmount);
-    const paymentAmount = Number(payment.amount);
-
-    const newPaidAmount = paidAmount - paymentAmount;
-    const newPaymentStatus = this.calculatePaymentStatus(newPaidAmount, totalAmount);
+    const newPaidAmount = subtractMoney(payment.eventPassenger.paidAmount, payment.amount);
+    const newPaymentStatus = paymentStatusFromAmounts(newPaidAmount, payment.eventPassenger.totalAmount);
 
     await this.prisma.client.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.payment.delete({ where: { id } });
@@ -341,13 +336,13 @@ export class PaymentsService {
     });
 
     this.logger.warn(
-      `Pagamento removido — id=${id}, eventPassengerId=${payment.eventPassengerId}, amount=${paymentAmount}`,
+      `Pagamento removido — id=${id}, eventPassengerId=${payment.eventPassengerId}, amount=${formatMoney(payment.amount)}`,
     );
   }
 
   private toResponse(payment: {
     id: string;
-    amount: unknown;
+    amount: Prisma.Decimal;
     paidAt: Date;
     observations: string | null;
     eventPassengerId: string;
@@ -356,7 +351,7 @@ export class PaymentsService {
   }): PaymentResponse {
     return {
       id: payment.id,
-      amount: String(payment.amount),
+      amount: formatMoney(payment.amount),
       paidAt: payment.paidAt,
       observations: payment.observations,
       eventPassengerId: payment.eventPassengerId,
@@ -390,18 +385,6 @@ export class PaymentsService {
       registeredById: payment.registeredById,
       createdAt: payment.createdAt,
     };
-  }
-
-  private calculatePaymentStatus(paidAmount: number, totalAmount: number): PaymentStatus {
-    if (paidAmount <= 0) {
-      return PaymentStatus.PENDING;
-    }
-
-    if (paidAmount < totalAmount) {
-      return PaymentStatus.PARTIAL;
-    }
-
-    return PaymentStatus.PAID;
   }
 
   private ensureEventOpen(status: string): void {

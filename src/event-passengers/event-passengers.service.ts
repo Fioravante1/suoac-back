@@ -16,6 +16,8 @@ import {
 } from '../common/authorization/circuit-ownership.util';
 import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { addMoney, compareMoney, formatMoney, multiplyMoney, subtractMoney } from '../common/money/money.util';
+import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
 import type {
   CongregationPdfBlock,
@@ -118,7 +120,7 @@ export class EventPassengersService {
     const activeDays = event.eventDays.filter((d) => d.status === EventDayStatus.ACTIVE);
     const selectedDayIds = this.resolveSelectedDays(event.type, activeDays, dto.dayIds);
 
-    const totalAmount = Number(event.ticketPrice) * selectedDayIds.length;
+    const totalAmount = multiplyMoney(event.ticketPrice, selectedDayIds.length);
 
     if (dto.payment) {
       this.validateInitialPayment(dto.payment, totalAmount, event.paymentDeadline, user.role);
@@ -127,7 +129,7 @@ export class EventPassengersService {
     const paidAmount = dto.payment ? dto.payment.amount : 0;
     const paymentStatus = dto.exemptionReason
       ? PaymentStatus.EXEMPT
-      : this.calculatePaymentStatus(paidAmount, totalAmount);
+      : paymentStatusFromAmounts(paidAmount, totalAmount);
 
     if (dto.payment) {
       return this.createWithPayment(
@@ -477,17 +479,16 @@ export class EventPassengersService {
       throw new UnprocessableEntityException(`Dia inválido ou cancelado: ${invalidDayId}`);
     }
 
-    const newTotalAmount = Number(ep.event.ticketPrice) * dto.dayIds.length;
-    const paidAmount = Number(ep.paidAmount);
+    const newTotalAmount = multiplyMoney(ep.event.ticketPrice, dto.dayIds.length);
 
     const newPaymentStatus: PaymentStatus =
       ep.paymentStatus === PaymentStatus.EXEMPT
         ? PaymentStatus.EXEMPT
-        : this.calculatePaymentStatus(paidAmount, newTotalAmount);
+        : paymentStatusFromAmounts(ep.paidAmount, newTotalAmount);
 
-    if (paidAmount > newTotalAmount && ep.paymentStatus !== PaymentStatus.EXEMPT) {
+    if (compareMoney(ep.paidAmount, newTotalAmount) > 0 && ep.paymentStatus !== PaymentStatus.EXEMPT) {
       this.logger.warn(
-        `Crédito detectado após alteração de dias — id=${id}, paidAmount=${paidAmount}, newTotalAmount=${newTotalAmount}`,
+        `Crédito detectado após alteração de dias — id=${id}, paidAmount=${formatMoney(ep.paidAmount)}, newTotalAmount=${newTotalAmount}`,
       );
     }
 
@@ -569,8 +570,8 @@ export class EventPassengersService {
     });
 
     let totalPassengers = 0;
-    let totalExpected = 0;
-    let totalReceived = 0;
+    let totalExpected = '0.00';
+    let totalReceived = '0.00';
 
     const statusToKey: Record<string, keyof EventPassengerFinancialSummary['byStatus']> = {
       [PaymentStatus.PAID]: 'paid',
@@ -583,8 +584,8 @@ export class EventPassengersService {
       (acc, entry) => {
         totalPassengers += entry._count;
         if (entry.paymentStatus !== PaymentStatus.EXEMPT) {
-          totalExpected += Number(entry._sum.totalAmount ?? 0);
-          totalReceived += Number(entry._sum.paidAmount ?? 0);
+          totalExpected = addMoney(totalExpected, entry._sum.totalAmount);
+          totalReceived = addMoney(totalReceived, entry._sum.paidAmount);
         }
         const key = statusToKey[entry.paymentStatus];
         if (key) {
@@ -597,16 +598,16 @@ export class EventPassengersService {
 
     return {
       totalPassengers,
-      totalExpected: totalExpected.toFixed(2),
-      totalReceived: totalReceived.toFixed(2),
-      totalPending: (totalExpected - totalReceived).toFixed(2),
+      totalExpected,
+      totalReceived,
+      totalPending: subtractMoney(totalExpected, totalReceived),
       byStatus,
     };
   }
 
   private validateInitialPayment(
     payment: { amount: number; paidAt: string },
-    totalAmount: number,
+    totalAmount: string,
     paymentDeadline: Date,
     role: string,
   ): void {
@@ -615,8 +616,8 @@ export class EventPassengersService {
       throw new UnprocessableEntityException('A data do pagamento não pode ser futura');
     }
 
-    if (payment.amount > totalAmount) {
-      throw new UnprocessableEntityException(`Valor do pagamento excede o total de R$ ${totalAmount.toFixed(2)}`);
+    if (compareMoney(payment.amount, totalAmount) > 0) {
+      throw new UnprocessableEntityException(`Valor do pagamento excede o total de R$ ${totalAmount}`);
     }
 
     if (new Date() > paymentDeadline && !isCircuitRole(role)) {
@@ -630,7 +631,7 @@ export class EventPassengersService {
     dto: CreateEventPassengerDto,
     resolved: { passengerId: string; congregationId: string },
     selectedDayIds: string[],
-    totalAmount: number,
+    totalAmount: string,
     paidAmount: number,
     paymentStatus: PaymentStatus,
   ): Promise<EventPassengerResponse> {
@@ -802,8 +803,8 @@ export class EventPassengersService {
   private toResponse(
     ep: {
       id: string;
-      totalAmount: unknown;
-      paidAmount: unknown;
+      totalAmount: Prisma.Decimal;
+      paidAmount: Prisma.Decimal;
       paymentStatus: string;
       exemptionReason: string | null;
       observations: string | null;
@@ -840,8 +841,8 @@ export class EventPassengersService {
         rg: this.encryption.decrypt(ep.passenger.rgEncrypted),
         phone: formatPhone(ep.passenger.phone),
       },
-      totalAmount: String(ep.totalAmount),
-      paidAmount: String(ep.paidAmount),
+      totalAmount: formatMoney(ep.totalAmount),
+      paidAmount: formatMoney(ep.paidAmount),
       paymentStatus: ep.paymentStatus,
       exemptionReason: ep.exemptionReason,
       observations: ep.observations,
@@ -891,15 +892,4 @@ export class EventPassengersService {
     }
   }
 
-  private calculatePaymentStatus(paidAmount: number, totalAmount: number): PaymentStatus {
-    if (paidAmount <= 0) {
-      return PaymentStatus.PENDING;
-    }
-
-    if (paidAmount < totalAmount) {
-      return PaymentStatus.PARTIAL;
-    }
-
-    return PaymentStatus.PAID;
-  }
 }

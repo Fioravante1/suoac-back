@@ -169,7 +169,7 @@ describe('PaymentsService', () => {
       const result = await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
       expect(result.id).toBe(PAYMENT_ID);
-      expect(result.amount).toBe('25');
+      expect(result.amount).toBe('25.00');
       expect(result.eventPassengerId).toBe(EP_ID);
       expect(prismaMock.$transaction).toHaveBeenCalled();
     });
@@ -358,7 +358,7 @@ describe('PaymentsService', () => {
       const result = await service.findByEventPassenger(EP_ID, user);
 
       expect(result).toHaveLength(2);
-      expect(result[0]!.amount).toBe('15');
+      expect(result[0]!.amount).toBe('15.00');
       expect(result[1]!.observations).toBe('parcela 1');
       expect(prismaMock.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { paidAt: 'desc' } }),
