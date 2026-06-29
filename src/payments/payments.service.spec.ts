@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -388,7 +393,15 @@ describe('PaymentsService', () => {
   describe('findByEvent', () => {
     const CONGREGATION_ID_2 = 'c1c2c3c4-0000-0000-0000-000000000002';
 
-    function buildPaymentRow(overrides: Partial<{ id: string; amount: unknown; congregationId: string; congregationName: string; passengerName: string }> = {}): unknown {
+    function buildPaymentRow(
+      overrides: Partial<{
+        id: string;
+        amount: unknown;
+        congregationId: string;
+        congregationName: string;
+        passengerName: string;
+      }> = {},
+    ): unknown {
       return {
         id: overrides.id ?? PAYMENT_ID,
         amount: overrides.amount ?? 25.0,

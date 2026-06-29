@@ -233,10 +233,7 @@ export class PdfService {
   }
 
   /** Registra widgets, preenche via callback, achata (não editável) e devolve o Buffer. */
-  private async fillAndRender(
-    pdf: PDFDocument,
-    fill: (form: PDFForm, present: Set<string>) => void,
-  ): Promise<Buffer> {
+  private async fillAndRender(pdf: PDFDocument, fill: (form: PDFForm, present: Set<string>) => void): Promise<Buffer> {
     PdfService.registerOrphanWidgets(pdf);
     const helvetica = await pdf.embedFont(StandardFonts.Helvetica);
     const form = pdf.getForm();

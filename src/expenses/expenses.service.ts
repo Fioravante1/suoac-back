@@ -252,9 +252,7 @@ export class ExpensesService {
    */
   private ensureExpenseAllowed(status: EventStatus, eventId: string): void {
     if (status === EventStatus.DRAFT || status === EventStatus.CANCELLED) {
-      throw new UnprocessableEntityException(
-        'Não é possível operar despesas em eventos em rascunho ou cancelados',
-      );
+      throw new UnprocessableEntityException('Não é possível operar despesas em eventos em rascunho ou cancelados');
     }
 
     if (status === EventStatus.FINISHED) {

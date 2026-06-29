@@ -64,7 +64,10 @@ export function addMoney(...values: Array<MoneyLike | string | null | undefined>
  * Subtrai `b` de `a` com precisão exata (centavos inteiros), devolvendo `"NN.NN"`.
  * Resultado pode ser negativo (ex.: saldo deficitário). Aceita `Decimal`/string/null.
  */
-export function subtractMoney(a: MoneyLike | string | null | undefined, b: MoneyLike | string | null | undefined): string {
+export function subtractMoney(
+  a: MoneyLike | string | null | undefined,
+  b: MoneyLike | string | null | undefined,
+): string {
   return formatCents(toCents(a) - toCents(b));
 }
 

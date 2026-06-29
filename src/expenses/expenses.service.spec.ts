@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -231,9 +236,7 @@ describe('ExpensesService', () => {
 
     it('deve lançar ForbiddenException quando o evento é de outro circuito', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEvent({ circuitId: OTHER_CIRCUIT_ID }) as never);
-      await expect(service.findByEvent(EVENT_ID, buildCircuitUser(), {})).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(service.findByEvent(EVENT_ID, buildCircuitUser(), {})).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -287,9 +290,9 @@ describe('ExpensesService', () => {
 
     it('deve lançar UnprocessableEntityException quando incurredAt é futura', async () => {
       prismaMock.expense.findFirst.mockResolvedValue(buildExpense({ event: buildEvent() }) as never);
-      await expect(
-        service.update(EXPENSE_ID, buildCircuitUser(), { incurredAt: FUTURE_DATE }),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.update(EXPENSE_ID, buildCircuitUser(), { incurredAt: FUTURE_DATE })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando o evento está CANCELLED', async () => {

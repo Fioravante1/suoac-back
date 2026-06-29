@@ -277,7 +277,12 @@ export class EventPassengersService {
       throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
     }
 
-    const effectiveCongregationId = await resolveCongregationScope(this.prisma, user, event.circuitId, dto.congregationId);
+    const effectiveCongregationId = await resolveCongregationScope(
+      this.prisma,
+      user,
+      event.circuitId,
+      dto.congregationId,
+    );
 
     const where: Prisma.EventPassengerWhereInput = {
       eventId,

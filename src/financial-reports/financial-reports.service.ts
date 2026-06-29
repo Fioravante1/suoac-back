@@ -1,4 +1,10 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
@@ -136,7 +142,12 @@ export class FinancialReportsService {
     const [event, expenses] = await Promise.all([
       this.prisma.client.event.findUnique({
         where: { id: eventId },
-        select: { title: true, city: true, state: true, eventDays: { select: { date: true }, orderBy: { date: 'asc' } } },
+        select: {
+          title: true,
+          city: true,
+          state: true,
+          eventDays: { select: { date: true }, orderBy: { date: 'asc' } },
+        },
       }),
       this.prisma.client.expense.findMany({
         where: { eventId, deletedAt: null },
@@ -206,9 +217,12 @@ export class FinancialReportsService {
 
   /** "dd/mm/aaaa" para datas date-only (timezone UTC para não deslocar o dia). */
   private formatFullDate(date: Date): string {
-    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' }).format(
-      date,
-    );
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'UTC',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
   }
 
   /** "MM/AAAA" para o campo "Mês/Ano" do S-44 (date-only, UTC). */
