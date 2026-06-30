@@ -225,19 +225,20 @@ describe('PdfService', () => {
       },
     ];
 
-    // Meio-dia UTC para a data cair sempre no mesmo dia no fuso America/Sao_Paulo
-    // (usado por formatDateBR), independentemente do TZ da máquina (local vs. CI/UTC).
+    // Data de calendário a meia-noite UTC (como EventDay.date, coluna @db.Date). O
+    // cabeçalho deve formatar em UTC e NÃO deslocar para o dia anterior (off-by-one
+    // ao usar o fuso America/Sao_Paulo), independentemente do TZ da máquina (CI/UTC).
     const twoDays: DayPdfBlock[] = [
       {
         dayNumber: 1,
         label: 'Dia 1 - Sexta',
-        date: new Date('2026-06-16T12:00:00Z'),
+        date: new Date('2026-06-16T00:00:00Z'),
         congregations: congForDay('João Repetido'),
       },
       {
         dayNumber: 2,
         label: 'Dia 2 - Sábado',
-        date: new Date('2026-06-17T12:00:00Z'),
+        date: new Date('2026-06-17T00:00:00Z'),
         congregations: congForDay('João Repetido'),
       },
     ];
@@ -246,8 +247,10 @@ describe('PdfService', () => {
       await service.generatePassengerList(buildData({ multiDay: true, days: twoDays }));
 
       const serialized = serialize(capturedDocs[0]!);
-      expect(serialized).toContain('Dia 1 - Sexta — 16/06/2026');
-      expect(serialized).toContain('Dia 2 - Sábado — 17/06/2026');
+      // Cabeçalho mostra só o dia da semana + data, sem o prefixo "Dia N - ".
+      expect(serialized).toContain('Sexta — 16/06/2026');
+      expect(serialized).toContain('Sábado — 17/06/2026');
+      expect(serialized).not.toContain('Dia 1 - Sexta —');
     });
 
     it('deve quebrar página entre os dias (pageBreak no 2º dia em diante)', async () => {

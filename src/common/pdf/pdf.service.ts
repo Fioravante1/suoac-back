@@ -666,11 +666,29 @@ export class PdfService {
   }
 
   private buildDayHeader(day: DayPdfBlock, pageBreak: boolean): Content {
+    // Mostra apenas o dia da semana + data (sem o prefixo "Dia N - " do label).
+    const weekday = day.label.replace(/^Dia\s+\d+\s*-\s*/, '');
     return {
-      text: `${day.label} — ${this.formatDateBR(day.date)}`,
+      text: `${weekday} — ${this.formatCalendarDateBR(day.date)}`,
       style: 'dayTitle',
       ...(pageBreak ? { pageBreak: 'before' as const } : {}),
     };
+  }
+
+  /**
+   * Formata uma data de calendário (`EventDay.date`, coluna `@db.Date` → meia-noite
+   * UTC, sem componente de hora) **em UTC**, sem conversão de fuso. Usar `formatDateBR`
+   * (fuso America/Sao_Paulo) converteria a meia-noite UTC para o dia anterior (off-by-one).
+   */
+  private formatCalendarDateBR(date: Date): string {
+    const parts = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'UTC',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes): string => parts.find((p) => p.type === type)?.value ?? '';
+    return `${get('day')}/${get('month')}/${get('year')}`;
   }
 
   private buildCongregationBlock(block: CongregationPdfBlock, variant: PassengerListVariant): Content[] {
