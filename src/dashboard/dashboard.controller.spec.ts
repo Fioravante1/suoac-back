@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
@@ -75,6 +76,7 @@ describe('DashboardController', () => {
     serviceMock = {
       getDashboard: jest.fn(),
       getFinancialSummary: jest.fn(),
+      exportFinancialSummary: jest.fn(),
       buildPaymentBreakdown: jest.fn(),
     } as unknown as jest.Mocked<DashboardService>;
 
@@ -130,6 +132,58 @@ describe('DashboardController', () => {
       serviceMock.getFinancialSummary.mockRejectedValue(new NotFoundException('Evento não encontrado'));
 
       await expect(controller.getFinancialSummary(EVENT_ID, user)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('exportFinancialSummary', () => {
+    function buildReply(): FastifyReply {
+      const reply = { header: jest.fn().mockReturnThis(), send: jest.fn().mockReturnThis() };
+      return reply as unknown as FastifyReply;
+    }
+
+    it('deve enviar o arquivo com Content-Type/Disposition e default format=pdf', async () => {
+      const buffer = Buffer.from('%PDF-1.7');
+      serviceMock.exportFinancialSummary.mockResolvedValue({
+        buffer,
+        filename: 'resumo-financeiro-event-1.pdf',
+        contentType: 'application/pdf',
+      });
+      const reply = buildReply();
+
+      await controller.exportFinancialSummary('circuit-1', 'event-1', {}, buildUser(), reply);
+
+      expect(serviceMock.exportFinancialSummary).toHaveBeenCalledWith('circuit-1', 'event-1', expect.anything(), 'pdf');
+      expect(reply.header).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        'attachment; filename="resumo-financeiro-event-1.pdf"',
+      );
+      expect(reply.send).toHaveBeenCalledWith(buffer);
+    });
+
+    it('deve repassar o format=xlsx do query ao service', async () => {
+      serviceMock.exportFinancialSummary.mockResolvedValue({
+        buffer: Buffer.from('PK\x03\x04'),
+        filename: 'resumo-financeiro-event-1.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      await controller.exportFinancialSummary('circuit-1', 'event-1', { format: 'xlsx' }, buildUser(), buildReply());
+
+      expect(serviceMock.exportFinancialSummary).toHaveBeenCalledWith(
+        'circuit-1',
+        'event-1',
+        expect.anything(),
+        'xlsx',
+      );
+    });
+
+    it('deve propagar NotFoundException do service', async () => {
+      serviceMock.exportFinancialSummary.mockRejectedValue(new NotFoundException('Evento não encontrado'));
+
+      await expect(
+        controller.exportFinancialSummary('circuit-1', 'event-1', {}, buildUser(), buildReply()),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

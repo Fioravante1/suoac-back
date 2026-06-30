@@ -1,9 +1,16 @@
-import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
+import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from './payments.service';
@@ -99,6 +106,8 @@ describe('PaymentsService', () => {
   let service: PaymentsService;
   let prismaMock: DeepMockProxy<PrismaClientType>;
   let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
+  let pdfServiceMock: jest.Mocked<PdfService>;
+  let xlsxServiceMock: jest.Mocked<XlsxService>;
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
@@ -107,12 +116,21 @@ describe('PaymentsService', () => {
       updateStatus: jest.fn(),
       ensureNotFinalized: jest.fn(),
     } as unknown as jest.Mocked<CongregationEventStatusService>;
+    pdfServiceMock = {
+      generatePaymentReceipt: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7')),
+      generatePaymentsExtractPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7')),
+    } as unknown as jest.Mocked<PdfService>;
+    xlsxServiceMock = {
+      generatePaymentsExtract: jest.fn().mockResolvedValue(Buffer.from('PK\x03\x04')),
+    } as unknown as jest.Mocked<XlsxService>;
 
     const module = await Test.createTestingModule({
       providers: [
         PaymentsService,
         { provide: PrismaService, useValue: { client: prismaMock } },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
+        { provide: PdfService, useValue: pdfServiceMock },
+        { provide: XlsxService, useValue: xlsxServiceMock },
         {
           provide: AuditLogService,
           useValue: {
@@ -158,7 +176,7 @@ describe('PaymentsService', () => {
       const result = await service.create(EP_ID, user, { amount: 25, paidAt: PAST_DATE });
 
       expect(result.id).toBe(PAYMENT_ID);
-      expect(result.amount).toBe('25');
+      expect(result.amount).toBe('25.00');
       expect(result.eventPassengerId).toBe(EP_ID);
       expect(prismaMock.$transaction).toHaveBeenCalled();
     });
@@ -347,7 +365,7 @@ describe('PaymentsService', () => {
       const result = await service.findByEventPassenger(EP_ID, user);
 
       expect(result).toHaveLength(2);
-      expect(result[0]!.amount).toBe('15');
+      expect(result[0]!.amount).toBe('15.00');
       expect(result[1]!.observations).toBe('parcela 1');
       expect(prismaMock.payment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { paidAt: 'desc' } }),
@@ -375,6 +393,268 @@ describe('PaymentsService', () => {
       prismaMock.eventPassenger.findUnique.mockResolvedValue(buildEventPassenger() as never);
 
       await expect(service.findByEventPassenger(EP_ID, user)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ── findByEvent (extrato consolidado) ──────────────────────────
+  describe('findByEvent', () => {
+    const CONGREGATION_ID_2 = 'c1c2c3c4-0000-0000-0000-000000000002';
+
+    function buildPaymentRow(
+      overrides: Partial<{
+        id: string;
+        amount: unknown;
+        congregationId: string;
+        congregationName: string;
+        passengerName: string;
+      }> = {},
+    ): unknown {
+      return {
+        id: overrides.id ?? PAYMENT_ID,
+        amount: overrides.amount ?? 25.0,
+        paidAt: new Date(PAST_DATE),
+        observations: null,
+        eventPassengerId: EP_ID,
+        registeredById: USER_ID,
+        createdAt: new Date('2026-01-15T10:00:00Z'),
+        eventPassenger: {
+          passenger: { name: overrides.passengerName ?? 'Maria Silva' },
+          congregation: {
+            id: overrides.congregationId ?? CONGREGATION_ID,
+            name: overrides.congregationName ?? 'Congregação Central',
+          },
+        },
+      };
+    }
+
+    it('deve retornar todos os pagamentos do evento para role de circuito sem filtro', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.findMany.mockResolvedValue([buildPaymentRow()] as never);
+      prismaMock.payment.count.mockResolvedValue(1);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: 25.0 } } as never);
+
+      const result = await service.findByEvent(EVENT_ID, user, {});
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({
+        amount: '25.00',
+        passengerName: 'Maria Silva',
+        congregationId: CONGREGATION_ID,
+        congregationName: 'Congregação Central',
+      });
+      expect(result.meta.totalReceived).toBe('25.00');
+      expect(prismaMock.congregation.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventPassenger: { eventId: EVENT_ID } },
+          orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        }),
+      );
+    });
+
+    it('deve filtrar por congregação válida e recortar totalReceived', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.findMany.mockResolvedValue([buildPaymentRow({ amount: 30.0 })] as never);
+      prismaMock.payment.count.mockResolvedValue(1);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: 30.0 } } as never);
+
+      const result = await service.findByEvent(EVENT_ID, user, { congregationId: CONGREGATION_ID });
+
+      expect(result.meta.totalReceived).toBe('30.00');
+      expect(prismaMock.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventPassenger: { eventId: EVENT_ID, congregationId: CONGREGATION_ID } },
+        }),
+      );
+    });
+
+    it('deve lançar NotFoundException quando congregação filtrada é de outro circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: 'outro-circuito' } as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, { congregationId: CONGREGATION_ID_2 })).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve auto-restringir role de congregação à própria, ignorando query param', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.findMany.mockResolvedValue([]);
+      prismaMock.payment.count.mockResolvedValue(0);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: null } } as never);
+
+      await service.findByEvent(EVENT_ID, user, { congregationId: CONGREGATION_ID });
+
+      expect(prismaMock.payment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventPassenger: { eventId: EVENT_ID, congregationId: CONGREGATION_ID } },
+        }),
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, { congregationId: CONGREGATION_ID_2 })).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('deve lançar NotFoundException quando evento não existe', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.findByEvent('non-existent', buildUser(), {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando evento é de outro circuito', async () => {
+      const user = buildUser({ circuitId: 'outro-circuito' });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+
+      await expect(service.findByEvent(EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve retornar totalReceived "0.00" quando o recorte está vazio', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.findMany.mockResolvedValue([]);
+      prismaMock.payment.count.mockResolvedValue(0);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: null } } as never);
+
+      const result = await service.findByEvent(EVENT_ID, user, {});
+
+      expect(result.data).toHaveLength(0);
+      expect(result.meta.totalReceived).toBe('0.00');
+      expect(result.meta.total).toBe(0);
+    });
+
+    it('deve aplicar paginação (skip/take) conforme page/limit', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.findMany.mockResolvedValue([]);
+      prismaMock.payment.count.mockResolvedValue(45);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: null } } as never);
+
+      const result = await service.findByEvent(EVENT_ID, user, { page: 2, limit: 20 });
+
+      expect(prismaMock.payment.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 20, take: 20 }));
+      expect(result.meta.totalPages).toBe(3);
+    });
+  });
+
+  // ── generateReceipt (recibo PDF S-24-T) ────────────────────────
+  describe('generateReceipt', () => {
+    const CONGREGATION_ID_2 = 'c1c2c3c4-0000-0000-0000-000000000002';
+
+    function mockReceiptData(): void {
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Ouça o que o espírito diz',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+      // Atende às duas chamadas a congregation.findUnique:
+      // resolveCongregationScope (circuitId) e generateReceipt (name/code).
+      prismaMock.congregation.findUnique.mockResolvedValue({
+        circuitId: CIRCUIT_ID,
+        name: 'Congregação Cidade Popular',
+        code: 'CCP-01',
+      } as never);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: 1500.0 } } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João da Silva' } as never);
+      prismaMock.user.findFirst.mockResolvedValue({ name: 'Carlos Pereira' } as never);
+    }
+
+    it('deve gerar o recibo com os dados consolidados da congregação', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+
+      const result = await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(result.congregationCode).toBe('CCP-01');
+      expect(result.buffer).toBeInstanceOf(Buffer);
+      expect(pdfServiceMock.generatePaymentReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventTypeLabel: 'Assembleia',
+          eventTitle: 'Ouça o que o espírito diz',
+          congregationName: 'Congregação Cidade Popular',
+          totalReceived: '1500.00',
+          filledByName: 'João da Silva',
+          coordinatorName: 'Carlos Pereira',
+        }),
+      );
+    });
+
+    it('deve registrar audit log de EXPORT', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+      const auditSpy = jest.spyOn(service['auditLogService'], 'log');
+
+      await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(auditSpy).toHaveBeenCalledWith('EXPORT', 'PaymentReceipt', EVENT_ID, user.sub, expect.anything());
+    });
+
+    it('deve lançar BadRequestException quando role de circuito não informa congregationId', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user)).rejects.toThrow(BadRequestException);
+    });
+
+    it('deve lançar NotFoundException quando o evento é de outro circuito (path)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: 'outro-circuito',
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar NotFoundException quando o evento não existe', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Evento',
+        type: 'ASSEMBLY',
+        circuitId: CIRCUIT_ID,
+      } as never);
+
+      await expect(service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID_2)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('deve usar coordinatorName nulo quando não há coordenador ativo no circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+      prismaMock.user.findFirst.mockResolvedValue(null);
+
+      await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(pdfServiceMock.generatePaymentReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ coordinatorName: null }),
+      );
     });
   });
 
@@ -491,6 +771,83 @@ describe('PaymentsService', () => {
       );
 
       await expect(service.remove(PAYMENT_ID, user)).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
+  // ── exportPayments ────────────────────────────────────────────
+  describe('exportPayments', () => {
+    const CONGREGATION_ID_2 = 'c1c2c3c4-0000-0000-0000-000000000002';
+
+    const buildRow = (): unknown => ({
+      id: PAYMENT_ID,
+      amount: 50.0,
+      paidAt: new Date(PAST_DATE),
+      observations: null,
+      eventPassengerId: 'ep-1',
+      registeredById: USER_ID,
+      createdAt: new Date(PAST_DATE),
+      eventPassenger: {
+        passenger: { name: 'Maria Silva' },
+        congregation: { id: CONGREGATION_ID, name: 'Congregação Central' },
+      },
+    });
+
+    const setupCircuitExport = (): void => {
+      prismaMock.event.findUnique.mockResolvedValue({ title: 'Congresso 2026', circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.count.mockResolvedValue(1);
+      prismaMock.payment.findMany.mockResolvedValue([buildRow()] as never);
+      prismaMock.payment.aggregate.mockResolvedValue({ _sum: { amount: 50.0 } } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João' } as never);
+    };
+
+    it('deve gerar PDF por padrão (delegando ao PdfService)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      setupCircuitExport();
+
+      const result = await service.exportPayments(CIRCUIT_ID, EVENT_ID, user, {});
+
+      expect(pdfServiceMock.generatePaymentsExtractPdf).toHaveBeenCalled();
+      expect(xlsxServiceMock.generatePaymentsExtract).not.toHaveBeenCalled();
+      expect(result.contentType).toBe('application/pdf');
+      expect(result.filename).toBe(`extrato-pagamentos-${EVENT_ID}.pdf`);
+    });
+
+    it('deve gerar XLSX quando format=xlsx (delegando ao XlsxService)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      setupCircuitExport();
+
+      const result = await service.exportPayments(CIRCUIT_ID, EVENT_ID, user, { format: 'xlsx' });
+
+      expect(xlsxServiceMock.generatePaymentsExtract).toHaveBeenCalled();
+      expect(result.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      expect(result.filename).toBe(`extrato-pagamentos-${EVENT_ID}.xlsx`);
+    });
+
+    it('deve lançar 422 quando o volume excede o teto defensivo', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ title: 'Congresso 2026', circuitId: CIRCUIT_ID } as never);
+      prismaMock.payment.count.mockResolvedValue(5001);
+
+      await expect(service.exportPayments(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(prismaMock.payment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar NotFoundException quando o evento é de outro circuito (cross-circuit)', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      prismaMock.event.findUnique.mockResolvedValue({ title: 'X', circuitId: 'outro-circuito' } as never);
+
+      await expect(service.exportPayments(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
+      const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: CONGREGATION_ID });
+      prismaMock.event.findUnique.mockResolvedValue({ title: 'Congresso 2026', circuitId: CIRCUIT_ID } as never);
+
+      await expect(
+        service.exportPayments(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID_2 }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import type { PassengerListVariant } from '../../common/pdf/interfaces/passenger-list-pdf.interface';
 
 export class ExportPassengersQueryDto {
   @IsOptional()
@@ -7,20 +7,15 @@ export class ExportPassengersQueryDto {
   congregationId?: string;
 
   /**
-   * Inclui o RG no PDF. Parsing estrito: aceita apenas 'true'/'false'; qualquer
-   * outro valor é preservado para que o @IsBoolean() o rejeite com 400 (em vez
-   * de ser silenciosamente convertido em false).
+   * Variante (público-alvo) da listagem:
+   * - `carrier`  — vai para a empresa de ônibus (Nome, RG, Observação). Contém RG →
+   *   restrita a roles de circuito (validado no service).
+   * - `boarding` — conferência de embarque do capitão de ônibus (Nome, Telefone,
+   *   Observação). Sem RG → disponível a todos os roles.
+   *
+   * Default (omitido) → `boarding`, a variante sem dado sensível.
    */
   @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }: { value: unknown }) => {
-    if (value === 'true' || value === true) {
-      return true;
-    }
-    if (value === 'false' || value === false) {
-      return false;
-    }
-    return value;
-  })
-  includeSensitive?: boolean;
+  @IsIn(['carrier', 'boarding'])
+  variant?: PassengerListVariant;
 }

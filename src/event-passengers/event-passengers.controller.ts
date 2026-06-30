@@ -58,14 +58,18 @@ export class EventPassengersController {
     @CurrentUser() user: JwtPayload,
     @Res() reply: FastifyReply,
   ): Promise<FastifyReply> {
+    const variant = query.variant ?? 'boarding';
     const result = await this.eventPassengersService.exportPdf(circuitId, eventId, user, {
       congregationId: query.congregationId,
-      includeSensitive: query.includeSensitive,
+      variant,
     });
 
     // [ACHADO #7] sanitiza o código da congregação antes de compor o filename
     const safeCode = result.congregationCode?.replace(/[^a-zA-Z0-9_-]/g, '-');
-    const filename = safeCode ? `inscritos-${safeCode}-${eventId}.pdf` : `inscritos-${eventId}.pdf`;
+    const variantLabel = variant === 'carrier' ? 'empresa' : 'embarque';
+    const filename = safeCode
+      ? `inscritos-${variantLabel}-${safeCode}-${eventId}.pdf`
+      : `inscritos-${variantLabel}-${eventId}.pdf`;
 
     return reply
       .header('Content-Type', 'application/pdf')

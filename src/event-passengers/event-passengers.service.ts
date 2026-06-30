@@ -14,12 +14,17 @@ import {
   checkCongregationPermission,
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
+import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { addMoney, compareMoney, formatMoney, multiplyMoney, subtractMoney } from '../common/money/money.util';
+import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
 import type {
   CongregationPdfBlock,
+  DayPdfBlock,
   ExportPdfResult,
   PassengerListPdfData,
+  PassengerListVariant,
   PassengerPdfRow,
 } from '../common/pdf/interfaces/passenger-list-pdf.interface';
 import { PdfService } from '../common/pdf/pdf.service';
@@ -38,6 +43,14 @@ import type {
   EventPassengerResponse,
   PaginatedPassengerResponse,
 } from './interfaces/event-passenger-response.interface';
+
+/** Shape mínimo de inscrição carregada para montar os blocos do PDF de inscritos. */
+interface PdfEnrollment {
+  observations: string | null;
+  passenger: { name: string; rgEncrypted: string; phone: string | null };
+  congregation: { name: string; code: string; circuit: { name: string } };
+  eventPassengerDays: Array<{ eventDayId: string }>;
+}
 
 @Injectable()
 export class EventPassengersService {
@@ -117,7 +130,7 @@ export class EventPassengersService {
     const activeDays = event.eventDays.filter((d) => d.status === EventDayStatus.ACTIVE);
     const selectedDayIds = this.resolveSelectedDays(event.type, activeDays, dto.dayIds);
 
-    const totalAmount = Number(event.ticketPrice) * selectedDayIds.length;
+    const totalAmount = multiplyMoney(event.ticketPrice, selectedDayIds.length);
 
     if (dto.payment) {
       this.validateInitialPayment(dto.payment, totalAmount, event.paymentDeadline, user.role);
@@ -126,7 +139,7 @@ export class EventPassengersService {
     const paidAmount = dto.payment ? dto.payment.amount : 0;
     const paymentStatus = dto.exemptionReason
       ? PaymentStatus.EXEMPT
-      : this.calculatePaymentStatus(paidAmount, totalAmount);
+      : paymentStatusFromAmounts(paidAmount, totalAmount);
 
     if (dto.payment) {
       return this.createWithPayment(
@@ -195,7 +208,7 @@ export class EventPassengersService {
 
     // Escopo de congregação: roles de congregação ficam restritas à própria; roles de circuito
     // podem filtrar por uma congregação do circuito (validada). Reusa o mesmo helper do export.
-    const congregationScope = await this.resolveCongregationScope(user, event.circuitId, query.congregationId);
+    const congregationScope = await resolveCongregationScope(this.prisma, user, event.circuitId, query.congregationId);
 
     // Valida que os dias informados pertencem ao evento (422 caso contrário).
     const eventDayIds =
@@ -249,11 +262,11 @@ export class EventPassengersService {
     circuitId: string,
     eventId: string,
     user: JwtPayload,
-    dto: { congregationId?: string; includeSensitive?: boolean },
+    dto: { congregationId?: string; variant: PassengerListVariant },
   ): Promise<ExportPdfResult> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
-      include: { circuit: true },
+      include: { circuit: true, eventDays: { orderBy: { dayNumber: 'asc' } } },
     });
 
     if (!event) {
@@ -269,14 +282,20 @@ export class EventPassengersService {
 
     checkCircuitOwnership(user, event.circuitId);
 
-    const includeSensitive = dto.includeSensitive ?? false;
+    const { variant } = dto;
 
-    if (includeSensitive && !canExportSensitivePassengerData(user.role)) {
+    // Variante `carrier` expõe RG → restrita a roles de circuito.
+    if (variant === 'carrier' && !canExportSensitivePassengerData(user.role)) {
       this.logger.warn(`Tentativa de exportar RG sem permissão — userId=${user.sub}, role=${user.role}`);
       throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
     }
 
-    const effectiveCongregationId = await this.resolveCongregationScope(user, event.circuitId, dto.congregationId);
+    const effectiveCongregationId = await resolveCongregationScope(
+      this.prisma,
+      user,
+      event.circuitId,
+      dto.congregationId,
+    );
 
     const where: Prisma.EventPassengerWhereInput = {
       eventId,
@@ -303,8 +322,11 @@ export class EventPassengersService {
       include: {
         passenger: true,
         congregation: { include: { circuit: true } },
+        eventPassengerDays: { select: { eventDayId: true } },
       },
     });
+
+    const multiDay = event.eventDays.length > 1;
 
     const data: PassengerListPdfData = {
       eventTitle: `${this.getEventTypeLabel(event.type)} ${event.title}`,
@@ -314,15 +336,14 @@ export class EventPassengersService {
       circuitName: event.circuit.name,
       generatedAt: new Date(),
       generatedByName,
-      includeSensitive,
-      congregations: this.groupForPdf(enrollments, includeSensitive),
+      variant,
+      multiDay,
+      days: this.buildDayBlocks(enrollments, event.eventDays, multiDay, variant),
     };
 
     const buffer = await this.pdfService.generatePassengerList(data);
 
-    this.logger.log(
-      `PDF de inscritos exportado — eventId=${eventId}, total=${total}, includeSensitive=${includeSensitive}`,
-    );
+    this.logger.log(`PDF de inscritos exportado — eventId=${eventId}, total=${total}, variant=${variant}`);
 
     void this.auditLogService
       .log('EXPORT', 'EventPassengerPdf', eventId, user.sub, {
@@ -331,7 +352,7 @@ export class EventPassengersService {
           eventId,
           circuitId,
           congregationId: effectiveCongregationId ?? null,
-          includeSensitive,
+          variant,
           totalPassengers: total,
         },
       })
@@ -350,43 +371,6 @@ export class EventPassengersService {
     }
 
     return { buffer, congregationCode };
-  }
-
-  /**
-   * Resolve o escopo de congregação para listagem/exportação:
-   * - Role de congregação: restrita à própria; pedir outra → 403.
-   * - Role de circuito: sem filtro → todas; com filtro → valida pertencimento ao circuito (404).
-   */
-  private async resolveCongregationScope(
-    user: JwtPayload,
-    eventCircuitId: string,
-    requestedCongregationId?: string,
-  ): Promise<string | undefined> {
-    if (!isCircuitRole(user.role)) {
-      if (!user.congregationId) {
-        throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
-      }
-
-      if (requestedCongregationId && requestedCongregationId !== user.congregationId) {
-        throw new ForbiddenException('Sem permissão para acessar inscritos de outra congregação');
-      }
-      return user.congregationId;
-    }
-
-    if (!requestedCongregationId) {
-      return undefined;
-    }
-
-    const congregation = await this.prisma.client.congregation.findUnique({
-      where: { id: requestedCongregationId },
-      select: { circuitId: true },
-    });
-
-    if (!congregation || congregation.circuitId !== eventCircuitId) {
-      throw new NotFoundException('Congregação não encontrada neste circuito');
-    }
-
-    return requestedCongregationId;
   }
 
   /**
@@ -413,14 +397,49 @@ export class EventPassengersService {
     return uniqueDayIds;
   }
 
-  private groupForPdf(
-    enrollments: Array<{
-      observations: string | null;
-      passenger: { name: string; rgEncrypted: string; phone: string | null };
-      congregation: { name: string; code: string; circuit: { name: string } };
-    }>,
-    includeSensitive: boolean,
-  ): CongregationPdfBlock[] {
+  /**
+   * Monta os blocos do PDF respeitando o agrupamento por dia:
+   * - Evento de dia único: um único bloco com as congregações (cabeçalho de dia
+   *   não é renderizado pelo PdfService).
+   * - Evento multi-dia (congresso): um bloco por dia que tem inscritos, na ordem
+   *   de `dayNumber`. Um passageiro que vai em mais de um dia aparece em cada um.
+   */
+  private buildDayBlocks(
+    enrollments: PdfEnrollment[],
+    eventDays: Array<{ id: string; dayNumber: number; label: string; date: Date }>,
+    multiDay: boolean,
+    variant: PassengerListVariant,
+  ): DayPdfBlock[] {
+    if (!multiDay) {
+      const [firstDay] = eventDays;
+      return [
+        {
+          dayNumber: firstDay?.dayNumber ?? 1,
+          label: firstDay?.label ?? '',
+          date: firstDay?.date ?? new Date(),
+          congregations: this.groupByCongregation(enrollments, variant),
+        },
+      ];
+    }
+
+    const blocks: DayPdfBlock[] = [];
+    for (const day of eventDays) {
+      const dayEnrollments = enrollments.filter((ep) => ep.eventPassengerDays.some((d) => d.eventDayId === day.id));
+      if (dayEnrollments.length === 0) {
+        continue;
+      }
+      blocks.push({
+        dayNumber: day.dayNumber,
+        label: day.label,
+        date: day.date,
+        congregations: this.groupByCongregation(dayEnrollments, variant),
+      });
+    }
+
+    return blocks;
+  }
+
+  private groupByCongregation(enrollments: PdfEnrollment[], variant: PassengerListVariant): CongregationPdfBlock[] {
     const blocks = new Map<string, CongregationPdfBlock>();
 
     for (const ep of enrollments) {
@@ -439,8 +458,8 @@ export class EventPassengersService {
       const row: PassengerPdfRow = {
         index: block.passengers.length + 1,
         name: ep.passenger.name,
-        rg: includeSensitive ? this.encryption.decrypt(ep.passenger.rgEncrypted) : null,
-        phone: ep.passenger.phone,
+        rg: variant === 'carrier' ? this.encryption.decrypt(ep.passenger.rgEncrypted) : null,
+        phone: variant === 'boarding' ? ep.passenger.phone : null,
         observations: ep.observations,
       };
       block.passengers.push(row);
@@ -508,17 +527,16 @@ export class EventPassengersService {
       throw new UnprocessableEntityException(`Dia inválido ou cancelado: ${invalidDayId}`);
     }
 
-    const newTotalAmount = Number(ep.event.ticketPrice) * dto.dayIds.length;
-    const paidAmount = Number(ep.paidAmount);
+    const newTotalAmount = multiplyMoney(ep.event.ticketPrice, dto.dayIds.length);
 
     const newPaymentStatus: PaymentStatus =
       ep.paymentStatus === PaymentStatus.EXEMPT
         ? PaymentStatus.EXEMPT
-        : this.calculatePaymentStatus(paidAmount, newTotalAmount);
+        : paymentStatusFromAmounts(ep.paidAmount, newTotalAmount);
 
-    if (paidAmount > newTotalAmount && ep.paymentStatus !== PaymentStatus.EXEMPT) {
+    if (compareMoney(ep.paidAmount, newTotalAmount) > 0 && ep.paymentStatus !== PaymentStatus.EXEMPT) {
       this.logger.warn(
-        `Crédito detectado após alteração de dias — id=${id}, paidAmount=${paidAmount}, newTotalAmount=${newTotalAmount}`,
+        `Crédito detectado após alteração de dias — id=${id}, paidAmount=${formatMoney(ep.paidAmount)}, newTotalAmount=${newTotalAmount}`,
       );
     }
 
@@ -600,8 +618,8 @@ export class EventPassengersService {
     });
 
     let totalPassengers = 0;
-    let totalExpected = 0;
-    let totalReceived = 0;
+    let totalExpected = '0.00';
+    let totalReceived = '0.00';
 
     const statusToKey: Record<string, keyof EventPassengerFinancialSummary['byStatus']> = {
       [PaymentStatus.PAID]: 'paid',
@@ -614,8 +632,8 @@ export class EventPassengersService {
       (acc, entry) => {
         totalPassengers += entry._count;
         if (entry.paymentStatus !== PaymentStatus.EXEMPT) {
-          totalExpected += Number(entry._sum.totalAmount ?? 0);
-          totalReceived += Number(entry._sum.paidAmount ?? 0);
+          totalExpected = addMoney(totalExpected, entry._sum.totalAmount);
+          totalReceived = addMoney(totalReceived, entry._sum.paidAmount);
         }
         const key = statusToKey[entry.paymentStatus];
         if (key) {
@@ -628,16 +646,16 @@ export class EventPassengersService {
 
     return {
       totalPassengers,
-      totalExpected: totalExpected.toFixed(2),
-      totalReceived: totalReceived.toFixed(2),
-      totalPending: (totalExpected - totalReceived).toFixed(2),
+      totalExpected,
+      totalReceived,
+      totalPending: subtractMoney(totalExpected, totalReceived),
       byStatus,
     };
   }
 
   private validateInitialPayment(
     payment: { amount: number; paidAt: string },
-    totalAmount: number,
+    totalAmount: string,
     paymentDeadline: Date,
     role: string,
   ): void {
@@ -646,8 +664,8 @@ export class EventPassengersService {
       throw new UnprocessableEntityException('A data do pagamento não pode ser futura');
     }
 
-    if (payment.amount > totalAmount) {
-      throw new UnprocessableEntityException(`Valor do pagamento excede o total de R$ ${totalAmount.toFixed(2)}`);
+    if (compareMoney(payment.amount, totalAmount) > 0) {
+      throw new UnprocessableEntityException(`Valor do pagamento excede o total de R$ ${totalAmount}`);
     }
 
     if (new Date() > paymentDeadline && !isCircuitRole(role)) {
@@ -661,7 +679,7 @@ export class EventPassengersService {
     dto: CreateEventPassengerDto,
     resolved: { passengerId: string; congregationId: string },
     selectedDayIds: string[],
-    totalAmount: number,
+    totalAmount: string,
     paidAmount: number,
     paymentStatus: PaymentStatus,
   ): Promise<EventPassengerResponse> {
@@ -833,8 +851,8 @@ export class EventPassengersService {
   private toResponse(
     ep: {
       id: string;
-      totalAmount: unknown;
-      paidAmount: unknown;
+      totalAmount: Prisma.Decimal;
+      paidAmount: Prisma.Decimal;
       paymentStatus: string;
       exemptionReason: string | null;
       observations: string | null;
@@ -871,8 +889,8 @@ export class EventPassengersService {
         rg: this.encryption.decrypt(ep.passenger.rgEncrypted),
         phone: formatPhone(ep.passenger.phone),
       },
-      totalAmount: String(ep.totalAmount),
-      paidAmount: String(ep.paidAmount),
+      totalAmount: formatMoney(ep.totalAmount),
+      paidAmount: formatMoney(ep.paidAmount),
       paymentStatus: ep.paymentStatus,
       exemptionReason: ep.exemptionReason,
       observations: ep.observations,
@@ -920,17 +938,5 @@ export class EventPassengersService {
     if (new Date() > registrationDeadline && !isCircuitRole(role)) {
       throw new UnprocessableEntityException('O prazo de inscrição expirou');
     }
-  }
-
-  private calculatePaymentStatus(paidAmount: number, totalAmount: number): PaymentStatus {
-    if (paidAmount <= 0) {
-      return PaymentStatus.PENDING;
-    }
-
-    if (paidAmount < totalAmount) {
-      return PaymentStatus.PARTIAL;
-    }
-
-    return PaymentStatus.PAID;
   }
 }

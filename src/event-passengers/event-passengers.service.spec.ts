@@ -267,7 +267,7 @@ describe('EventPassengersService', () => {
 
       expect(result.id).toBe(EP_ID);
       expect(result.passenger.rg).toBe(DECRYPTED_RG);
-      expect(result.totalAmount).toBe('25');
+      expect(result.totalAmount).toBe('25.00');
       expect(result.days).toHaveLength(1);
       expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -367,7 +367,7 @@ describe('EventPassengersService', () => {
 
       expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ totalAmount: 90 }),
+          data: expect.objectContaining({ totalAmount: '90.00' }),
         }),
       );
     });
@@ -1222,6 +1222,7 @@ describe('EventPassengersService', () => {
       observations: string | null;
       passenger: { name: string; rgEncrypted: string; phone: string | null };
       congregation: { name: string; code: string; circuit: { name: string } };
+      eventPassengerDays: Array<{ eventDayId: string }>;
     }
 
     function buildEventWithCircuit(overrides: Partial<PrismaEvent> = {}): PrismaEvent & { circuit: { name: string } } {
@@ -1237,8 +1238,12 @@ describe('EventPassengersService', () => {
           code: '105478',
           circuit: { name: 'SP019' },
         },
+        eventPassengerDays: overrides.eventPassengerDays ?? [{ eventDayId: DAY_ID_1 }],
       };
     }
+
+    const BOARDING = { variant: 'boarding' as const };
+    const CARRIER = { variant: 'carrier' as const };
 
     function setupHappyPath(enrollments: PdfEnrollment[] = [buildEnrollment()]): void {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
@@ -1253,37 +1258,35 @@ describe('EventPassengersService', () => {
     it('deve lançar NotFoundException quando o evento não existe', async () => {
       prismaMock.event.findUnique.mockResolvedValue(null);
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {})).rejects.toThrow(NotFoundException);
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING)).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar NotFoundException quando o evento pertence a outro circuito (path)', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit({ circuitId: 'circuit-2' }) as never);
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: 'circuit-2', congregationId: null });
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(NotFoundException);
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, BOARDING)).rejects.toThrow(NotFoundException);
     });
 
     it('deve lançar ForbiddenException quando o circuito do JWT diverge do evento', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: 'circuit-outro', congregationId: null });
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, BOARDING)).rejects.toThrow(ForbiddenException);
     });
 
-    it('deve lançar ForbiddenException quando role de congregação pede includeSensitive', async () => {
+    it('deve lançar ForbiddenException quando role de congregação pede a variante carrier (RG)', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { includeSensitive: true })).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, CARRIER)).rejects.toThrow(ForbiddenException);
     });
 
     it('deve lançar ForbiddenException quando role de congregação não tem congregationId no JWT', async () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID, congregationId: null });
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(ForbiddenException);
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, user, BOARDING)).rejects.toThrow(ForbiddenException);
     });
 
     it('deve lançar ForbiddenException quando role de congregação pede outra congregação', async () => {
@@ -1291,7 +1294,7 @@ describe('EventPassengersService', () => {
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
       await expect(
-        service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: OTHER_CONGREGATION_ID }),
+        service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: OTHER_CONGREGATION_ID, ...BOARDING }),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -1299,7 +1302,10 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID });
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {
+        congregationId: CONGREGATION_ID,
+        ...BOARDING,
+      });
 
       expect(result.buffer).toBeInstanceOf(Buffer);
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
@@ -1310,7 +1316,7 @@ describe('EventPassengersService', () => {
     it('deve buscar todos os inscritos para role de circuito sem filtro', async () => {
       setupHappyPath();
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { eventId: EVENT_ID } }),
@@ -1322,7 +1328,7 @@ describe('EventPassengersService', () => {
       prismaMock.congregation.findUnique.mockResolvedValue({ circuitId: 'circuit-2' } as never);
 
       await expect(
-        service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { congregationId: OTHER_CONGREGATION_ID }),
+        service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { congregationId: OTHER_CONGREGATION_ID, ...BOARDING }),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -1330,39 +1336,39 @@ describe('EventPassengersService', () => {
       prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
       prismaMock.eventPassenger.count.mockResolvedValue(2001);
 
-      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {})).rejects.toThrow(
+      await expect(service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
 
-    it('não deve descriptografar RG quando includeSensitive=false', async () => {
+    it('não deve descriptografar RG na variante boarding (sem RG)', async () => {
       setupHappyPath();
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: false });
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(encryptionMock.decrypt).not.toHaveBeenCalled();
     });
 
-    it('deve descriptografar RG de cada passageiro quando includeSensitive=true', async () => {
+    it('deve descriptografar RG de cada passageiro na variante carrier', async () => {
       setupHappyPath([
         buildEnrollment(),
         buildEnrollment({ passenger: { name: 'Bruno', rgEncrypted: ENCRYPTED_RG, phone: null } }),
       ]);
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), CARRIER);
 
       expect(encryptionMock.decrypt).toHaveBeenCalledTimes(2);
     });
 
-    it('deve chamar generatePassengerList com generatedByName e includeSensitive corretos', async () => {
+    it('deve chamar generatePassengerList com generatedByName e variant corretos', async () => {
       setupHappyPath();
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), CARRIER);
 
       expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
         expect.objectContaining({
           generatedByName: 'João Coordenador',
-          includeSensitive: true,
+          variant: 'carrier',
           circuitName: 'SP019',
         }),
       );
@@ -1376,7 +1382,7 @@ describe('EventPassengersService', () => {
       prismaMock.eventPassenger.count.mockResolvedValue(1);
       prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
         expect.objectContaining({ eventTitle: 'Assembleia Ouça o que o espírito tem a dizer' }),
@@ -1391,7 +1397,7 @@ describe('EventPassengersService', () => {
       prismaMock.eventPassenger.count.mockResolvedValue(1);
       prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
         expect.objectContaining({ eventTitle: 'Congresso Felicidade Eterna' }),
@@ -1402,7 +1408,7 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
         expect.objectContaining({ generatedByName: 'Usuário desconhecido' }),
@@ -1413,7 +1419,10 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID });
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {
+        congregationId: CONGREGATION_ID,
+        ...BOARDING,
+      });
 
       expect(result.congregationCode).toBe('105478');
     });
@@ -1421,7 +1430,7 @@ describe('EventPassengersService', () => {
     it('não deve retornar congregationCode quando sem filtro de congregação', async () => {
       setupHappyPath();
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(result.congregationCode).toBeUndefined();
     });
@@ -1429,7 +1438,7 @@ describe('EventPassengersService', () => {
     it('deve gravar audit log EXPORT com metadados (sem dados de passageiros)', async () => {
       setupHappyPath();
 
-      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), { includeSensitive: true });
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), CARRIER);
 
       expect(auditLogMock.log).toHaveBeenCalledWith(
         'EXPORT',
@@ -1440,7 +1449,7 @@ describe('EventPassengersService', () => {
           newValues: expect.objectContaining({
             eventId: EVENT_ID,
             circuitId: CIRCUIT_ID,
-            includeSensitive: true,
+            variant: 'carrier',
             totalPassengers: 1,
           }),
         }),
@@ -1451,9 +1460,69 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       auditLogMock.log.mockRejectedValue(new Error('db down'));
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), {});
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
 
       expect(result.buffer).toBeInstanceOf(Buffer);
+    });
+
+    it('deve marcar multiDay=false e um único bloco de dia em evento de dia único', async () => {
+      setupHappyPath();
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ multiDay: false, days: expect.arrayContaining([expect.anything()]) }),
+      );
+    });
+
+    it('deve agrupar por dia (multiDay=true) e repetir o passageiro nos dias em que vai', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({
+          type: 'REGIONAL_CONVENTION',
+          eventDays: [
+            buildEventDay({ id: DAY_ID_1, dayNumber: 1, label: 'Dia 1 - Sexta' }),
+            buildEventDay({ id: DAY_ID_2, dayNumber: 2, label: 'Dia 2 - Sábado' }),
+          ],
+        }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      // Passageiro inscrito nos dois dias → deve aparecer em ambos os blocos.
+      prismaMock.eventPassenger.findMany.mockResolvedValue([
+        buildEnrollment({ eventPassengerDays: [{ eventDayId: DAY_ID_1 }, { eventDayId: DAY_ID_2 }] }),
+      ] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+      const data = pdfServiceMock.generatePassengerList.mock.calls[0]?.[0];
+      expect(data?.multiDay).toBe(true);
+      expect(data?.days).toHaveLength(2);
+      expect(data?.days[0]?.congregations[0]?.passengers[0]?.name).toBe('Ana Maria');
+      expect(data?.days[1]?.congregations[0]?.passengers[0]?.name).toBe('Ana Maria');
+    });
+
+    it('não deve criar bloco para dia sem inscritos', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({
+          type: 'REGIONAL_CONVENTION',
+          eventDays: [
+            buildEventDay({ id: DAY_ID_1, dayNumber: 1, label: 'Dia 1 - Sexta' }),
+            buildEventDay({ id: DAY_ID_2, dayNumber: 2, label: 'Dia 2 - Sábado' }),
+          ],
+        }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      // Só vai no dia 1 → bloco do dia 2 não deve existir.
+      prismaMock.eventPassenger.findMany.mockResolvedValue([
+        buildEnrollment({ eventPassengerDays: [{ eventDayId: DAY_ID_1 }] }),
+      ] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+      const data = pdfServiceMock.generatePassengerList.mock.calls[0]?.[0];
+      expect(data?.days).toHaveLength(1);
+      expect(data?.days[0]?.dayNumber).toBe(1);
     });
   });
 });

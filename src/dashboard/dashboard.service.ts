@@ -1,6 +1,13 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import { PDF_CONTENT_TYPE, XLSX_CONTENT_TYPE, type ExportFormat } from '../common/export/export.constants';
+import type { ExportFileResult, FinancialSummaryExportData } from '../common/export/financial-export.interface';
+import { addMoney, formatMoney, subtractMoney } from '../common/money/money.util';
+import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
+import type { Prisma } from '../generated/prisma/client';
 import { CongregationListStatus, EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -18,14 +25,19 @@ import type {
 interface BreakdownEntry {
   paymentStatus: string;
   _count: number;
-  _sum: { totalAmount: unknown; paidAmount: unknown };
+  _sum: { totalAmount: Prisma.Decimal | null; paidAmount: Prisma.Decimal | null };
 }
 
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfService: PdfService,
+    private readonly xlsxService: XlsxService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async getDashboard(eventId: string, user: JwtPayload, congregationId?: string): Promise<DashboardResponse> {
     const event = await this.prisma.client.event.findUnique({
@@ -94,12 +106,67 @@ export class DashboardService {
       ticketPrice: String(event.ticketPrice),
       totals: {
         totalPassengers: totals.totalPassengers,
-        totalExpected: totals.totalExpected.toFixed(2),
-        totalReceived: totals.totalReceived.toFixed(2),
-        totalPending: totals.totalPending.toFixed(2),
+        totalExpected: totals.totalExpected,
+        totalReceived: totals.totalReceived,
+        totalPending: totals.totalPending,
         byStatus: this.buildPaymentBreakdown(breakdown),
       },
       congregations: congregationRows,
+    };
+  }
+
+  /**
+   * Exporta o resumo financeiro (PDF ou XLSX). Rota sob `:circuitId` — valida que o
+   * evento pertence ao circuito do path (404 cross-circuit). Reusa `getFinancialSummary`
+   * (autorização + agregação), sem duplicar query.
+   */
+  async exportFinancialSummary(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    format: ExportFormat,
+  ): Promise<ExportFileResult> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { circuitId: true },
+    });
+
+    if (!event || event.circuitId !== circuitId) {
+      this.logger.warn(`Evento não encontrado ou fora do circuito — eventId=${eventId}, circuitId=${circuitId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const summary = await this.getFinancialSummary(eventId, user);
+    const requester = await this.prisma.client.user.findUnique({ where: { id: user.sub }, select: { name: true } });
+
+    const data: FinancialSummaryExportData = {
+      eventTitle: summary.eventTitle,
+      generatedAt: new Date(),
+      generatedByName: requester?.name ?? 'Usuário desconhecido',
+      totals: summary.totals,
+      congregations: summary.congregations,
+    };
+
+    const buffer =
+      format === 'xlsx'
+        ? await this.xlsxService.generateFinancialSummary(data)
+        : await this.pdfService.generateFinancialSummaryPdf(data);
+
+    this.logger.log(`Resumo financeiro exportado — eventId=${eventId}, format=${format}`);
+
+    void this.auditLogService
+      .log('EXPORT', 'FinancialSummary', eventId, user.sub, {
+        oldValues: null,
+        newValues: { eventId, circuitId, format, totalCongregations: summary.congregations.length },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export'));
+
+    return {
+      buffer,
+      filename: `resumo-financeiro-${eventId}.${format}`,
+      contentType: format === 'xlsx' ? XLSX_CONTENT_TYPE : PDF_CONTENT_TYPE,
     };
   }
 
@@ -148,11 +215,9 @@ export class DashboardService {
       row.totalPassengers += entry._count;
 
       if (entry.paymentStatus !== PaymentStatus.EXEMPT) {
-        const expected = Number(row.totalExpected) + Number(entry._sum.totalAmount ?? 0);
-        const received = Number(row.totalReceived) + Number(entry._sum.paidAmount ?? 0);
-        row.totalExpected = expected.toFixed(2);
-        row.totalReceived = received.toFixed(2);
-        row.totalPending = (expected - received).toFixed(2);
+        row.totalExpected = addMoney(row.totalExpected, entry._sum.totalAmount);
+        row.totalReceived = addMoney(row.totalReceived, entry._sum.paidAmount);
+        row.totalPending = subtractMoney(row.totalExpected, row.totalReceived);
       }
 
       const statusToKey: Record<string, keyof CongregationFinancialRow['byStatus']> = {
@@ -336,29 +401,29 @@ export class DashboardService {
 
   private computeFinancialTotals(breakdown: BreakdownEntry[]): {
     totalPassengers: number;
-    totalExpected: number;
-    totalReceived: number;
-    totalPending: number;
+    totalExpected: string;
+    totalReceived: string;
+    totalPending: string;
   } {
     const billable = breakdown.filter((e) => e.paymentStatus !== PaymentStatus.EXEMPT);
     const totalPassengers = breakdown.reduce((sum, e) => sum + e._count, 0);
-    const totalExpected = billable.reduce((sum, e) => sum + Number(e._sum.totalAmount ?? 0), 0);
-    const totalReceived = billable.reduce((sum, e) => sum + Number(e._sum.paidAmount ?? 0), 0);
+    const totalExpected = addMoney(...billable.map((e) => e._sum.totalAmount));
+    const totalReceived = addMoney(...billable.map((e) => e._sum.paidAmount));
 
-    return { totalPassengers, totalExpected, totalReceived, totalPending: totalExpected - totalReceived };
+    return { totalPassengers, totalExpected, totalReceived, totalPending: subtractMoney(totalExpected, totalReceived) };
   }
 
   private toStatsResponse(totals: {
     totalPassengers: number;
-    totalExpected: number;
-    totalReceived: number;
-    totalPending: number;
+    totalExpected: string;
+    totalReceived: string;
+    totalPending: string;
   }): DashboardStats {
     return {
       totalPassengers: totals.totalPassengers,
-      totalExpected: totals.totalExpected.toFixed(2),
-      totalReceived: totals.totalReceived.toFixed(2),
-      totalPending: totals.totalPending.toFixed(2),
+      totalExpected: totals.totalExpected,
+      totalReceived: totals.totalReceived,
+      totalPending: totals.totalPending,
     };
   }
 
@@ -447,20 +512,17 @@ export class DashboardService {
 
   private toPendingPassengerResponse(ep: {
     id: string;
-    totalAmount: unknown;
-    paidAmount: unknown;
+    totalAmount: Prisma.Decimal;
+    paidAmount: Prisma.Decimal;
     paymentStatus: string;
     passenger: { name: string };
   }): DashboardPendingPassenger {
-    const total = Number(ep.totalAmount);
-    const paid = Number(ep.paidAmount);
-
     return {
       id: ep.id,
       passengerName: ep.passenger.name,
-      totalAmount: total.toFixed(2),
-      paidAmount: paid.toFixed(2),
-      pendingAmount: (total - paid).toFixed(2),
+      totalAmount: formatMoney(ep.totalAmount),
+      paidAmount: formatMoney(ep.paidAmount),
+      pendingAmount: subtractMoney(ep.totalAmount, ep.paidAmount),
       paymentStatus: ep.paymentStatus,
     };
   }
