@@ -225,19 +225,19 @@ describe('PdfService', () => {
       },
     ];
 
-    // Datas em horário local (jest roda com TZ=America/Sao_Paulo); 'YYYY-MM-DD' puro
-    // seria UTC e cairia no dia anterior ao formatar no fuso de São Paulo.
+    // Meio-dia UTC para a data cair sempre no mesmo dia no fuso America/Sao_Paulo
+    // (usado por formatDateBR), independentemente do TZ da máquina (local vs. CI/UTC).
     const twoDays: DayPdfBlock[] = [
       {
         dayNumber: 1,
         label: 'Dia 1 - Sexta',
-        date: new Date('2026-06-16T00:00:00'),
+        date: new Date('2026-06-16T12:00:00Z'),
         congregations: congForDay('João Repetido'),
       },
       {
         dayNumber: 2,
         label: 'Dia 2 - Sábado',
-        date: new Date('2026-06-17T00:00:00'),
+        date: new Date('2026-06-17T12:00:00Z'),
         congregations: congForDay('João Repetido'),
       },
     ];
