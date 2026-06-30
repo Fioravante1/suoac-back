@@ -26,7 +26,12 @@ import type {
   FinancialReportRevenueLine,
 } from './interfaces/financial-report-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
-import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
+import type {
+  CongregationPdfBlock,
+  DayPdfBlock,
+  PassengerListPdfData,
+  PassengerListVariant,
+} from './interfaces/passenger-list-pdf.interface';
 import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 
 /** Posição de um campo de formulário (widget annotation) numa página. */
@@ -615,6 +620,7 @@ export class PdfService {
       }),
       content: this.buildContent(data),
       styles: {
+        dayTitle: { fontSize: 14, bold: true, color: 'white', background: BRAND_COLOR, margin: [0, 16, 0, 8] },
         sectionTitle: { fontSize: 12, bold: true, color: BRAND_COLOR, margin: [0, 14, 0, 6] },
         sectionTotal: { fontSize: 9, italics: true, color: MUTED_COLOR, margin: [0, 4, 0, 0] },
         tableHeader: { bold: true, color: 'white', fontSize: 9 },
@@ -641,22 +647,41 @@ export class PdfService {
   }
 
   private buildContent(data: PassengerListPdfData): Content {
-    if (data.congregations.length === 0) {
+    const hasPassengers = data.days.some((day) => day.congregations.length > 0);
+    if (!hasPassengers) {
       return { text: 'Nenhum inscrito encontrado para os filtros selecionados.', style: 'emptyState' };
     }
 
-    return data.congregations.flatMap((block) => this.buildCongregationBlock(block, data.includeSensitive));
+    // Dia único (assembleia): sem cabeçalho de dia, só os blocos de congregação.
+    if (!data.multiDay) {
+      const [firstDay] = data.days;
+      return (firstDay?.congregations ?? []).flatMap((block) => this.buildCongregationBlock(block, data.variant));
+    }
+
+    // Multi-dia (congresso): cada dia em sua própria página, com cabeçalho do dia.
+    return data.days.flatMap((day, index) => [
+      this.buildDayHeader(day, index > 0),
+      ...day.congregations.flatMap((block) => this.buildCongregationBlock(block, data.variant)),
+    ]);
   }
 
-  private buildCongregationBlock(block: CongregationPdfBlock, includeSensitive: boolean): Content[] {
-    const title = `${block.congregationName} (${block.congregationCode}) - ${block.circuitName}`;
+  private buildDayHeader(day: DayPdfBlock, pageBreak: boolean): Content {
+    return {
+      text: `${day.label} — ${this.formatDateBR(day.date)}`,
+      style: 'dayTitle',
+      ...(pageBreak ? { pageBreak: 'before' as const } : {}),
+    };
+  }
 
-    const headerCells: TableCell[] = includeSensitive
+  private buildCongregationBlock(block: CongregationPdfBlock, variant: PassengerListVariant): Content[] {
+    const title = `${block.congregationName} (${block.congregationCode}) - ${block.circuitName}`;
+    const isCarrier = variant === 'carrier';
+
+    const headerCells: TableCell[] = isCarrier
       ? [
           { text: '#', style: 'tableHeader' },
           { text: 'Nome', style: 'tableHeader' },
           { text: 'RG', style: 'tableHeader' },
-          { text: 'Telefone', style: 'tableHeader' },
           { text: 'Observações', style: 'tableHeader' },
         ]
       : [
@@ -667,13 +692,13 @@ export class PdfService {
         ];
 
     const bodyRows: TableCell[][] = block.passengers.map((p) =>
-      includeSensitive
-        ? [String(p.index), p.name, p.rg ?? '—', formatPhone(p.phone) ?? '—', p.observations ?? '—']
+      isCarrier
+        ? [String(p.index), p.name, p.rg ?? '—', p.observations ?? '—']
         : [String(p.index), p.name, formatPhone(p.phone) ?? '—', p.observations ?? '—'],
     );
 
-    // Telefone com largura fixa para acomodar "11 99999-0000" sem quebra de linha.
-    const widths = includeSensitive ? ['auto', '*', 'auto', 80, '*'] : ['auto', '*', 80, '*'];
+    // Coluna fixa: RG (carrier) ou Telefone (boarding) com largura para não quebrar linha.
+    const widths = isCarrier ? ['auto', '*', 'auto', '*'] : ['auto', '*', 80, '*'];
 
     return [
       { text: title, style: 'sectionTitle' },

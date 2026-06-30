@@ -235,14 +235,26 @@ describe('EventPassengersController', () => {
       await controller.exportPdf(
         CIRCUIT_ID,
         EVENT_ID,
-        { congregationId: 'cong-1', includeSensitive: true },
+        { congregationId: 'cong-1', variant: 'carrier' },
         USER,
         reply as unknown as FastifyReply,
       );
 
       expect(serviceMock.exportPdf).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, {
         congregationId: 'cong-1',
-        includeSensitive: true,
+        variant: 'carrier',
+      });
+    });
+
+    it('deve usar variant boarding como padrão quando omitido', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockResolvedValue({ buffer: Buffer.from('%PDF-x') });
+
+      await controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(serviceMock.exportPdf).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, {
+        congregationId: undefined,
+        variant: 'boarding',
       });
     });
 
@@ -267,7 +279,7 @@ describe('EventPassengersController', () => {
 
       expect(reply.header).toHaveBeenCalledWith(
         'Content-Disposition',
-        `attachment; filename="inscritos-${EVENT_ID}.pdf"`,
+        `attachment; filename="inscritos-embarque-${EVENT_ID}.pdf"`,
       );
     });
 
@@ -279,7 +291,19 @@ describe('EventPassengersController', () => {
 
       expect(reply.header).toHaveBeenCalledWith(
         'Content-Disposition',
-        `attachment; filename="inscritos-105-478-${EVENT_ID}.pdf"`,
+        `attachment; filename="inscritos-embarque-105-478-${EVENT_ID}.pdf"`,
+      );
+    });
+
+    it('deve usar o label "empresa" no filename para variant carrier', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportPdf.mockResolvedValue({ buffer: Buffer.from('%PDF-x') });
+
+      await controller.exportPdf(CIRCUIT_ID, EVENT_ID, { variant: 'carrier' }, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="inscritos-empresa-${EVENT_ID}.pdf"`,
       );
     });
 

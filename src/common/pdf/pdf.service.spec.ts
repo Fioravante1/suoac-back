@@ -3,7 +3,11 @@ import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PdfService } from './pdf.service';
 import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 import type { FinancialReportPdfData } from './interfaces/financial-report-pdf.interface';
-import type { PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
+import type {
+  CongregationPdfBlock,
+  DayPdfBlock,
+  PassengerListPdfData,
+} from './interfaces/passenger-list-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 
 // Captura a última docDefinition passada ao printer e simula o stream PDFKit.
@@ -25,7 +29,37 @@ jest.mock('pdfmake', () => {
   }));
 });
 
-function buildData(overrides: Partial<PassengerListPdfData> = {}): PassengerListPdfData {
+/**
+ * Monta os dados do PDF. Aceita o atalho `congregations` (evento de dia único) ou
+ * `days` (multi-dia). Por padrão, variante `boarding` (Nome/Telefone/Observação).
+ */
+function buildData(
+  overrides: Partial<Omit<PassengerListPdfData, 'days'>> & {
+    congregations?: CongregationPdfBlock[];
+    days?: DayPdfBlock[];
+  } = {},
+): PassengerListPdfData {
+  const defaultCongregations: CongregationPdfBlock[] = [
+    {
+      congregationName: 'Congregação Cidade Popular',
+      congregationCode: '105478',
+      circuitName: 'SP019',
+      passengers: [
+        { index: 1, name: 'Ana Maria', rg: '12.345.678-9', phone: '11999990000', observations: 'Cadeira de rodas' },
+        { index: 2, name: 'Bruno Costa', rg: '98.765.432-1', phone: null, observations: null },
+      ],
+    },
+  ];
+
+  const days: DayPdfBlock[] = overrides.days ?? [
+    {
+      dayNumber: 1,
+      label: 'Dia 1',
+      date: new Date('2026-06-16'),
+      congregations: overrides.congregations ?? defaultCongregations,
+    },
+  ];
+
   return {
     eventTitle: overrides.eventTitle ?? 'Congresso Regional 2026',
     eventVenue: overrides.eventVenue ?? 'Ginásio Municipal',
@@ -34,18 +68,9 @@ function buildData(overrides: Partial<PassengerListPdfData> = {}): PassengerList
     circuitName: overrides.circuitName ?? 'SP019',
     generatedAt: overrides.generatedAt ?? new Date('2026-06-16T14:32:00'),
     generatedByName: overrides.generatedByName ?? 'João Coordenador',
-    includeSensitive: overrides.includeSensitive ?? false,
-    congregations: overrides.congregations ?? [
-      {
-        congregationName: 'Congregação Cidade Popular',
-        congregationCode: '105478',
-        circuitName: 'SP019',
-        passengers: [
-          { index: 1, name: 'Ana Maria', rg: '12.345.678-9', phone: '11999990000', observations: 'Cadeira de rodas' },
-          { index: 2, name: 'Bruno Costa', rg: '98.765.432-1', phone: null, observations: null },
-        ],
-      },
-    ],
+    variant: overrides.variant ?? 'boarding',
+    multiDay: overrides.multiDay ?? false,
+    days,
   };
 }
 
@@ -69,22 +94,23 @@ describe('PdfService', () => {
     expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
-  it('não deve incluir a coluna RG quando includeSensitive=false', async () => {
-    await service.generatePassengerList(buildData({ includeSensitive: false }));
+  it('variante boarding deve ter Telefone e não RG (capitão de ônibus)', async () => {
+    await service.generatePassengerList(buildData({ variant: 'boarding' }));
 
-    const doc = capturedDocs[0]!;
-    const serialized = serialize(doc);
+    const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('Telefone');
     expect(serialized).not.toContain('"RG"');
     expect(serialized).not.toContain('12.345.678-9');
   });
 
-  it('deve incluir a coluna RG e os valores quando includeSensitive=true', async () => {
-    await service.generatePassengerList(buildData({ includeSensitive: true }));
+  it('variante carrier deve ter RG e não Telefone (empresa de ônibus)', async () => {
+    await service.generatePassengerList(buildData({ variant: 'carrier' }));
 
     const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('"RG"');
     expect(serialized).toContain('12.345.678-9');
+    expect(serialized).not.toContain('Telefone');
+    expect(serialized).not.toContain('11 99999-0000');
   });
 
   it("deve incluir a marca d'água com o nome do usuário e a data", async () => {
@@ -120,7 +146,7 @@ describe('PdfService', () => {
   });
 
   it('deve aplicar máscara de celular (11 dígitos) no telefone', async () => {
-    await service.generatePassengerList(buildData({ includeSensitive: true }));
+    await service.generatePassengerList(buildData({ variant: 'boarding' }));
 
     const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('11 99999-0000');
@@ -187,6 +213,56 @@ describe('PdfService', () => {
 
     const serialized = serialize(capturedDocs[0]!);
     expect(serialized).toContain('Nenhum inscrito encontrado');
+  });
+
+  describe('agrupamento por dia (multi-dia)', () => {
+    const congForDay = (passengerName: string): CongregationPdfBlock[] => [
+      {
+        congregationName: 'Cong A',
+        congregationCode: '111',
+        circuitName: 'SP019',
+        passengers: [{ index: 1, name: passengerName, rg: null, phone: '11999990000', observations: null }],
+      },
+    ];
+
+    // Datas em horário local (jest roda com TZ=America/Sao_Paulo); 'YYYY-MM-DD' puro
+    // seria UTC e cairia no dia anterior ao formatar no fuso de São Paulo.
+    const twoDays: DayPdfBlock[] = [
+      {
+        dayNumber: 1,
+        label: 'Dia 1 - Sexta',
+        date: new Date('2026-06-16T00:00:00'),
+        congregations: congForDay('João Repetido'),
+      },
+      {
+        dayNumber: 2,
+        label: 'Dia 2 - Sábado',
+        date: new Date('2026-06-17T00:00:00'),
+        congregations: congForDay('João Repetido'),
+      },
+    ];
+
+    it('deve renderizar um cabeçalho por dia quando multiDay=true', async () => {
+      await service.generatePassengerList(buildData({ multiDay: true, days: twoDays }));
+
+      const serialized = serialize(capturedDocs[0]!);
+      expect(serialized).toContain('Dia 1 - Sexta — 16/06/2026');
+      expect(serialized).toContain('Dia 2 - Sábado — 17/06/2026');
+    });
+
+    it('deve quebrar página entre os dias (pageBreak no 2º dia em diante)', async () => {
+      await service.generatePassengerList(buildData({ multiDay: true, days: twoDays }));
+
+      const serialized = serialize(capturedDocs[0]!);
+      expect(serialized).toContain('pageBreak');
+    });
+
+    it('não deve renderizar cabeçalho de dia em evento de dia único (multiDay=false)', async () => {
+      await service.generatePassengerList(buildData({ multiDay: false }));
+
+      const serialized = serialize(capturedDocs[0]!);
+      expect(serialized).not.toContain('pageBreak');
+    });
   });
 
   // ── generatePaymentReceipt (template S-24-T via pdf-lib) ────────

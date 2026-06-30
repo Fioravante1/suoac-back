@@ -21,8 +21,10 @@ import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
 import type {
   CongregationPdfBlock,
+  DayPdfBlock,
   ExportPdfResult,
   PassengerListPdfData,
+  PassengerListVariant,
   PassengerPdfRow,
 } from '../common/pdf/interfaces/passenger-list-pdf.interface';
 import { PdfService } from '../common/pdf/pdf.service';
@@ -41,6 +43,14 @@ import type {
   EventPassengerResponse,
   PaginatedPassengerResponse,
 } from './interfaces/event-passenger-response.interface';
+
+/** Shape mínimo de inscrição carregada para montar os blocos do PDF de inscritos. */
+interface PdfEnrollment {
+  observations: string | null;
+  passenger: { name: string; rgEncrypted: string; phone: string | null };
+  congregation: { name: string; code: string; circuit: { name: string } };
+  eventPassengerDays: Array<{ eventDayId: string }>;
+}
 
 @Injectable()
 export class EventPassengersService {
@@ -252,11 +262,11 @@ export class EventPassengersService {
     circuitId: string,
     eventId: string,
     user: JwtPayload,
-    dto: { congregationId?: string; includeSensitive?: boolean },
+    dto: { congregationId?: string; variant: PassengerListVariant },
   ): Promise<ExportPdfResult> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
-      include: { circuit: true },
+      include: { circuit: true, eventDays: { orderBy: { dayNumber: 'asc' } } },
     });
 
     if (!event) {
@@ -272,9 +282,10 @@ export class EventPassengersService {
 
     checkCircuitOwnership(user, event.circuitId);
 
-    const includeSensitive = dto.includeSensitive ?? false;
+    const { variant } = dto;
 
-    if (includeSensitive && !canExportSensitivePassengerData(user.role)) {
+    // Variante `carrier` expõe RG → restrita a roles de circuito.
+    if (variant === 'carrier' && !canExportSensitivePassengerData(user.role)) {
       this.logger.warn(`Tentativa de exportar RG sem permissão — userId=${user.sub}, role=${user.role}`);
       throw new ForbiddenException('Sem permissão para exportar dados sensíveis (RG)');
     }
@@ -311,8 +322,11 @@ export class EventPassengersService {
       include: {
         passenger: true,
         congregation: { include: { circuit: true } },
+        eventPassengerDays: { select: { eventDayId: true } },
       },
     });
+
+    const multiDay = event.eventDays.length > 1;
 
     const data: PassengerListPdfData = {
       eventTitle: `${this.getEventTypeLabel(event.type)} ${event.title}`,
@@ -322,15 +336,14 @@ export class EventPassengersService {
       circuitName: event.circuit.name,
       generatedAt: new Date(),
       generatedByName,
-      includeSensitive,
-      congregations: this.groupForPdf(enrollments, includeSensitive),
+      variant,
+      multiDay,
+      days: this.buildDayBlocks(enrollments, event.eventDays, multiDay, variant),
     };
 
     const buffer = await this.pdfService.generatePassengerList(data);
 
-    this.logger.log(
-      `PDF de inscritos exportado — eventId=${eventId}, total=${total}, includeSensitive=${includeSensitive}`,
-    );
+    this.logger.log(`PDF de inscritos exportado — eventId=${eventId}, total=${total}, variant=${variant}`);
 
     void this.auditLogService
       .log('EXPORT', 'EventPassengerPdf', eventId, user.sub, {
@@ -339,7 +352,7 @@ export class EventPassengersService {
           eventId,
           circuitId,
           congregationId: effectiveCongregationId ?? null,
-          includeSensitive,
+          variant,
           totalPassengers: total,
         },
       })
@@ -384,14 +397,51 @@ export class EventPassengersService {
     return uniqueDayIds;
   }
 
-  private groupForPdf(
-    enrollments: Array<{
-      observations: string | null;
-      passenger: { name: string; rgEncrypted: string; phone: string | null };
-      congregation: { name: string; code: string; circuit: { name: string } };
-    }>,
-    includeSensitive: boolean,
-  ): CongregationPdfBlock[] {
+  /**
+   * Monta os blocos do PDF respeitando o agrupamento por dia:
+   * - Evento de dia único: um único bloco com as congregações (cabeçalho de dia
+   *   não é renderizado pelo PdfService).
+   * - Evento multi-dia (congresso): um bloco por dia que tem inscritos, na ordem
+   *   de `dayNumber`. Um passageiro que vai em mais de um dia aparece em cada um.
+   */
+  private buildDayBlocks(
+    enrollments: PdfEnrollment[],
+    eventDays: Array<{ id: string; dayNumber: number; label: string; date: Date }>,
+    multiDay: boolean,
+    variant: PassengerListVariant,
+  ): DayPdfBlock[] {
+    if (!multiDay) {
+      const [firstDay] = eventDays;
+      return [
+        {
+          dayNumber: firstDay?.dayNumber ?? 1,
+          label: firstDay?.label ?? '',
+          date: firstDay?.date ?? new Date(),
+          congregations: this.groupByCongregation(enrollments, variant),
+        },
+      ];
+    }
+
+    const blocks: DayPdfBlock[] = [];
+    for (const day of eventDays) {
+      const dayEnrollments = enrollments.filter((ep) =>
+        ep.eventPassengerDays.some((d) => d.eventDayId === day.id),
+      );
+      if (dayEnrollments.length === 0) {
+        continue;
+      }
+      blocks.push({
+        dayNumber: day.dayNumber,
+        label: day.label,
+        date: day.date,
+        congregations: this.groupByCongregation(dayEnrollments, variant),
+      });
+    }
+
+    return blocks;
+  }
+
+  private groupByCongregation(enrollments: PdfEnrollment[], variant: PassengerListVariant): CongregationPdfBlock[] {
     const blocks = new Map<string, CongregationPdfBlock>();
 
     for (const ep of enrollments) {
@@ -410,8 +460,8 @@ export class EventPassengersService {
       const row: PassengerPdfRow = {
         index: block.passengers.length + 1,
         name: ep.passenger.name,
-        rg: includeSensitive ? this.encryption.decrypt(ep.passenger.rgEncrypted) : null,
-        phone: ep.passenger.phone,
+        rg: variant === 'carrier' ? this.encryption.decrypt(ep.passenger.rgEncrypted) : null,
+        phone: variant === 'boarding' ? ep.passenger.phone : null,
         observations: ep.observations,
       };
       block.passengers.push(row);
