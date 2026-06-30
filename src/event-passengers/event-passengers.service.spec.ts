@@ -1302,7 +1302,10 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID, ...BOARDING });
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {
+        congregationId: CONGREGATION_ID,
+        ...BOARDING,
+      });
 
       expect(result.buffer).toBeInstanceOf(Buffer);
       expect(prismaMock.eventPassenger.findMany).toHaveBeenCalledWith(
@@ -1416,7 +1419,10 @@ describe('EventPassengersService', () => {
       setupHappyPath();
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
 
-      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, { congregationId: CONGREGATION_ID, ...BOARDING });
+      const result = await service.exportPdf(CIRCUIT_ID, EVENT_ID, user, {
+        congregationId: CONGREGATION_ID,
+        ...BOARDING,
+      });
 
       expect(result.congregationCode).toBe('105478');
     });

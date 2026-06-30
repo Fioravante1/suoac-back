@@ -424,9 +424,7 @@ export class EventPassengersService {
 
     const blocks: DayPdfBlock[] = [];
     for (const day of eventDays) {
-      const dayEnrollments = enrollments.filter((ep) =>
-        ep.eventPassengerDays.some((d) => d.eventDayId === day.id),
-      );
+      const dayEnrollments = enrollments.filter((ep) => ep.eventPassengerDays.some((d) => d.eventDayId === day.id));
       if (dayEnrollments.length === 0) {
         continue;
       }
