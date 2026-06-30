@@ -170,7 +170,12 @@ describe('DashboardController', () => {
 
       await controller.exportFinancialSummary('circuit-1', 'event-1', { format: 'xlsx' }, buildUser(), buildReply());
 
-      expect(serviceMock.exportFinancialSummary).toHaveBeenCalledWith('circuit-1', 'event-1', expect.anything(), 'xlsx');
+      expect(serviceMock.exportFinancialSummary).toHaveBeenCalledWith(
+        'circuit-1',
+        'event-1',
+        expect.anything(),
+        'xlsx',
+      );
     });
 
     it('deve propagar NotFoundException do service', async () => {

@@ -1,10 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PdfService } from './pdf.service';
-import type {
-  FinancialSummaryExportData,
-  PaymentsExtractExportData,
-} from '../export/financial-export.interface';
+import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 import type { FinancialReportPdfData } from './interfaces/financial-report-pdf.interface';
 import type { PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
@@ -322,7 +319,13 @@ describe('PdfService', () => {
       generatedByName: 'João Coordenador',
       congregationName: 'Congregação Central',
       rows: [
-        { paidAt: new Date('2026-06-20T10:00:00Z'), passengerName: 'Maria', congregationName: 'Central', amount: '50.00', observations: null },
+        {
+          paidAt: new Date('2026-06-20T10:00:00Z'),
+          passengerName: 'Maria',
+          congregationName: 'Central',
+          amount: '50.00',
+          observations: null,
+        },
       ],
       totalReceived: '50.00',
       ...overrides,

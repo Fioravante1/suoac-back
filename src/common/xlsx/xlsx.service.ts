@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import writeXlsxFile, { type CellObject, type Row, type SheetData } from 'write-excel-file/node';
-import type {
-  FinancialSummaryExportData,
-  PaymentsExtractExportData,
-} from '../export/financial-export.interface';
+import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 
 const HEADER_BG = '#1e3a5f';
 const MONEY_FORMAT = '#,##0.00';
@@ -39,17 +36,19 @@ export class XlsxService {
         this.headerCell('Pendentes'),
         this.headerCell('Isentos'),
       ],
-      ...data.congregations.map((c): Row => [
-        this.textCell(c.congregationName),
-        this.numberCell(c.totalPassengers),
-        this.moneyCell(c.totalExpected),
-        this.moneyCell(c.totalReceived),
-        this.moneyCell(c.totalPending),
-        this.numberCell(c.byStatus.paid),
-        this.numberCell(c.byStatus.partial),
-        this.numberCell(c.byStatus.pending),
-        this.numberCell(c.byStatus.exempt),
-      ]),
+      ...data.congregations.map(
+        (c): Row => [
+          this.textCell(c.congregationName),
+          this.numberCell(c.totalPassengers),
+          this.moneyCell(c.totalExpected),
+          this.moneyCell(c.totalReceived),
+          this.moneyCell(c.totalPending),
+          this.numberCell(c.byStatus.paid),
+          this.numberCell(c.byStatus.partial),
+          this.numberCell(c.byStatus.pending),
+          this.numberCell(c.byStatus.exempt),
+        ],
+      ),
     ];
 
     const columns = [{ width: 36 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 14 }];
@@ -72,21 +71,17 @@ export class XlsxService {
       ],
     ];
 
-    const body: SheetData = data.rows.map((r): Row => [
-      this.dateCell(r.paidAt),
-      this.textCell(r.passengerName),
-      this.textCell(r.congregationName),
-      this.moneyCell(r.amount),
-      this.textCell(r.observations ?? ''),
-    ]);
+    const body: SheetData = data.rows.map(
+      (r): Row => [
+        this.dateCell(r.paidAt),
+        this.textCell(r.passengerName),
+        this.textCell(r.congregationName),
+        this.moneyCell(r.amount),
+        this.textCell(r.observations ?? ''),
+      ],
+    );
 
-    const totalRow: Row = [
-      this.labelCell('Total recebido'),
-      null,
-      null,
-      this.moneyCell(data.totalReceived),
-      null,
-    ];
+    const totalRow: Row = [this.labelCell('Total recebido'), null, null, this.moneyCell(data.totalReceived), null];
 
     const columns = [{ width: 12 }, { width: 32 }, { width: 28 }, { width: 14 }, { width: 40 }];
 

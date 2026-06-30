@@ -828,7 +828,9 @@ describe('PaymentsService', () => {
       prismaMock.event.findUnique.mockResolvedValue({ title: 'Congresso 2026', circuitId: CIRCUIT_ID } as never);
       prismaMock.payment.count.mockResolvedValue(5001);
 
-      await expect(service.exportPayments(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(UnprocessableEntityException);
+      await expect(service.exportPayments(CIRCUIT_ID, EVENT_ID, user, {})).rejects.toThrow(
+        UnprocessableEntityException,
+      );
       expect(prismaMock.payment.findMany).not.toHaveBeenCalled();
     });
 

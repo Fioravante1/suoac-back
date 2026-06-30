@@ -328,7 +328,9 @@ export class PaymentsService {
         include: EVENT_PAYMENT_INCLUDE,
       }),
       this.prisma.client.payment.aggregate({ where, _sum: { amount: true } }),
-      scope ? this.prisma.client.congregation.findUnique({ where: { id: scope }, select: { name: true, code: true } }) : null,
+      scope
+        ? this.prisma.client.congregation.findUnique({ where: { id: scope }, select: { name: true, code: true } })
+        : null,
       this.prisma.client.user.findUnique({ where: { id: user.sub }, select: { name: true } }),
     ]);
 

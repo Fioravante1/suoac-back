@@ -1,7 +1,4 @@
-import type {
-  FinancialSummaryExportData,
-  PaymentsExtractExportData,
-} from '../export/financial-export.interface';
+import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 import { XlsxService } from './xlsx.service';
 
 const GENERATED_AT = new Date('2026-06-29T15:00:00Z');
@@ -36,8 +33,20 @@ const extractData = (overrides: Partial<PaymentsExtractExportData> = {}): Paymen
   generatedByName: 'João Coordenador',
   congregationName: 'Congregação Central',
   rows: [
-    { paidAt: new Date('2026-06-20T10:00:00Z'), passengerName: 'Maria', congregationName: 'Central', amount: '50.00', observations: 'parcela 1' },
-    { paidAt: new Date('2026-06-21T10:00:00Z'), passengerName: 'José', congregationName: 'Central', amount: '40.00', observations: null },
+    {
+      paidAt: new Date('2026-06-20T10:00:00Z'),
+      passengerName: 'Maria',
+      congregationName: 'Central',
+      amount: '50.00',
+      observations: 'parcela 1',
+    },
+    {
+      paidAt: new Date('2026-06-21T10:00:00Z'),
+      passengerName: 'José',
+      congregationName: 'Central',
+      amount: '40.00',
+      observations: null,
+    },
   ],
   totalReceived: '90.00',
   ...overrides,

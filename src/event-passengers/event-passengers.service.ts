@@ -891,5 +891,4 @@ export class EventPassengersService {
       throw new UnprocessableEntityException('O prazo de inscrição expirou');
     }
   }
-
 }

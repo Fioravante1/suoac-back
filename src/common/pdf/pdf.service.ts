@@ -27,10 +27,7 @@ import type {
 } from './interfaces/financial-report-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
-import type {
-  FinancialSummaryExportData,
-  PaymentsExtractExportData,
-} from '../export/financial-export.interface';
+import type { FinancialSummaryExportData, PaymentsExtractExportData } from '../export/financial-export.interface';
 
 /** Posição de um campo de formulário (widget annotation) numa página. */
 interface FieldPosition {
