@@ -1635,6 +1635,41 @@
           "response": []
         },
         {
+          "name": "Export Event Payments (PDF/XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/events/{{eventId}}/payments/export?format=xlsx&congregationId={{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "events",
+                "{{eventId}}",
+                "payments",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "xlsx",
+                  "description": "pdf (default) ou xlsx."
+                },
+                {
+                  "key": "congregationId",
+                  "value": "{{congregationId}}",
+                  "description": "Opcional. Role de circuito filtra; role de congregação usa a própria."
+                }
+              ]
+            },
+            "description": "Exporta o extrato consolidado de pagamentos do evento em PDF ou XLSX (sem paginação; teto de 5000 linhas → 422). Retorna application/pdf ou application/vnd.openxmlformats-officedocument.spreadsheetml.sheet."
+          },
+          "response": []
+        },
+        {
           "name": "Delete Payment",
           "request": {
             "method": "DELETE",
@@ -2003,6 +2038,36 @@
               ]
             },
             "description": "Retorna totais financeiros do evento com breakdown por congregação. Circuito: todas as congregações. Congregação: apenas a própria."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Financial Summary (PDF/XLSX)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/events/{{eventId}}/financial-summary/export?format=xlsx",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "events",
+                "{{eventId}}",
+                "financial-summary",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "xlsx",
+                  "description": "pdf (default) ou xlsx."
+                }
+              ]
+            },
+            "description": "Exporta o resumo financeiro do evento (totais + breakdown por congregação) em PDF ou XLSX. Retorna application/pdf ou application/vnd.openxmlformats-officedocument.spreadsheetml.sheet."
           },
           "response": []
         }

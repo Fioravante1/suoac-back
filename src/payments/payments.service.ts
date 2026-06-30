@@ -14,17 +14,31 @@ import {
   isCircuitRole,
 } from '../common/authorization/circuit-ownership.util';
 import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
+import { FINANCIAL_EXPORT_MAX_ROWS, PDF_CONTENT_TYPE, XLSX_CONTENT_TYPE } from '../common/export/export.constants';
+import type { ExportFileResult, PaymentsExtractExportData } from '../common/export/financial-export.interface';
 import { addMoney, compareMoney, formatMoney, subtractMoney } from '../common/money/money.util';
 import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import { EventStatus, EventType, PaymentStatus, UserRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
+import type { ExportEventPaymentsQueryDto } from './dto/export-event-payments-query.dto';
 import type { ListEventPaymentsQueryDto } from './dto/list-event-payments-query.dto';
 import type { EventPaymentRow, EventPaymentsResponse } from './interfaces/event-payment-row.interface';
 import type { PaymentResponse } from './interfaces/payment-response.interface';
 import type { PaymentReceiptResult } from './interfaces/payment-receipt-result.interface';
+
+/** Include compartilhado para montar `EventPaymentRow` (extrato paginado e export). */
+const EVENT_PAYMENT_INCLUDE = {
+  eventPassenger: {
+    select: {
+      passenger: { select: { name: true } },
+      congregation: { select: { id: true, name: true } },
+    },
+  },
+} satisfies Prisma.PaymentInclude;
 
 @Injectable()
 export class PaymentsService {
@@ -35,6 +49,7 @@ export class PaymentsService {
     private readonly congregationEventStatusService: CongregationEventStatusService,
     private readonly auditLogService: AuditLogService,
     private readonly pdfService: PdfService,
+    private readonly xlsxService: XlsxService,
   ) {}
 
   async create(eventPassengerId: string, user: JwtPayload, dto: CreatePaymentDto): Promise<PaymentResponse> {
@@ -165,12 +180,7 @@ export class PaymentsService {
 
     this.logger.debug(`Listando pagamentos do evento — eventId=${eventId}, page=${page}, limit=${limit}`);
 
-    const where: Prisma.PaymentWhereInput = {
-      eventPassenger: {
-        eventId,
-        ...(scope ? { congregationId: scope } : {}),
-      },
-    };
+    const where = this.buildEventPaymentsWhere(eventId, scope);
 
     const [payments, total, aggregate] = await Promise.all([
       this.prisma.client.payment.findMany({
@@ -178,14 +188,7 @@ export class PaymentsService {
         orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
-        include: {
-          eventPassenger: {
-            select: {
-              passenger: { select: { name: true } },
-              congregation: { select: { id: true, name: true } },
-            },
-          },
-        },
+        include: EVENT_PAYMENT_INCLUDE,
       }),
       this.prisma.client.payment.count({ where }),
       this.prisma.client.payment.aggregate({ where, _sum: { amount: true } }),
@@ -283,6 +286,91 @@ export class PaymentsService {
       .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de recibo'));
 
     return { buffer, congregationCode: congregation.code };
+  }
+
+  /**
+   * Exporta o extrato consolidado de pagamentos do evento (PDF ou XLSX). Rota sob
+   * `:circuitId` — valida que o evento pertence ao circuito do path (404 cross-circuit).
+   * Busca o recorte completo (sem paginação) com teto defensivo (`422` acima do limite).
+   */
+  async exportPayments(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    query: ExportEventPaymentsQueryDto,
+  ): Promise<ExportFileResult> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { title: true, circuitId: true },
+    });
+
+    if (!event || event.circuitId !== circuitId) {
+      this.logger.warn(`Evento não encontrado ou fora do circuito — eventId=${eventId}, circuitId=${circuitId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const scope = await resolveCongregationScope(this.prisma, user, event.circuitId, query.congregationId);
+    const where = this.buildEventPaymentsWhere(eventId, scope);
+
+    const total = await this.prisma.client.payment.count({ where });
+    if (total > FINANCIAL_EXPORT_MAX_ROWS) {
+      throw new UnprocessableEntityException(
+        `Exportação excede ${FINANCIAL_EXPORT_MAX_ROWS} pagamentos. Filtre por congregação para reduzir o volume.`,
+      );
+    }
+
+    const [payments, aggregate, congregation, requester] = await Promise.all([
+      this.prisma.client.payment.findMany({
+        where,
+        orderBy: [{ paidAt: 'desc' }, { createdAt: 'desc' }],
+        include: EVENT_PAYMENT_INCLUDE,
+      }),
+      this.prisma.client.payment.aggregate({ where, _sum: { amount: true } }),
+      scope ? this.prisma.client.congregation.findUnique({ where: { id: scope }, select: { name: true, code: true } }) : null,
+      this.prisma.client.user.findUnique({ where: { id: user.sub }, select: { name: true } }),
+    ]);
+
+    const format = query.format ?? 'pdf';
+    const data: PaymentsExtractExportData = {
+      eventTitle: event.title,
+      generatedAt: new Date(),
+      generatedByName: requester?.name ?? 'Usuário desconhecido',
+      congregationName: congregation?.name ?? null,
+      rows: payments.map((p) => this.toEventPaymentRow(p)),
+      totalReceived: formatMoney(aggregate._sum.amount),
+    };
+
+    const buffer =
+      format === 'xlsx'
+        ? await this.xlsxService.generatePaymentsExtract(data)
+        : await this.pdfService.generatePaymentsExtractPdf(data);
+
+    this.logger.log(`Extrato de pagamentos exportado — eventId=${eventId}, format=${format}, rows=${total}`);
+
+    void this.auditLogService
+      .log('EXPORT', 'EventPayments', eventId, user.sub, {
+        oldValues: null,
+        newValues: { eventId, circuitId, congregationId: scope ?? null, format, totalRows: total },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export'));
+
+    const safeCode = congregation?.code ? `${congregation.code.replace(/[^a-zA-Z0-9_-]/g, '-')}-` : '';
+    return {
+      buffer,
+      filename: `extrato-pagamentos-${safeCode}${eventId}.${format}`,
+      contentType: format === 'xlsx' ? XLSX_CONTENT_TYPE : PDF_CONTENT_TYPE,
+    };
+  }
+
+  private buildEventPaymentsWhere(eventId: string, scope: string | undefined): Prisma.PaymentWhereInput {
+    return {
+      eventPassenger: {
+        eventId,
+        ...(scope ? { congregationId: scope } : {}),
+      },
+    };
   }
 
   private getEventTypeLabel(type: EventType): string {

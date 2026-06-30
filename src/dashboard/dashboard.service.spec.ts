@@ -1,7 +1,10 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DashboardService } from './dashboard.service';
@@ -160,12 +163,26 @@ function buildPendingPassenger(
 describe('DashboardService', () => {
   let service: DashboardService;
   let prismaMock: DeepMockProxy<PrismaClientType>;
+  let pdfServiceMock: jest.Mocked<PdfService>;
+  let xlsxServiceMock: jest.Mocked<XlsxService>;
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
+    pdfServiceMock = {
+      generateFinancialSummaryPdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.7')),
+    } as unknown as jest.Mocked<PdfService>;
+    xlsxServiceMock = {
+      generateFinancialSummary: jest.fn().mockResolvedValue(Buffer.from('PK\x03\x04')),
+    } as unknown as jest.Mocked<XlsxService>;
 
     const module = await Test.createTestingModule({
-      providers: [DashboardService, { provide: PrismaService, useValue: { client: prismaMock } }],
+      providers: [
+        DashboardService,
+        { provide: PrismaService, useValue: { client: prismaMock } },
+        { provide: PdfService, useValue: pdfServiceMock },
+        { provide: XlsxService, useValue: xlsxServiceMock },
+        { provide: AuditLogService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+      ],
     }).compile();
 
     service = module.get(DashboardService);
@@ -802,6 +819,72 @@ describe('DashboardService', () => {
 
       expect(result.totals.totalPassengers).toBe(0);
       expect(result.congregations).toHaveLength(0);
+    });
+  });
+
+  // ── exportFinancialSummary ─────────────────────────────────────
+  describe('exportFinancialSummary', () => {
+    const MOCK_SUMMARY = {
+      eventId: EVENT_ID,
+      eventTitle: 'Congresso 2026',
+      ticketPrice: '50.00',
+      totals: {
+        totalPassengers: 2,
+        totalExpected: '100.00',
+        totalReceived: '60.00',
+        totalPending: '40.00',
+        byStatus: { paid: 1, partial: 1, pending: 0, exempt: 0 },
+      },
+      congregations: [
+        {
+          congregationId: CONGREGATION_ID,
+          congregationName: 'Central',
+          totalPassengers: 2,
+          totalExpected: '100.00',
+          totalReceived: '60.00',
+          totalPending: '40.00',
+          byStatus: { paid: 1, partial: 1, pending: 0, exempt: 0 },
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      jest.spyOn(service, 'getFinancialSummary').mockResolvedValue(MOCK_SUMMARY);
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: CIRCUIT_ID } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João' } as never);
+    });
+
+    it('deve gerar PDF por padrão (delegando ao PdfService)', async () => {
+      const result = await service.exportFinancialSummary(CIRCUIT_ID, EVENT_ID, buildUser(), 'pdf');
+
+      expect(pdfServiceMock.generateFinancialSummaryPdf).toHaveBeenCalled();
+      expect(xlsxServiceMock.generateFinancialSummary).not.toHaveBeenCalled();
+      expect(result.contentType).toBe('application/pdf');
+      expect(result.filename).toBe(`resumo-financeiro-${EVENT_ID}.pdf`);
+    });
+
+    it('deve gerar XLSX quando format=xlsx (delegando ao XlsxService)', async () => {
+      const result = await service.exportFinancialSummary(CIRCUIT_ID, EVENT_ID, buildUser(), 'xlsx');
+
+      expect(xlsxServiceMock.generateFinancialSummary).toHaveBeenCalled();
+      expect(result.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      expect(result.filename).toBe(`resumo-financeiro-${EVENT_ID}.xlsx`);
+    });
+
+    it('deve lançar NotFoundException quando o evento não existe', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.exportFinancialSummary(CIRCUIT_ID, EVENT_ID, buildUser(), 'pdf')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('deve lançar NotFoundException quando o evento é de outro circuito (cross-circuit)', async () => {
+      prismaMock.event.findUnique.mockResolvedValue({ circuitId: 'outro-circuito' } as never);
+
+      await expect(service.exportFinancialSummary(CIRCUIT_ID, EVENT_ID, buildUser(), 'pdf')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

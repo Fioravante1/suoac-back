@@ -17,7 +17,7 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import PdfPrinter from 'pdfmake';
-import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
+import type { Content, CustomTableLayout, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { addMoney, formatMoneyPtBR } from '../money/money.util';
 import { formatPhone } from '../phone/phone.util';
 import type {
@@ -27,6 +27,10 @@ import type {
 } from './interfaces/financial-report-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
 import type { CongregationPdfBlock, PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
+import type {
+  FinancialSummaryExportData,
+  PaymentsExtractExportData,
+} from '../export/financial-export.interface';
 
 /** Posição de um campo de formulário (widget annotation) numa página. */
 interface FieldPosition {
@@ -90,6 +94,16 @@ export class PdfService {
   async generatePassengerList(data: PassengerListPdfData): Promise<Buffer> {
     const docDefinition = this.buildDocDefinition(data);
     return this.renderToBuffer(docDefinition);
+  }
+
+  /** Resumo financeiro do evento (totais + breakdown por congregação) em PDF. */
+  async generateFinancialSummaryPdf(data: FinancialSummaryExportData): Promise<Buffer> {
+    return this.renderToBuffer(this.buildFinancialSummaryDoc(data));
+  }
+
+  /** Extrato consolidado de pagamentos do evento em PDF. */
+  async generatePaymentsExtractPdf(data: PaymentsExtractExportData): Promise<Buffer> {
+    return this.renderToBuffer(this.buildPaymentsExtractDoc(data));
   }
 
   /**
@@ -433,6 +447,151 @@ export class PdfService {
       pdfDoc.on('error', (err: Error) => reject(err));
       pdfDoc.end();
     });
+  }
+
+  private buildFinancialSummaryDoc(data: FinancialSummaryExportData): TDocumentDefinitions {
+    const money = (v: string): string => `R$ ${formatMoneyPtBR(v)}`;
+    const t = data.totals;
+
+    const totalsBlock: Content = {
+      table: {
+        widths: ['auto', 'auto'],
+        body: [
+          ['Inscritos', { text: String(t.totalPassengers), alignment: 'right' }],
+          ['Total esperado', { text: money(t.totalExpected), alignment: 'right' }],
+          ['Total recebido', { text: money(t.totalReceived), alignment: 'right' }],
+          ['Total pendente', { text: money(t.totalPending), alignment: 'right' }],
+        ],
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 12],
+    };
+
+    const headerRow: TableCell[] = [
+      { text: 'Congregação', style: 'tableHeader' },
+      { text: 'Inscritos', style: 'tableHeader', alignment: 'center' },
+      { text: 'Esperado', style: 'tableHeader', alignment: 'right' },
+      { text: 'Recebido', style: 'tableHeader', alignment: 'right' },
+      { text: 'Pendente', style: 'tableHeader', alignment: 'right' },
+    ];
+
+    const bodyRows: TableCell[][] = data.congregations.map((c) => [
+      c.congregationName,
+      { text: String(c.totalPassengers), alignment: 'center' },
+      { text: money(c.totalExpected), alignment: 'right' },
+      { text: money(c.totalReceived), alignment: 'right' },
+      { text: money(c.totalPending), alignment: 'right' },
+    ]);
+
+    const table: Content =
+      data.congregations.length === 0
+        ? { text: 'Nenhuma congregação com inscritos.', style: 'emptyState' }
+        : {
+            table: { headerRows: 1, widths: ['*', 'auto', 'auto', 'auto', 'auto'], body: [headerRow, ...bodyRows] },
+            layout: this.financialTableLayout(),
+          };
+
+    return this.buildFinancialDocShell(
+      { eventTitle: data.eventTitle, subtitle: 'Resumo Financeiro', congregationName: null },
+      data,
+      [totalsBlock, table],
+    );
+  }
+
+  private buildPaymentsExtractDoc(data: PaymentsExtractExportData): TDocumentDefinitions {
+    const money = (v: string): string => `R$ ${formatMoneyPtBR(v)}`;
+
+    const headerRow: TableCell[] = [
+      { text: 'Data', style: 'tableHeader' },
+      { text: 'Passageiro', style: 'tableHeader' },
+      { text: 'Congregação', style: 'tableHeader' },
+      { text: 'Valor', style: 'tableHeader', alignment: 'right' },
+      { text: 'Observações', style: 'tableHeader' },
+    ];
+
+    const bodyRows: TableCell[][] = data.rows.map((r) => [
+      this.formatDateBR(r.paidAt),
+      r.passengerName,
+      r.congregationName,
+      { text: money(r.amount), alignment: 'right' },
+      r.observations ?? '—',
+    ]);
+
+    const content: Content =
+      data.rows.length === 0
+        ? { text: 'Nenhum pagamento encontrado para o recorte selecionado.', style: 'emptyState' }
+        : [
+            {
+              table: { headerRows: 1, widths: ['auto', '*', '*', 'auto', '*'], body: [headerRow, ...bodyRows] },
+              layout: this.financialTableLayout(),
+            },
+            { text: `Total recebido: ${money(data.totalReceived)}`, style: 'sectionTotal', alignment: 'right' },
+          ];
+
+    return this.buildFinancialDocShell(
+      { eventTitle: data.eventTitle, subtitle: 'Extrato de Pagamentos', congregationName: data.congregationName },
+      data,
+      content,
+    );
+  }
+
+  private buildFinancialDocShell(
+    head: { eventTitle: string; subtitle: string; congregationName: string | null },
+    meta: { generatedByName: string; generatedAt: Date },
+    content: Content,
+  ): TDocumentDefinitions {
+    const footerText = `Gerado por ${meta.generatedByName} em ${this.formatDateTime(meta.generatedAt)}`;
+    const congregationLine: Content[] = head.congregationName
+      ? [{ text: head.congregationName, fontSize: 9, color: MUTED_COLOR }]
+      : [];
+
+    return {
+      pageMargins: [40, 90, 40, 50],
+      defaultStyle: { font: 'Roboto', fontSize: 10, color: '#222222' },
+      header: {
+        columns: [
+          { image: this.logoDataUri, width: 90, margin: [40, 15, 0, 0] },
+          {
+            stack: [
+              { text: head.eventTitle, fontSize: 14, bold: true, color: BRAND_COLOR },
+              { text: head.subtitle, fontSize: 10, color: MUTED_COLOR },
+              ...congregationLine,
+            ],
+            alignment: 'right',
+            margin: [0, 24, 40, 0],
+          },
+        ],
+      },
+      footer: (currentPage: number, pageCount: number): Content => ({
+        columns: [
+          { text: footerText, fontSize: 7, color: MUTED_COLOR },
+          { text: `Página ${currentPage} de ${pageCount}`, alignment: 'right', fontSize: 7, color: MUTED_COLOR },
+        ],
+        margin: [40, 15, 40, 0],
+      }),
+      content,
+      styles: {
+        tableHeader: { bold: true, color: 'white', fontSize: 9 },
+        sectionTotal: { fontSize: 10, bold: true, color: BRAND_COLOR, margin: [0, 8, 0, 0] },
+        emptyState: { fontSize: 12, italics: true, color: MUTED_COLOR, margin: [0, 40, 0, 0], alignment: 'center' },
+      },
+    };
+  }
+
+  private financialTableLayout(): CustomTableLayout {
+    return {
+      fillColor: (rowIndex: number): string | null => {
+        if (rowIndex === 0) {
+          return BRAND_COLOR;
+        }
+        return rowIndex % 2 === 0 ? '#f4f6f8' : null;
+      },
+      hLineWidth: (): number => 0.5,
+      vLineWidth: (): number => 0,
+      hLineColor: (): string => '#dddddd',
+      paddingTop: (): number => 4,
+      paddingBottom: (): number => 4,
+    };
   }
 
   private buildDocDefinition(data: PassengerListPdfData): TDocumentDefinitions {

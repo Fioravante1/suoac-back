@@ -1,7 +1,12 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AuditLogService } from '../audit-log/audit-log.service';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import { PDF_CONTENT_TYPE, XLSX_CONTENT_TYPE, type ExportFormat } from '../common/export/export.constants';
+import type { ExportFileResult, FinancialSummaryExportData } from '../common/export/financial-export.interface';
 import { addMoney, formatMoney, subtractMoney } from '../common/money/money.util';
+import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import type { Prisma } from '../generated/prisma/client';
 import { CongregationListStatus, EventStatus, PaymentStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,7 +32,12 @@ interface BreakdownEntry {
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pdfService: PdfService,
+    private readonly xlsxService: XlsxService,
+    private readonly auditLogService: AuditLogService,
+  ) {}
 
   async getDashboard(eventId: string, user: JwtPayload, congregationId?: string): Promise<DashboardResponse> {
     const event = await this.prisma.client.event.findUnique({
@@ -102,6 +112,61 @@ export class DashboardService {
         byStatus: this.buildPaymentBreakdown(breakdown),
       },
       congregations: congregationRows,
+    };
+  }
+
+  /**
+   * Exporta o resumo financeiro (PDF ou XLSX). Rota sob `:circuitId` — valida que o
+   * evento pertence ao circuito do path (404 cross-circuit). Reusa `getFinancialSummary`
+   * (autorização + agregação), sem duplicar query.
+   */
+  async exportFinancialSummary(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    format: ExportFormat,
+  ): Promise<ExportFileResult> {
+    const event = await this.prisma.client.event.findUnique({
+      where: { id: eventId },
+      select: { circuitId: true },
+    });
+
+    if (!event || event.circuitId !== circuitId) {
+      this.logger.warn(`Evento não encontrado ou fora do circuito — eventId=${eventId}, circuitId=${circuitId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    const summary = await this.getFinancialSummary(eventId, user);
+    const requester = await this.prisma.client.user.findUnique({ where: { id: user.sub }, select: { name: true } });
+
+    const data: FinancialSummaryExportData = {
+      eventTitle: summary.eventTitle,
+      generatedAt: new Date(),
+      generatedByName: requester?.name ?? 'Usuário desconhecido',
+      totals: summary.totals,
+      congregations: summary.congregations,
+    };
+
+    const buffer =
+      format === 'xlsx'
+        ? await this.xlsxService.generateFinancialSummary(data)
+        : await this.pdfService.generateFinancialSummaryPdf(data);
+
+    this.logger.log(`Resumo financeiro exportado — eventId=${eventId}, format=${format}`);
+
+    void this.auditLogService
+      .log('EXPORT', 'FinancialSummary', eventId, user.sub, {
+        oldValues: null,
+        newValues: { eventId, circuitId, format, totalCongregations: summary.congregations.length },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export'));
+
+    return {
+      buffer,
+      filename: `resumo-financeiro-${eventId}.${format}`,
+      contentType: format === 'xlsx' ? XLSX_CONTENT_TYPE : PDF_CONTENT_TYPE,
     };
   }
 

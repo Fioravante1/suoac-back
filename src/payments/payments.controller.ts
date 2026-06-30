@@ -16,6 +16,7 @@ import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ExportEventPaymentsQueryDto } from './dto/export-event-payments-query.dto';
 import { ListEventPaymentsQueryDto } from './dto/list-event-payments-query.dto';
 import { ReceiptQueryDto } from './dto/receipt-query.dto';
 import type { EventPaymentsResponse } from './interfaces/event-payment-row.interface';
@@ -52,6 +53,22 @@ export class PaymentsController {
     @Query() query: ListEventPaymentsQueryDto,
   ): Promise<EventPaymentsResponse> {
     return this.paymentsService.findByEvent(eventId, user, query);
+  }
+
+  @Get('circuits/:circuitId/events/:eventId/payments/export')
+  async exportPayments(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query() query: ExportEventPaymentsQueryDto,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const result = await this.paymentsService.exportPayments(circuitId, eventId, user, query);
+
+    return reply
+      .header('Content-Type', result.contentType)
+      .header('Content-Disposition', `attachment; filename="${result.filename}"`)
+      .send(result.buffer);
   }
 
   @Get('circuits/:circuitId/events/:eventId/payments/receipt.pdf')

@@ -14,6 +14,7 @@ Este projeto é construído com tecnologias modernas para garantir alta performa
 - **Infraestrutura**: Docker & Docker Compose
 - **Documentação da API**: [Swagger / OpenAPI 3.0](https://swagger.io/) via `@nestjs/swagger`
 - **Logging**: [Pino](https://getpino.io/) via `nestjs-pino` (JSON estruturado em prod, `pino-pretty` em dev)
+- **Geração de documentos**: [pdfmake](https://github.com/bpampuch/pdfmake) e [pdf-lib](https://pdf-lib.js.org/) (PDF), [write-excel-file](https://www.npmjs.com/package/write-excel-file) (XLSX — exportações financeiras)
 - **Qualidade de Código**: ESLint (Flat Config com regras strict) + Prettier + EditorConfig
 
 ## 🛠 Pré-requisitos

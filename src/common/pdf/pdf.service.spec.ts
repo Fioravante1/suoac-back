@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
 import type { TDocumentDefinitions } from 'pdfmake/interfaces';
 import { PdfService } from './pdf.service';
+import type {
+  FinancialSummaryExportData,
+  PaymentsExtractExportData,
+} from '../export/financial-export.interface';
 import type { FinancialReportPdfData } from './interfaces/financial-report-pdf.interface';
 import type { PassengerListPdfData } from './interfaces/passenger-list-pdf.interface';
 import type { PaymentReceiptPdfData } from './interfaces/payment-receipt-pdf.interface';
@@ -284,6 +288,68 @@ describe('PdfService', () => {
       const buffer = await service.generateS44Report(data);
 
       expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+  });
+
+  describe('exportações financeiras (resumo / extrato)', () => {
+    const summaryData = (overrides: Partial<FinancialSummaryExportData> = {}): FinancialSummaryExportData => ({
+      eventTitle: 'Congresso Regional 2026',
+      generatedAt: new Date('2026-06-29T15:00:00Z'),
+      generatedByName: 'João Coordenador',
+      totals: {
+        totalPassengers: 3,
+        totalExpected: '150.00',
+        totalReceived: '90.00',
+        totalPending: '60.00',
+        byStatus: { paid: 1, partial: 1, pending: 1, exempt: 0 },
+      },
+      congregations: [
+        {
+          congregationName: 'Congregação Central',
+          totalPassengers: 2,
+          totalExpected: '100.00',
+          totalReceived: '60.00',
+          totalPending: '40.00',
+          byStatus: { paid: 1, partial: 1, pending: 0, exempt: 0 },
+        },
+      ],
+      ...overrides,
+    });
+
+    const extractData = (overrides: Partial<PaymentsExtractExportData> = {}): PaymentsExtractExportData => ({
+      eventTitle: 'Congresso Regional 2026',
+      generatedAt: new Date('2026-06-29T15:00:00Z'),
+      generatedByName: 'João Coordenador',
+      congregationName: 'Congregação Central',
+      rows: [
+        { paidAt: new Date('2026-06-20T10:00:00Z'), passengerName: 'Maria', congregationName: 'Central', amount: '50.00', observations: null },
+      ],
+      totalReceived: '50.00',
+      ...overrides,
+    });
+
+    it('deve gerar o resumo financeiro como Buffer de PDF', async () => {
+      const buffer = await service.generateFinancialSummaryPdf(summaryData());
+
+      expect(buffer).toBeInstanceOf(Buffer);
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar o extrato de pagamentos como Buffer de PDF', async () => {
+      const buffer = await service.generatePaymentsExtractPdf(extractData());
+
+      expect(buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
+    it('deve gerar resumo e extrato mesmo vazios (estado vazio)', async () => {
+      expect(
+        (await service.generateFinancialSummaryPdf(summaryData({ congregations: [] }))).subarray(0, 5).toString(),
+      ).toBe('%PDF-');
+      expect(
+        (await service.generatePaymentsExtractPdf(extractData({ rows: [], totalReceived: '0.00' })))
+          .subarray(0, 5)
+          .toString(),
+      ).toBe('%PDF-');
     });
   });
 });
