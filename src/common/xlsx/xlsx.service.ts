@@ -129,7 +129,9 @@ export class XlsxService {
         rows.push([this.dayTitleCell(`${weekday} — ${this.formatCalendarDateBR(day.date)}`)]);
       }
       for (const block of day.congregations) {
-        rows.push([this.sectionTitleCell(`${block.congregationName} (${block.congregationCode}) - ${block.circuitName}`)]);
+        rows.push([
+          this.sectionTitleCell(`${block.congregationName} (${block.congregationCode}) - ${block.circuitName}`),
+        ]);
         rows.push([
           this.headerCell('#'),
           this.headerCell('Nome'),

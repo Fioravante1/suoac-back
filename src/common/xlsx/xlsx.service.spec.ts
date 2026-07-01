@@ -119,7 +119,9 @@ describe('XlsxService', () => {
               congregationName: 'Congregação Central',
               congregationCode: '105',
               circuitName: 'SP-01',
-              passengers: [{ index: 1, name: 'Maria Silva', rg: '12.345.678-9', phone: '11977530630', observations: null }],
+              passengers: [
+                { index: 1, name: 'Maria Silva', rg: '12.345.678-9', phone: '11977530630', observations: null },
+              ],
             },
           ],
         },
