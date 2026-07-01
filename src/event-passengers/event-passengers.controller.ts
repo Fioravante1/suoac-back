@@ -16,6 +16,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { XLSX_CONTENT_TYPE } from '../common/export/export.constants';
 import { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
 import { EventPassengerQueryDto } from './dto/event-passenger-query.dto';
 import { ExportPassengersQueryDto } from './dto/export-passengers-query.dto';
@@ -73,6 +74,33 @@ export class EventPassengersController {
 
     return reply
       .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(result.buffer);
+  }
+
+  @Get('circuits/:circuitId/events/:eventId/passengers/export.xlsx')
+  async exportXlsx(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query() query: ExportPassengersQueryDto,
+    @CurrentUser() user: JwtPayload,
+    @Res() reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const variant = query.variant ?? 'boarding';
+    const result = await this.eventPassengersService.exportXlsx(circuitId, eventId, user, {
+      congregationId: query.congregationId,
+      variant,
+    });
+
+    // Sanitiza o código da congregação antes de compor o filename (mesmo padrão do PDF).
+    const safeCode = result.congregationCode?.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const variantLabel = variant === 'carrier' ? 'empresa' : 'embarque';
+    const filename = safeCode
+      ? `inscritos-${variantLabel}-${safeCode}-${eventId}.xlsx`
+      : `inscritos-${variantLabel}-${eventId}.xlsx`;
+
+    return reply
+      .header('Content-Type', XLSX_CONTENT_TYPE)
       .header('Content-Disposition', `attachment; filename="${filename}"`)
       .send(result.buffer);
   }

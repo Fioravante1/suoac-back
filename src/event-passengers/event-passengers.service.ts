@@ -16,18 +16,18 @@ import {
 } from '../common/authorization/circuit-ownership.util';
 import { resolveCongregationScope } from '../common/authorization/congregation-scope.util';
 import { EncryptionService } from '../common/encryption/encryption.service';
+import { PASSENGER_LIST_EXPORT_MAX_PASSENGERS, type ExportFormat } from '../common/export/export.constants';
 import { addMoney, compareMoney, formatMoney, multiplyMoney, subtractMoney } from '../common/money/money.util';
 import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
-import { PDF_EXPORT_MAX_PASSENGERS } from '../common/pdf/pdf.constants';
 import type {
   CongregationPdfBlock,
   DayPdfBlock,
-  ExportPdfResult,
   PassengerListPdfData,
   PassengerListVariant,
   PassengerPdfRow,
 } from '../common/pdf/interfaces/passenger-list-pdf.interface';
 import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import { formatPhone } from '../common/phone/phone.util';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { Prisma } from '../generated/prisma/client';
@@ -43,6 +43,7 @@ import type {
   EventPassengerResponse,
   PaginatedPassengerResponse,
 } from './interfaces/event-passenger-response.interface';
+import type { PassengerListExportResult } from './interfaces/passenger-list-export-result.interface';
 
 /** Shape mínimo de inscrição carregada para montar os blocos do PDF de inscritos. */
 interface PdfEnrollment {
@@ -50,6 +51,15 @@ interface PdfEnrollment {
   passenger: { name: string; rgEncrypted: string; phone: string | null };
   congregation: { name: string; code: string; circuit: { name: string } };
   eventPassengerDays: Array<{ eventDayId: string }>;
+}
+
+/** Metadados do export registrados no audit log (sem dados de passageiros). */
+interface PassengerListExportAuditMetadata {
+  eventId: string;
+  circuitId: string;
+  congregationId: string | null;
+  variant: PassengerListVariant;
+  totalPassengers: number;
 }
 
 @Injectable()
@@ -63,6 +73,7 @@ export class EventPassengersService {
     private readonly congregationEventStatusService: CongregationEventStatusService,
     private readonly auditLogService: AuditLogService,
     private readonly pdfService: PdfService,
+    private readonly xlsxService: XlsxService,
   ) {}
 
   async create(eventId: string, user: JwtPayload, dto: CreateEventPassengerDto): Promise<EventPassengerResponse> {
@@ -263,7 +274,54 @@ export class EventPassengersService {
     eventId: string,
     user: JwtPayload,
     dto: { congregationId?: string; variant: PassengerListVariant },
-  ): Promise<ExportPdfResult> {
+  ): Promise<PassengerListExportResult> {
+    const { data, congregationCode, auditMetadata } = await this.preparePassengerListExport(
+      circuitId,
+      eventId,
+      user,
+      dto,
+    );
+
+    // Gera o binário antes de registrar o export (audit só após o arquivo existir).
+    const buffer = await this.pdfService.generatePassengerList(data);
+    this.recordPassengerListExport('pdf', 'EventPassengerPdf', user.sub, auditMetadata);
+
+    return { buffer, congregationCode };
+  }
+
+  async exportXlsx(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    dto: { congregationId?: string; variant: PassengerListVariant },
+  ): Promise<PassengerListExportResult> {
+    const { data, congregationCode, auditMetadata } = await this.preparePassengerListExport(
+      circuitId,
+      eventId,
+      user,
+      dto,
+    );
+
+    const buffer = await this.xlsxService.generatePassengerList(data);
+    this.recordPassengerListExport('xlsx', 'EventPassengerXlsx', user.sub, auditMetadata);
+
+    return { buffer, congregationCode };
+  }
+
+  /**
+   * Busca + autoriza + monta o `PassengerListPdfData` compartilhado por PDF e XLSX.
+   * Não registra log/audit — isso fica a cargo do chamador, **após** gerar o binário.
+   */
+  private async preparePassengerListExport(
+    circuitId: string,
+    eventId: string,
+    user: JwtPayload,
+    dto: { congregationId?: string; variant: PassengerListVariant },
+  ): Promise<{
+    data: PassengerListPdfData;
+    congregationCode?: string;
+    auditMetadata: PassengerListExportAuditMetadata;
+  }> {
     const event = await this.prisma.client.event.findUnique({
       where: { id: eventId },
       include: { circuit: true, eventDays: { orderBy: { dayNumber: 'asc' } } },
@@ -304,7 +362,7 @@ export class EventPassengersService {
 
     const total = await this.prisma.client.eventPassenger.count({ where });
 
-    if (total > PDF_EXPORT_MAX_PASSENGERS) {
+    if (total > PASSENGER_LIST_EXPORT_MAX_PASSENGERS) {
       throw new UnprocessableEntityException(
         `O evento possui ${total} inscritos. Exporte por congregação usando o parâmetro congregationId.`,
       );
@@ -341,23 +399,6 @@ export class EventPassengersService {
       days: this.buildDayBlocks(enrollments, event.eventDays, multiDay, variant),
     };
 
-    const buffer = await this.pdfService.generatePassengerList(data);
-
-    this.logger.log(`PDF de inscritos exportado — eventId=${eventId}, total=${total}, variant=${variant}`);
-
-    void this.auditLogService
-      .log('EXPORT', 'EventPassengerPdf', eventId, user.sub, {
-        oldValues: null,
-        newValues: {
-          eventId,
-          circuitId,
-          congregationId: effectiveCongregationId ?? null,
-          variant,
-          totalPassengers: total,
-        },
-      })
-      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export PDF'));
-
     let congregationCode: string | undefined;
     if (effectiveCongregationId) {
       congregationCode =
@@ -370,7 +411,36 @@ export class EventPassengersService {
         )?.code;
     }
 
-    return { buffer, congregationCode };
+    return {
+      data,
+      congregationCode,
+      auditMetadata: {
+        eventId,
+        circuitId,
+        congregationId: effectiveCongregationId ?? null,
+        variant,
+        totalPassengers: total,
+      },
+    };
+  }
+
+  /** Loga e grava o audit log de um export de listagem de inscritos (fire-and-forget). */
+  private recordPassengerListExport(
+    format: ExportFormat,
+    entityType: string,
+    userId: string,
+    metadata: PassengerListExportAuditMetadata,
+  ): void {
+    this.logger.log(
+      `Listagem de inscritos exportada — eventId=${metadata.eventId}, format=${format}, total=${metadata.totalPassengers}, variant=${metadata.variant}`,
+    );
+
+    void this.auditLogService
+      .log('EXPORT', entityType, metadata.eventId, userId, {
+        oldValues: null,
+        newValues: { ...metadata, format },
+      })
+      .catch((err: unknown) => this.logger.error({ err }, 'Falha ao gravar audit log de export'));
   }
 
   /**

@@ -52,8 +52,3 @@ export interface PassengerListPdfData {
   /** Sempre ao menos um bloco. Multi-dia → um por dia com inscritos; dia único → um bloco. */
   days: DayPdfBlock[];
 }
-
-export interface ExportPdfResult {
-  buffer: Buffer;
-  congregationCode?: string; // presente quando filtrado por uma congregação
-}

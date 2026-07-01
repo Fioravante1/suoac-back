@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, NotFoundException, Unprocessable
 import { Test } from '@nestjs/testing';
 import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { XLSX_CONTENT_TYPE } from '../common/export/export.constants';
 import type { EventPassengerResponse } from './interfaces/event-passenger-response.interface';
 import { EventPassengersController } from './event-passengers.controller';
 import { EventPassengersService } from './event-passengers.service';
@@ -56,6 +57,7 @@ describe('EventPassengersController', () => {
       create: jest.fn(),
       findByEvent: jest.fn(),
       exportPdf: jest.fn(),
+      exportXlsx: jest.fn(),
       findOne: jest.fn(),
       updateDays: jest.fn(),
       remove: jest.fn(),
@@ -331,6 +333,86 @@ describe('EventPassengersController', () => {
 
       await expect(
         controller.exportPdf(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
+  // ── exportXlsx ─────────────────────────────────────────────────
+  describe('exportXlsx', () => {
+    const CIRCUIT_ID = 'c0000000-0000-0000-0000-0000000000c1';
+    const EVENT_ID = 'e0000000-0000-0000-0000-0000000000e1';
+
+    it('deve delegar ao service repassando circuitId, eventId, user e dto', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportXlsx.mockResolvedValue({ buffer: Buffer.from('PK-x') });
+
+      await controller.exportXlsx(
+        CIRCUIT_ID,
+        EVENT_ID,
+        { congregationId: 'cong-1', variant: 'carrier' },
+        USER,
+        reply as unknown as FastifyReply,
+      );
+
+      expect(serviceMock.exportXlsx).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, {
+        congregationId: 'cong-1',
+        variant: 'carrier',
+      });
+    });
+
+    it('deve usar variant boarding como padrão quando omitido', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportXlsx.mockResolvedValue({ buffer: Buffer.from('PK-x') });
+
+      await controller.exportXlsx(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(serviceMock.exportXlsx).toHaveBeenCalledWith(CIRCUIT_ID, EVENT_ID, USER, {
+        congregationId: undefined,
+        variant: 'boarding',
+      });
+    });
+
+    it('deve responder com Content-Type XLSX e body Buffer', async () => {
+      const reply = buildReplyMock();
+      const buffer = Buffer.from('PK-conteudo');
+      serviceMock.exportXlsx.mockResolvedValue({ buffer });
+
+      await controller.exportXlsx(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith('Content-Type', XLSX_CONTENT_TYPE);
+      expect(reply.send).toHaveBeenCalledWith(buffer);
+    });
+
+    it('deve usar filename apenas com eventId quando não há congregationCode', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportXlsx.mockResolvedValue({ buffer: Buffer.from('PK-x') });
+
+      await controller.exportXlsx(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="inscritos-embarque-${EVENT_ID}.xlsx"`,
+      );
+    });
+
+    it('deve usar o código sanitizado da congregação e o label empresa no filename (carrier)', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportXlsx.mockResolvedValue({ buffer: Buffer.from('PK-x'), congregationCode: '105/478' });
+
+      await controller.exportXlsx(CIRCUIT_ID, EVENT_ID, { variant: 'carrier' }, USER, reply as unknown as FastifyReply);
+
+      expect(reply.header).toHaveBeenCalledWith(
+        'Content-Disposition',
+        `attachment; filename="inscritos-empresa-105-478-${EVENT_ID}.xlsx"`,
+      );
+    });
+
+    it('deve propagar exceções do service', async () => {
+      const reply = buildReplyMock();
+      serviceMock.exportXlsx.mockRejectedValue(new UnprocessableEntityException('Excede o teto'));
+
+      await expect(
+        controller.exportXlsx(CIRCUIT_ID, EVENT_ID, {}, USER, reply as unknown as FastifyReply),
       ).rejects.toThrow(UnprocessableEntityException);
     });
   });

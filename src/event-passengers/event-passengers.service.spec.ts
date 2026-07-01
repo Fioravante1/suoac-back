@@ -4,6 +4,7 @@ import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { EncryptionService } from '../common/encryption/encryption.service';
 import { PdfService } from '../common/pdf/pdf.service';
+import { XlsxService } from '../common/xlsx/xlsx.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PassengersService } from '../passengers/passengers.service';
@@ -198,6 +199,7 @@ describe('EventPassengersService', () => {
   let passengersServiceMock: jest.Mocked<PassengersService>;
   let congregationEventStatusMock: jest.Mocked<CongregationEventStatusService>;
   let pdfServiceMock: jest.Mocked<PdfService>;
+  let xlsxServiceMock: jest.Mocked<XlsxService>;
   let auditLogMock: { log: jest.Mock; buildCreateData: jest.Mock };
 
   beforeEach(async () => {
@@ -223,6 +225,9 @@ describe('EventPassengersService', () => {
     pdfServiceMock = {
       generatePassengerList: jest.fn().mockResolvedValue(Buffer.from('%PDF-fake')),
     } as unknown as jest.Mocked<PdfService>;
+    xlsxServiceMock = {
+      generatePassengerList: jest.fn().mockResolvedValue(Buffer.from('PK-fake')),
+    } as unknown as jest.Mocked<XlsxService>;
     auditLogMock = {
       log: jest.fn().mockResolvedValue(undefined),
       buildCreateData: jest.fn().mockReturnValue({
@@ -242,6 +247,7 @@ describe('EventPassengersService', () => {
         { provide: PassengersService, useValue: passengersServiceMock },
         { provide: CongregationEventStatusService, useValue: congregationEventStatusMock },
         { provide: PdfService, useValue: pdfServiceMock },
+        { provide: XlsxService, useValue: xlsxServiceMock },
         { provide: AuditLogService, useValue: auditLogMock },
       ],
     }).compile();
@@ -1523,6 +1529,86 @@ describe('EventPassengersService', () => {
       const data = pdfServiceMock.generatePassengerList.mock.calls[0]?.[0];
       expect(data?.days).toHaveLength(1);
       expect(data?.days[0]?.dayNumber).toBe(1);
+    });
+
+    // ── exportXlsx (reusa os fixtures de exportPdf) ──────────────
+    describe('exportXlsx', () => {
+      it('deve delegar ao XlsxService (e não ao PdfService) e retornar Buffer', async () => {
+        setupHappyPath();
+
+        const result = await service.exportXlsx(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+        expect(result.buffer).toBeInstanceOf(Buffer);
+        expect(xlsxServiceMock.generatePassengerList).toHaveBeenCalledTimes(1);
+        expect(pdfServiceMock.generatePassengerList).not.toHaveBeenCalled();
+      });
+
+      it('deve montar o PassengerListPdfData correto (variant carrier)', async () => {
+        setupHappyPath();
+
+        await service.exportXlsx(CIRCUIT_ID, EVENT_ID, circuitUser(), CARRIER);
+
+        expect(xlsxServiceMock.generatePassengerList).toHaveBeenCalledWith(
+          expect.objectContaining({ variant: 'carrier', generatedByName: 'João Coordenador' }),
+        );
+      });
+
+      it('deve retornar o congregationCode quando filtrado por congregação', async () => {
+        setupHappyPath();
+        const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+        const result = await service.exportXlsx(CIRCUIT_ID, EVENT_ID, user, {
+          congregationId: CONGREGATION_ID,
+          ...BOARDING,
+        });
+
+        expect(result.congregationCode).toBe('105478');
+      });
+
+      it('deve gravar audit log EXPORT com entityType EventPassengerXlsx e format=xlsx', async () => {
+        setupHappyPath();
+
+        await service.exportXlsx(CIRCUIT_ID, EVENT_ID, circuitUser(), CARRIER);
+
+        expect(auditLogMock.log).toHaveBeenCalledWith(
+          'EXPORT',
+          'EventPassengerXlsx',
+          EVENT_ID,
+          USER_ID,
+          expect.objectContaining({
+            newValues: expect.objectContaining({
+              eventId: EVENT_ID,
+              circuitId: CIRCUIT_ID,
+              variant: 'carrier',
+              totalPassengers: 1,
+              format: 'xlsx',
+            }),
+          }),
+        );
+      });
+
+      it('deve lançar NotFoundException quando o evento pertence a outro circuito (mesmo prepare)', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit({ circuitId: 'circuit-2' }) as never);
+        const user = buildUser({ role: 'CIRCUIT_COORDINATOR', circuitId: 'circuit-2', congregationId: null });
+
+        await expect(service.exportXlsx(CIRCUIT_ID, EVENT_ID, user, BOARDING)).rejects.toThrow(NotFoundException);
+      });
+
+      it('deve lançar ForbiddenException quando role de congregação pede a variante carrier (RG)', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+        const user = buildUser({ role: 'CONGREGATION_COORDINATOR', circuitId: CIRCUIT_ID });
+
+        await expect(service.exportXlsx(CIRCUIT_ID, EVENT_ID, user, CARRIER)).rejects.toThrow(ForbiddenException);
+      });
+
+      it('deve lançar UnprocessableEntityException quando excede o teto de passageiros', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEventWithCircuit() as never);
+        prismaMock.eventPassenger.count.mockResolvedValue(2001);
+
+        await expect(service.exportXlsx(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING)).rejects.toThrow(
+          UnprocessableEntityException,
+        );
+      });
     });
   });
 });
