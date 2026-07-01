@@ -1437,6 +1437,53 @@
           "response": []
         },
         {
+          "name": "Export EventPassengers XLSX",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/events/:eventId/passengers/export.xlsx?congregationId=&variant=boarding",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "events",
+                ":eventId",
+                "passengers",
+                "export.xlsx"
+              ],
+              "query": [
+                {
+                  "key": "congregationId",
+                  "value": "",
+                  "description": "Opcional. Roles de circuito: filtra por congregação. Roles de congregação: deve ser a própria congregação ou ausente (403 se divergir).",
+                  "disabled": true
+                },
+                {
+                  "key": "variant",
+                  "value": "boarding",
+                  "description": "Opcional (carrier|boarding). Default boarding. 'carrier' = lista para a empresa de ônibus (Nome, RG, Observação) — apenas CIRCUIT_COORDINATOR/CIRCUIT_ASSISTANT (403 para roles de congregação). 'boarding' = conferência de embarque do capitão de ônibus (Nome, Telefone, Observação) — todos os roles. Valor inválido retorna 400.",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                },
+                {
+                  "key": "eventId",
+                  "value": "{{eventId}}"
+                }
+              ]
+            },
+            "description": "Versão Excel (.xlsx) da lista de passageiros inscritos. Mesmos parâmetros, variantes e regras de autorização do export.pdf (carrier só para roles de circuito; boarding para todos; agrupamento por dia em eventos multi-dia; teto de 2000 inscritos sem filtro → 422). Resposta binária (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) — no Postman use 'Send and Download'. O front deve consumir como blob/arraybuffer e respeitar o header Content-Disposition."
+          },
+          "response": []
+        },
+        {
           "name": "Get EventPassenger by ID",
           "request": {
             "method": "GET",
