@@ -70,6 +70,7 @@ O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui
 - **Regra:** *NUNCA* exporte o tipo `PrismaClient` (classe) instanciado. O `PrismaService` deve atuar como uma barreira arquitetural.
 - Exponha os tipos reais usando a interface exportada (`type PrismaClientType`) do client gerado (`src/generated/prisma/client.ts`).
 - Modificações no `schema.prisma` exigem rodar `npx prisma generate` em seguida.
+- **`importFileExtension = ""` no generator é obrigatório:** sem essa opção o Prisma infere a extensão dos imports a partir do `moduleResolution` do `tsconfig.json` e, sob `nodenext`, gera `import ... from "./internal/class.js"`. O `jest-resolve` (CommonJS) não resolve esse caminho e **todas** as suítes que tocam o `PrismaService` quebram com `Cannot find module './internal/class.js'`. Como `src/generated/` não é versionado, isso só aparece no CI (que roda `npx prisma generate` do zero) — nunca em uma máquina com o client já gerado.
 
 ### Queries
 - O Prisma deve ser acessado **exclusivamente** pelo `PrismaService`.
