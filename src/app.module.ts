@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthModule } from './auth/auth.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
       validate: validateEnv,
     }),
     LoggerModule.forRoot(getLoggerConfig()),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuditLogModule,
     HealthModule,
