@@ -46,3 +46,6 @@ staging-test-users.txt
 
 # Amostras geradas de PDF (não versionar)
 recibo-exemplo-preenchido.pdf
+
+# TypeScript incremental build cache
+*.tsbuildinfo

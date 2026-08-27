@@ -1,8 +1,12 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node10",
+    "module": "nodenext",
+    // `nodenext` (TS 5.8+) permite `require()` de ESM sob Node 22+, o que destrava o
+    // `write-excel-file` (pacote `"type": "module"` sem `.d.cts`) sem dynamic import.
+    // Substituiu `node10`, que era deprecado e foi removido no TS 7.
+    "moduleResolution": "nodenext",
     "target": "ES2023",
+    "types": ["node", "jest"],
     "strict": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -13,7 +17,9 @@
     "experimentalDecorators": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    // TS 6 (TS5011): `rootDir` precisa ser explícito. Aqui cobre src/, test/, prisma/ e scripts/;
+    // o `tsconfig.build.json` sobrescreve para `./src`, preservando o layout do dist/.
+    "rootDir": "./",
     "incremental": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
