@@ -28,7 +28,7 @@ export class AuditLogService {
     action: AuditAction,
     entity: string,
     entityId: string,
-    userId: string,
+    userId: string | null,
     details?: AuditLogDetails,
   ): Promise<void> {
     await this.prisma.client.auditLog.create({
@@ -42,7 +42,7 @@ export class AuditLogService {
     action: AuditAction,
     entity: string,
     entityId: string,
-    userId: string,
+    userId: string | null,
     details?: AuditLogDetails,
   ): Prisma.AuditLogUncheckedCreateInput {
     const sanitizedDetails = details ? this.sanitize(details) : undefined;
