@@ -7,6 +7,7 @@ Este projeto é construído com tecnologias modernas para garantir alta performa
 ## 🚀 Tecnologias e Stack
 
 - **Node.js**: `v24.x`
+- **Linguagem**: [TypeScript](https://www.typescriptlang.org/) `v6` (strict mode, `module: nodenext`)
 - **Framework**: [NestJS](https://nestjs.com/) `v11`
 - **Adaptador HTTP**: [Fastify](https://fastify.dev/) (para maior performance em comparação ao Express)
 - **ORM**: [Prisma](https://www.prisma.io/) `v7` (utilizando a nova arquitetura com Driver Adapters)

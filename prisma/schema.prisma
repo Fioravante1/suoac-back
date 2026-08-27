@@ -5,9 +5,12 @@
 // ============================================================
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  // Sem a extensão explícita, o Prisma a infere do `moduleResolution` do tsconfig e passa
+  // a emitir `./internal/class.js` sob `nodenext` — o que o jest-resolve (CJS) não resolve.
+  importFileExtension = ""
 }
 
 datasource db {

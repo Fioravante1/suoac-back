@@ -14,7 +14,7 @@ Este documento e a **fonte unica de verdade** para todas as regras, padroes arqu
 - **Banco de Dados**: `PostgreSQL 16`
 - **ORM**: `Prisma v7` (usando adapter `@prisma/adapter-pg` e `pg` driver nativo)
 - **Logging**: `Pino` via `nestjs-pino` (JSON estruturado em prod, `pino-pretty` em dev)
-- **Linguagem**: `TypeScript` (strict mode: ON)
+- **Linguagem**: `TypeScript v6` (strict mode: ON, `module`/`moduleResolution`: `nodenext`)
 - **Documentação do Projeto**: Pasta `docs/` na raiz do repositório, contendo:
   - `SUOAC_REQUISITOS_v2.md` — Requisitos funcionais e regras de negócio
   - `SUOAC_ERD.md` / `SUOAC_ERD.html` — Diagrama Entidade-Relacionamento do banco de dados
@@ -70,6 +70,7 @@ O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui
 - **Regra:** *NUNCA* exporte o tipo `PrismaClient` (classe) instanciado. O `PrismaService` deve atuar como uma barreira arquitetural.
 - Exponha os tipos reais usando a interface exportada (`type PrismaClientType`) do client gerado (`src/generated/prisma/client.ts`).
 - Modificações no `schema.prisma` exigem rodar `npx prisma generate` em seguida.
+- **`importFileExtension = ""` no generator é obrigatório:** sem essa opção o Prisma infere a extensão dos imports a partir do `moduleResolution` do `tsconfig.json` e, sob `nodenext`, gera `import ... from "./internal/class.js"`. O `jest-resolve` (CommonJS) não resolve esse caminho e **todas** as suítes que tocam o `PrismaService` quebram com `Cannot find module './internal/class.js'`. Como `src/generated/` não é versionado, isso só aparece no CI (que roda `npx prisma generate` do zero) — nunca em uma máquina com o client já gerado.
 
 ### Queries
 - O Prisma deve ser acessado **exclusivamente** pelo `PrismaService`.
@@ -136,6 +137,8 @@ O projeto está configurado com regras severas de qualidade (`ESLint Flat Config
   - `strict: true`: Nenhuma variável local, parâmetro ou import pode ficar sem uso. Acesso a arrays/dicionários (`noUncheckedIndexedAccess`) pode ser `undefined`.
   - **Nunca use `any`**: Tipagens `any` e casts inseguros disparam erros de compilação.
   - **Return Types**: Toda função exportada (controllers, services) *DEVE* ter o tipo de retorno explicitamente anotado (ex: `async findAll(): Promise<User[]> { ... }`).
+  - **`@types` explícitos**: o TS 6 não inclui mais `@types/*` automaticamente. Pacotes que injetam globais precisam estar em `compilerOptions.types` (`tsconfig.json`: `["node", "jest"]`; `tsconfig.build.json`: `["node"]`). Tipos consumidos por `import` não precisam ser listados.
+  - **`rootDir` explícito**: exigido pelo TS 6 (TS5011). `tsconfig.json` usa `./` (cobre `src/`, `test/`, `prisma/`, `scripts/`) e `tsconfig.build.json` sobrescreve para `./src`, preservando o layout do `dist/`.
   - **Type Imports**: Use `import type` para importar apenas tipos, mantendo o bundle limpo (o ESLint conserta isso sozinho se usar `npm run lint:fix`).
   - **Async Safety**: Toda Promise *deve* ter um `await`, um `.catch()`, ou retornar o valor. Promises pendentes na raiz (ex: entrypoints) devem ser marcadas com `void` (`void bootstrap();`).
   - **Nunca aninhe `if`s**: Use early returns (guard clauses) com condições combinadas em vez de `if` dentro de `if`. Cada validação deve ser um bloco independente no nível raiz da função.
