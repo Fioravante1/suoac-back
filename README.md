@@ -164,6 +164,20 @@ O backend implementa múltiplas camadas de segurança para produção:
 - **Rate Limiting**: Limite de requests por IP/minuto via `RATE_LIMIT_MAX` (default: 100). `trustProxy: true` para funcionar atrás de reverse proxy (Railway).
 - **Filtro Global de Exceções**: Erros do Prisma (P2002, P2003, P2025) mapeados para HTTP status codes adequados. Stacktraces nunca expostos ao client.
 
+## ⏱ Jobs Agendados (Ciclo de Vida do Evento)
+
+O backend roda um cron interno (`@nestjs/schedule`, `ScheduleModule.forRoot()` no `AppModule`) que aplica de hora em hora as transições automáticas de status dos eventos — implementado em `src/events/event-lifecycle.service.ts`:
+
+| Transição | Quando |
+|-----------|--------|
+| `OPEN → CLOSED` | O prazo de inscrição (`registrationDeadline`) expirou |
+| `OPEN`/`CLOSED` → `FINISHED` | Já é o dia seguinte ao último dia programado do evento (`EventDay.date`), no fuso `America/Sao_Paulo` |
+
+- As transições usam `updateMany` com o status atual no `where`, portanto são idempotentes e seguras com múltiplas instâncias da aplicação.
+- Cada mudança gera um registro em `audit_logs` com `userId = null` e `actor = { type: "SYSTEM", job: "event-lifecycle" }`.
+- Eventos em `DRAFT` e `CANCELLED` nunca são tocados pelo job.
+- **Efeito colateral relevante:** inscrições, pagamentos e finalização de lista por congregação exigem o evento em `OPEN`. Após o encerramento automático, esses lançamentos passam a ser recusados (`422`).
+
 ## 📦 Estrutura do Projeto e Padrões Adotados
 
 ### Prisma 7 (Mudanças de Arquitetura)
