@@ -27,6 +27,7 @@ function buildUserForAuth(
     isActive: boolean;
     refreshTokenHash: string | null;
     mustChangePassword: boolean;
+    sessionVersion: number;
   }> = {},
 ): {
   id: string;
@@ -37,6 +38,7 @@ function buildUserForAuth(
   role: string;
   isActive: boolean;
   mustChangePassword: boolean;
+  sessionVersion: number;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;
@@ -51,6 +53,7 @@ function buildUserForAuth(
     role: 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
     mustChangePassword: overrides.mustChangePassword ?? false,
+    sessionVersion: overrides.sessionVersion ?? 0,
     circuitId: CIRCUIT_ID,
     congregationId: CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -305,6 +308,7 @@ describe('AuthService', () => {
           circuitId: CIRCUIT_ID,
           congregationId: CONGREGATION_ID,
           mustChangePassword: false,
+          sessionVersion: 0,
         },
         { secret: 'test-jwt-secret', expiresIn: 900 },
       );
@@ -330,13 +334,24 @@ describe('AuthService', () => {
   describe('changePassword', () => {
     const dto = { currentPassword: '80275@Suoac', newPassword: 'NovaSenha@123' };
 
-    function arrangeSuccess(): void {
-      const user = buildUserForAuth({ mustChangePassword: true });
+    /**
+     * O service incrementa a versão no banco e lê o valor de volta da escrita,
+     * então o mock do `update` precisa devolver o usuário **já incrementado** —
+     * é dele que sai a versão do token emitido.
+     */
+    function arrangeSuccess(overrides: { sessionVersion?: number } = {}): void {
+      const sessionVersion = overrides.sessionVersion ?? 0;
+      const user = buildUserForAuth({ mustChangePassword: true, sessionVersion });
       prismaMock.user.findUnique.mockResolvedValue(user as never);
       hashingMock.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false); // atual ok, nova != atual
       hashingMock.hash.mockResolvedValue('novo-hash');
       jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
-      prismaMock.user.update.mockResolvedValue(user as never);
+      prismaMock.user.update.mockResolvedValue({
+        ...user,
+        passwordHash: 'novo-hash',
+        mustChangePassword: false,
+        sessionVersion: sessionVersion + 1,
+      } as never);
     }
 
     it('deve trocar a senha, zerar a flag e retornar novos tokens', async () => {
@@ -349,19 +364,55 @@ describe('AuthService', () => {
       expect(result.user.mustChangePassword).toBe(false);
     });
 
-    it('deve persistir novo hash, mustChangePassword=false e refreshTokenHash', async () => {
+    it('deve persistir novo hash e zerar a flag de troca obrigatoria', async () => {
       arrangeSuccess();
 
       await service.changePassword(USER_ID, dto);
 
-      expect(prismaMock.user.update).toHaveBeenCalledWith({
+      expect(prismaMock.user.update).toHaveBeenNthCalledWith(1, {
         where: { id: USER_ID },
         data: {
           passwordHash: 'novo-hash',
           mustChangePassword: false,
-          refreshTokenHash: expect.any(String) as string,
+          sessionVersion: { increment: 1 },
         },
       });
+    });
+
+    it('deve persistir o hash do refresh token da sessao nova', async () => {
+      arrangeSuccess();
+
+      await service.changePassword(USER_ID, dto);
+
+      expect(prismaMock.user.update).toHaveBeenNthCalledWith(2, {
+        where: { id: USER_ID },
+        data: { refreshTokenHash: expect.any(String) as string },
+      });
+    });
+
+    it('deve delegar o incremento da versao ao banco, nao calcular em memoria', async () => {
+      arrangeSuccess({ sessionVersion: 7 });
+
+      await service.changePassword(USER_ID, dto);
+
+      // Calcular `versao + 1` em memória faria duas trocas concorrentes lerem o
+      // mesmo valor e gravarem o mesmo incremento, e a segunda não revogaria a
+      // sessão da primeira.
+      expect(prismaMock.user.update).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ data: expect.objectContaining({ sessionVersion: { increment: 1 } }) }),
+      );
+    });
+
+    it('deve emitir o token novo com a versao que o banco devolveu, para a sessao atual sobreviver', async () => {
+      arrangeSuccess({ sessionVersion: 7 });
+
+      await service.changePassword(USER_ID, dto);
+
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: USER_ID, sessionVersion: 8 }),
+        { secret: 'test-jwt-secret', expiresIn: 900 },
+      );
     });
 
     it('deve emitir access token com mustChangePassword=false no payload', async () => {

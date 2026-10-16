@@ -9,4 +9,13 @@ export interface JwtPayload {
    * obrigatória. Ausência é tratada como `false` (sem troca pendente).
    */
   mustChangePassword?: boolean;
+  /**
+   * Versão da sessão no momento da emissão. O `JwtAuthGuard` compara com a
+   * versão gravada no usuário e recusa o token quando ficou atrás — é assim que
+   * a redefinição de senha derruba sessões já abertas.
+   *
+   * Opcional para não invalidar, no deploy, os tokens emitidos antes deste
+   * campo existir: ausência é tratada como `0`.
+   */
+  sessionVersion?: number;
 }
