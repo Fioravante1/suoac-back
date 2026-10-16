@@ -141,6 +141,13 @@ Cada environment deve ter suas próprias env vars configuradas no dashboard:
 - `LOG_LEVEL` — nível de log (recomendado: `info` para ambos)
 - `ALLOWED_ORIGINS` — origens CORS (comma-separated, ex: `https://suoac.example.com`)
 - `RATE_LIMIT_MAX` — requests por minuto por IP (default: `100`)
+- `FRONTEND_URL` — base dos links enviados por e-mail (obrigatória). Produção: `https://suoac.com`; staging: `https://staging.suoac.com`. O link de recuperação é `${FRONTEND_URL}/reset-password?token=...`
+- `RESEND_API_KEY`, `EMAIL_FROM` — credenciais do Resend (obrigatórias fora de dev/test). Uma chave por ambiente, para poder revogar staging sem derrubar produção. Remetente do projeto: `SUOAC <nao-responda@mail.suoac.com>`
+- `PASSWORD_RESET_MAX_PER_HOUR` — solicitações de recuperação de senha por hora, por e-mail (default: `3`)
+
+Fora do Railway, usadas apenas pelo seed de produção (`npm run db:seed:prod`, em `prisma/seeds/prod.ts`): `ADMIN_EMAIL` e `ADMIN_PASSWORD`, que criam o primeiro coordenador. Sem elas o seed cai em valores de fallback e avisa no console.
+
+A relação completa de variáveis, com comentários explicando cada uma, está no `.env.example`. Os arquivos por ambiente (`.env`, `.env.test`, `.env.staging`, `.env.production`) são locais e git-ignored: servem para rodar CLI e scripts contra cada banco, e **não** reproduzem os segredos que vivem no Railway.
 
 O arquivo `railway.toml` na raiz configura health check (`/health`), política de restart e timeout.
 
@@ -162,8 +169,40 @@ O backend implementa múltiplas camadas de segurança para produção:
 
 - **CORS**: Origens controladas via `ALLOWED_ORIGINS`. Em dev, aceita `localhost` com qualquer porta. Em staging/prod, fail-closed (sem origins configuradas = nenhuma permitida).
 - **Helmet**: Security headers (X-Content-Type-Options, X-Frame-Options, etc.) habilitados em todos os ambientes. CSP habilitado apenas em produção (desabilitado em dev/staging para permitir Swagger UI).
-- **Rate Limiting**: Limite de requests por IP/minuto via `RATE_LIMIT_MAX` (default: 100). `trustProxy: true` para funcionar atrás de reverse proxy (Railway).
+- **Rate Limiting**: Limite de requests por IP/minuto via `RATE_LIMIT_MAX` (default: 100). `trustProxy: true` para funcionar atrás de reverse proxy (Railway). **Ressalva conhecida:** o frontend é um BFF e chama a API pelo próprio servidor, então todo o tráfego vindo dele compartilha um único IP — e, portanto, um único balde. Rastreado no card SUC-47.
 - **Filtro Global de Exceções**: Erros do Prisma (P2002, P2003, P2025) mapeados para HTTP status codes adequados. Stacktraces nunca expostos ao client.
+
+### Recuperação de senha
+
+Três endpoints públicos, todos com o token no corpo da requisição — nunca na URL, que entra em log de acesso, histórico do navegador e cabeçalho `Referer`:
+
+| Endpoint | Resposta |
+|----------|----------|
+| `POST /auth/password-reset-requests` | `204` sempre; `429` acima do limite |
+| `POST /auth/password-reset-verifications` | `204` válido · `400` inválido · `409` já utilizado · `410` expirado |
+| `POST /auth/password-resets` | `204` · mesmos erros de token acima |
+
+- **Resposta neutra**: a solicitação responde igual para conta existente e inexistente, e o envio do e-mail acontece fora do request — se fosse aguardado, o tempo de resposta delataria quais contas existem.
+- **Token**: 256 bits aleatórios; o banco guarda apenas o SHA-256. O valor em claro existe só no link do e-mail e nunca é logado.
+- **Um link por vez**: um pedido novo invalida o anterior (o hash é limpo, mas a linha é preservada — ela é o histórico que alimenta o limite por e-mail).
+- **Limite por e-mail** (`PASSWORD_RESET_MAX_PER_HOUR`, default 3): é a defesa real deste fluxo, e não o limite por IP. As rotas de recuperação ficam **fora** do `AUTH_RATE_LIMIT_MAX` de propósito: atrás do BFF, um limite de 10/min por IP bloquearia usuários legítimos uns pelos outros sem proteger ninguém. Tentativas para e-mails sem conta contam no mesmo balde, para o `429` também não revelar quais existem.
+- **Sessões**: a redefinição incrementa `User.sessionVersion` e limpa o refresh token. O `JwtAuthGuard` compara a versão do token com a do banco em toda request autenticada, então o access token roubado morre no instante da redefinição em vez de sobreviver até expirar. A troca voluntária de senha (`/auth/change-password`) faz o mesmo, mantendo válida apenas a sessão que trocou.
+- **Envio**: boundary `EmailSender` em `src/common/email/`. Em `development` e `test` nada é enviado — o `LogEmailSender` registra a mensagem, e **o link de recuperação sai no log da aplicação**, que é como se testa o fluxo localmente. Fora disso, `ResendEmailSender` fala com a API HTTP do Resend, com timeout de 10s e registrando o `messageId` devolvido (é por ele que se rastreia uma entrega no painel do Resend).
+
+### Envio de e-mail (Resend)
+
+O domínio de envio é **`mail.suoac.com`** — subdomínio dedicado, para a reputação do e-mail transacional não se misturar com a do domínio principal, conforme recomendação do próprio Resend. O DNS fica no Cloudflare (zona `suoac.com`).
+
+**Cuidado ao criar os registros:** os `CNAME` do Resend precisam ficar em **DNS-only** (nuvem cinza) no Cloudflare. Atrás do proxy laranja, a verificação do domínio nunca conclui.
+
+Para provar a entrega ponta a ponta sem depender de alguém pedir recuperação de senha:
+
+```bash
+# Usa o adaptador real do Resend e o mesmo template do fluxo, com um token falso
+NODE_ENV=staging npm run email:test -- destino@example.com
+```
+
+O script falha cedo e com mensagem clara se `RESEND_API_KEY`, `EMAIL_FROM` ou `FRONTEND_URL` estiverem ausentes. Se o e-mail for aceito e não chegar, a aba **Emails** do painel do Resend mostra o que aconteceu com aquele `messageId`.
 
 ## ⏱ Jobs Agendados (Ciclo de Vida do Evento)
 
@@ -178,6 +217,8 @@ O backend roda um cron interno (`@nestjs/schedule`, `ScheduleModule.forRoot()` n
 - Cada mudança gera um registro em `audit_logs` com `userId = null` e `actor = { type: "SYSTEM", job: "event-lifecycle" }`.
 - Eventos em `DRAFT` e `CANCELLED` nunca são tocados pelo job.
 - **Efeito colateral relevante:** inscrições, pagamentos e finalização de lista por congregação exigem o evento em `OPEN`. Após o encerramento automático, esses lançamentos passam a ser recusados (`422`).
+
+Há um segundo job, diário às 4h (`password-reset-purge`, em `src/auth/password-reset.service.ts`): apaga solicitações de recuperação de senha com mais de 7 dias. Elas só têm valor dentro da janela do limite por e-mail; depois disso são apenas endereços guardados sem motivo.
 
 ## 📦 Estrutura do Projeto e Padrões Adotados
 
@@ -200,6 +241,9 @@ npm run format
 
 # Rodar o Lint
 npm run lint
+
+# Rodar a verificação completa (typecheck + lint + testes + formatação)
+npm run check
 
 # Checar os tipos TypeScript (sem compilar)
 npm run typecheck

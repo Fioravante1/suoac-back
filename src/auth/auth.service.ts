@@ -156,16 +156,28 @@ export class AuthService {
     }
 
     const newPasswordHash = await this.hashingService.hash(dto.newPassword);
-    const updatedUser = { ...user, passwordHash: newPasswordHash, mustChangePassword: false };
-    const tokens = await this.generateTokens(updatedUser);
 
-    await this.prisma.client.user.update({
+    // A troca de senha encerra as outras sessões. O incremento é feito pelo
+    // banco e a versão nova é lida de volta da própria escrita: calcular
+    // `user.sessionVersion + 1` em memória faria duas trocas concorrentes lerem
+    // o mesmo valor e gravarem o mesmo incremento, e a segunda troca não
+    // revogaria a sessão da primeira.
+    const updatedUser = await this.prisma.client.user.update({
       where: { id: userId },
       data: {
         passwordHash: newPasswordHash,
         mustChangePassword: false,
-        refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+        sessionVersion: { increment: 1 },
       },
+    });
+
+    // O token nasce com a versão já incrementada, para a sessão que trocou a
+    // senha continuar válida enquanto as demais caem no próximo request.
+    const tokens = await this.generateTokens(updatedUser);
+
+    await this.prisma.client.user.update({
+      where: { id: userId },
+      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
     });
 
     this.logger.log(`Senha alterada — userId=${userId}`);
@@ -190,6 +202,7 @@ export class AuthService {
     circuitId: string;
     congregationId: string | null;
     mustChangePassword: boolean;
+    sessionVersion: number;
   }): Promise<{ accessToken: string; refreshToken: string }> {
     const payload: JwtPayload = {
       sub: user.id,
@@ -198,6 +211,7 @@ export class AuthService {
       circuitId: user.circuitId,
       congregationId: user.congregationId,
       mustChangePassword: user.mustChangePassword,
+      sessionVersion: user.sessionVersion,
     };
 
     const [accessToken, refreshToken] = await Promise.all([

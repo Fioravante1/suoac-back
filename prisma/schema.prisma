@@ -127,6 +127,11 @@ model User {
   email        String   @unique @db.VarChar(255)
   passwordHash     String?  @map("password_hash") @db.VarChar(255)
   refreshTokenHash String?  @map("refresh_token_hash") @db.VarChar(255)
+  /// Versao da sessao. Toda redefinicao ou troca de senha incrementa, e o
+  /// JwtAuthGuard recusa access tokens emitidos com versao anterior — e o que
+  /// mata o token roubado no instante da redefinicao, sem esperar os 15 minutos
+  /// de expiracao natural.
+  sessionVersion   Int      @default(0) @map("session_version")
   role             UserRole
   isActive     Boolean  @default(true) @map("is_active")
   mustChangePassword Boolean @default(false) @map("must_change_password")
@@ -147,6 +152,7 @@ model User {
   registeredExpenses      Expense[]              @relation("ExpenseRegisteredBy")
   finalizedLists          CongregationEventStatus[] @relation("FinalizedBy")
   createdInvitations      Invitation[]           @relation("InvitationCreatedBy")
+  passwordResetRequests   PasswordResetRequest[]
   auditLogs               AuditLog[]
 
   @@index([circuitId])
@@ -406,6 +412,40 @@ model Invitation {
   @@index([token])
   @@index([circuitId])
   @@map("invitations")
+}
+
+/// Solicitacoes de recuperacao de senha.
+///
+/// Toda solicitacao gera uma linha, inclusive quando o e-mail nao pertence a
+/// conta alguma: e esse historico que alimenta o limite por e-mail, e contar
+/// tambem os desconhecidos impede usar o 429 para descobrir quais e-mails
+/// existem. Linha sem `userId` nunca tem token — nada foi enviado.
+///
+/// Apenas o SHA-256 do token e persistido. O valor em claro existe somente no
+/// link enviado por e-mail.
+///
+/// `tokenHash` nulo em linha com `userId` significa pedido superado por outro
+/// mais recente: o hash e limpo em vez de a linha ser apagada, porque a linha
+/// ainda precisa ser contada pelo limite por e-mail.
+model PasswordResetRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Sempre normalizado em minusculas, para que variacoes de caixa caiam no
+  /// mesmo balde do limite por e-mail.
+  email String @db.VarChar(255)
+
+  tokenHash String?   @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime? @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+
+  userId String? @map("user_id") @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@index([userId])
+  @@map("password_reset_requests")
 }
 
 // ============================================================

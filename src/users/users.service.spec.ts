@@ -62,6 +62,7 @@ function buildUserRaw(
     role: UserRole;
     isActive: boolean;
     mustChangePassword: boolean;
+    sessionVersion: number;
     circuitId: string;
     congregationId: string | null;
   }> = {},
@@ -74,6 +75,7 @@ function buildUserRaw(
   role: UserRole;
   isActive: boolean;
   mustChangePassword: boolean;
+  sessionVersion: number;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;
@@ -88,6 +90,7 @@ function buildUserRaw(
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',
     isActive: overrides.isActive ?? true,
     mustChangePassword: overrides.mustChangePassword ?? false,
+    sessionVersion: overrides.sessionVersion ?? 0,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),

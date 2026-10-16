@@ -1,9 +1,10 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, GoneException, UnauthorizedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { UserResponse } from '../users/interfaces/user-response.interface';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import type { AuthResponse } from './interfaces/auth-response.interface';
+import { PasswordResetService } from './password-reset.service';
 
 // ── Constants ────────────────────────────────────────────────────
 const USER_ID = 'u1u2u3u4-0000-0000-0000-000000000001';
@@ -37,6 +38,7 @@ function buildAuthResponse(): AuthResponse {
 describe('AuthController', () => {
   let controller: AuthController;
   let serviceMock: jest.Mocked<Pick<AuthService, 'login' | 'refreshTokens' | 'logout' | 'changePassword'>>;
+  let passwordResetMock: jest.Mocked<Pick<PasswordResetService, 'requestReset' | 'verifyToken' | 'resetPassword'>>;
 
   beforeEach(async () => {
     serviceMock = {
@@ -46,9 +48,18 @@ describe('AuthController', () => {
       changePassword: jest.fn(),
     };
 
+    passwordResetMock = {
+      requestReset: jest.fn(),
+      verifyToken: jest.fn(),
+      resetPassword: jest.fn(),
+    };
+
     const module = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: serviceMock }],
+      providers: [
+        { provide: AuthService, useValue: serviceMock },
+        { provide: PasswordResetService, useValue: passwordResetMock },
+      ],
     }).compile();
 
     controller = module.get(AuthController);
@@ -139,6 +150,66 @@ describe('AuthController', () => {
       serviceMock.changePassword.mockRejectedValue(new UnauthorizedException('Senha atual incorreta'));
 
       await expect(controller.changePassword(USER_ID, dto)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ── requestPasswordReset ───────────────────────────────────────
+  describe('requestPasswordReset', () => {
+    const dto = { email: 'joao@example.com' };
+
+    it('deve delegar ao service e nao retornar conteudo', async () => {
+      passwordResetMock.requestReset.mockResolvedValue(undefined);
+
+      const result = await controller.requestPasswordReset(dto);
+
+      expect(result).toBeUndefined();
+      expect(passwordResetMock.requestReset).toHaveBeenCalledWith(dto);
+    });
+  });
+
+  // ── verifyPasswordResetToken ───────────────────────────────────
+  describe('verifyPasswordResetToken', () => {
+    const dto = { token: 'a'.repeat(64) };
+
+    it('deve delegar ao service quando o token e valido', async () => {
+      passwordResetMock.verifyToken.mockResolvedValue(undefined);
+
+      const result = await controller.verifyPasswordResetToken(dto);
+
+      expect(result).toBeUndefined();
+      expect(passwordResetMock.verifyToken).toHaveBeenCalledWith(dto);
+    });
+
+    it('deve propagar GoneException de token expirado', async () => {
+      passwordResetMock.verifyToken.mockRejectedValue(new GoneException('Token de recuperacao expirado'));
+
+      await expect(controller.verifyPasswordResetToken(dto)).rejects.toThrow(GoneException);
+    });
+
+    it('deve propagar ConflictException de token ja utilizado', async () => {
+      passwordResetMock.verifyToken.mockRejectedValue(new ConflictException('Token de recuperacao ja utilizado'));
+
+      await expect(controller.verifyPasswordResetToken(dto)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // ── resetPassword ──────────────────────────────────────────────
+  describe('resetPassword', () => {
+    const dto = { token: 'a'.repeat(64), newPassword: 'NovaSenha@123' };
+
+    it('deve delegar ao service e nao retornar conteudo', async () => {
+      passwordResetMock.resetPassword.mockResolvedValue(undefined);
+
+      const result = await controller.resetPassword(dto);
+
+      expect(result).toBeUndefined();
+      expect(passwordResetMock.resetPassword).toHaveBeenCalledWith(dto);
+    });
+
+    it('deve propagar BadRequestException de token invalido', async () => {
+      passwordResetMock.resetPassword.mockRejectedValue(new BadRequestException('Token de recuperacao invalido'));
+
+      await expect(controller.resetPassword(dto)).rejects.toThrow(BadRequestException);
     });
   });
 });

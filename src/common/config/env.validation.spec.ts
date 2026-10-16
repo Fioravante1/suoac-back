@@ -6,6 +6,7 @@ describe('validateEnv', () => {
     JWT_REFRESH_SECRET: 'b'.repeat(32),
     PASSWORD_PEPPER: 'c'.repeat(32),
     ENCRYPTION_KEY: 'a'.repeat(64),
+    FRONTEND_URL: 'http://localhost:3000',
   });
 
   it('deve retornar a config quando todos os secrets são válidos', () => {
@@ -43,5 +44,46 @@ describe('validateEnv', () => {
     expect(() => validateEnv({})).toThrow(
       /JWT_SECRET[\s\S]*JWT_REFRESH_SECRET[\s\S]*PASSWORD_PEPPER[\s\S]*ENCRYPTION_KEY/,
     );
+  });
+
+  it('deve lançar erro quando FRONTEND_URL está ausente', () => {
+    const config = validConfig();
+    delete config['FRONTEND_URL'];
+    expect(() => validateEnv(config)).toThrow('FRONTEND_URL é obrigatória');
+  });
+
+  it('deve lançar erro quando FRONTEND_URL está em branco', () => {
+    const config = { ...validConfig(), FRONTEND_URL: '   ' };
+    expect(() => validateEnv(config)).toThrow('FRONTEND_URL é obrigatória');
+  });
+
+  it('não deve exigir credenciais do provedor de e-mail em desenvolvimento', () => {
+    const config = { ...validConfig(), NODE_ENV: 'development' };
+    expect(validateEnv(config)).toBe(config);
+  });
+
+  it('não deve exigir credenciais do provedor de e-mail em teste', () => {
+    const config = { ...validConfig(), NODE_ENV: 'test' };
+    expect(validateEnv(config)).toBe(config);
+  });
+
+  it('deve exigir RESEND_API_KEY e EMAIL_FROM em produção', () => {
+    const config = { ...validConfig(), NODE_ENV: 'production' };
+    expect(() => validateEnv(config)).toThrow(/RESEND_API_KEY[\s\S]*EMAIL_FROM/);
+  });
+
+  it('deve exigir credenciais do provedor de e-mail em staging', () => {
+    const config = { ...validConfig(), NODE_ENV: 'staging' };
+    expect(() => validateEnv(config)).toThrow('RESEND_API_KEY é obrigatória');
+  });
+
+  it('deve aceitar produção quando o provedor de e-mail está configurado', () => {
+    const config = {
+      ...validConfig(),
+      NODE_ENV: 'production',
+      RESEND_API_KEY: 're_fake_key',
+      EMAIL_FROM: 'SUOAC <nao-responda@suoac.example.com>',
+    };
+    expect(validateEnv(config)).toBe(config);
   });
 });
