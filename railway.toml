@@ -18,6 +18,16 @@
 # migration precisa da conexão direta do Neon, não do pooler.
 preDeployCommand = ["npx prisma migrate deploy"]
 
+# Teto de tempo total do pre-deploy. Sem isso o Railway espera indefinidamente,
+# e um deploy pendurado é pior que um deploy falho: ninguém é avisado.
+#
+# 600s é folga grande para o tamanho atual do banco, e serve de rede — a defesa
+# de primeira linha contra travamento é o `lock_timeout` configurado no
+# `prisma.config.ts`, que faz a migration desistir em 15s quando está esperando
+# um lock, que é a causa comum. Este limite cobre o resto: migration realmente
+# longa, rede ruim, provedor lento.
+preDeployTimeoutSeconds = 600
+
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

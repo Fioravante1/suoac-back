@@ -116,6 +116,21 @@ Outras regras:
 - Os scripts `npm run db:migrate:staging` e `:prod` continuam existindo para situação excepcional
   (aplicar antes do merge, reparar estado). O caminho normal é o deploy.
 
+**Duas defesas contra migration pendurada**, porque deploy travado é pior que deploy falho — ninguém é
+avisado:
+
+1. **`lock_timeout` de 15s na sessão de migration** (`prisma.config.ts`). A causa comum de travamento não
+   é a migration ser lenta: é esperar um lock que outra transação segura, e essa espera é indefinida por
+   padrão. Com o limite, a migration falha com `canceling statement due to lock timeout`, o deploy aborta
+   e a versão anterior segue servindo. Vale só para o CLI do Prisma; o runtime monta a própria conexão em
+   `PrismaService`.
+2. **`preDeployTimeoutSeconds = 600`** (`railway.toml`), como teto do tempo total — cobre o que o
+   `lock_timeout` não pega: migration realmente longa, rede ruim, provedor lento.
+
+`statement_timeout` **não** é definido de propósito: ele mataria no meio uma migration legitimamente
+longa, como criação de índice grande ou backfill. O teto de tempo é do `preDeployTimeoutSeconds`, não de
+um limite por statement.
+
 ### Seed
 - O seed é configurado em `prisma.config.ts` (campo `migrations.seed`), **não** no `package.json`.
 - O arquivo de seed fica em `prisma/seed.ts` e usa `PrismaClient` + `@prisma/adapter-pg` diretamente (sem NestJS).
