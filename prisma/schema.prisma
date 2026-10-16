@@ -445,6 +445,10 @@ model PasswordResetRequest {
 
   @@index([email, createdAt])
   @@index([userId])
+  /// O job de purga filtra só por `createdAt`, e o índice composto acima não
+  /// serve: com `email` na frente, o Postgres não o usa para um range apenas de
+  /// data. Mesmo motivo do `@@index([createdAt])` em `AuditLog`.
+  @@index([createdAt])
   @@map("password_reset_requests")
 }
 
