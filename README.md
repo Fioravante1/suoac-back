@@ -145,9 +145,17 @@ está no ar, então toda migration precisa ser compatível com o código anterio
 (remover ou renomear coluna, trocar tipo, tornar `NOT NULL`) exige dois deploys — expand e depois
 contract. A regra completa está no [`AGENTS.md`](./AGENTS.md), seção 3.
 
-**Timeout:** o pre-deploy não tem limite por padrão. O limite é configurável apenas no dashboard do
-Railway (service settings), de 1 a 3600 segundos — vale definir antes de uma migration longa, para o
-deploy não ficar pendurado indefinidamente.
+**Proteção contra migration pendurada**, em duas camadas — deploy travado é pior que deploy falho, porque
+ninguém é avisado:
+
+| Camada | Onde | Papel |
+|--------|------|-------|
+| `lock_timeout = 15s` | `prisma.config.ts` | Primeira linha: a migration desiste quando está esperando um lock, que é a causa comum. Falha com `canceling statement due to lock timeout` |
+| `preDeployTimeoutSeconds = 600` | `railway.toml` | Teto do tempo total: migration longa, rede ruim, provedor lento |
+
+`statement_timeout` não é definido de propósito — mataria no meio uma migration legitimamente longa
+(índice grande, backfill). O `lock_timeout` vale apenas para o CLI do Prisma; a aplicação em runtime monta
+a própria conexão e não é afetada.
 
 ### Workflow de branches
 
