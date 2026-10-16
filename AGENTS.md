@@ -155,6 +155,29 @@ O projeto está configurado com regras severas de qualidade (`ESLint Flat Config
       throw new Error('...');
     }
     ```
+  - **Nunca aninhe ternários**: encadear `a ? x : b ? y : z` obriga quem lê a descartar cada caso anterior para entender o próximo, e o último só se explica por eliminação. Use early returns com cada caso nomeado. Ternário simples, de duas alternativas claras, continua bem-vindo.
+    ```typescript
+    // Errado — cadeia de ternários
+    const status = payment.paidAt ? 'PAID' : payment.dueDate < now ? 'OVERDUE' : 'PENDING';
+
+    // Correto — early returns, cada caso se explica sozinho
+    function resolvePaymentStatus(payment: Payment, now: Date): PaymentStatus {
+      if (payment.paidAt) return 'PAID';
+      if (payment.dueDate < now) return 'OVERDUE';
+      return 'PENDING';
+    }
+    ```
+  - **Identificadores de código são sempre em inglês**: classes, métodos, variáveis, parâmetros, tipos, propriedades de DTO, campos do schema Prisma e chaves de objeto. O português fica para o que é lido por pessoas — comentários, mensagens de erro da API, textos de log e descrições de teste (`describe`/`it`). Nunca misture os dois num mesmo identificador.
+    ```typescript
+    // Correto
+    async function findOverduePayments(): Promise<PaymentResponse[]> { ... }
+    throw new NotFoundException('Passageiro não encontrado');
+    it('deve lançar 409 quando o RG já existe na congregação', () => { ... });
+
+    // Errado
+    async function buscarPagamentosVencidos(): Promise<RespostaPagamento[]> { ... }
+    const statusPagamento = 'pago';
+    ```
 
 ---
 
@@ -507,6 +530,35 @@ Testes end-to-end verificam o **fluxo completo** da aplicação: HTTP request �
 - **Execução:** Rodar com `--runInBand` para evitar race conditions e esgotamento do pool de conexões.
 - **Escopo:** Limitar E2E aos fluxos críticos: autenticação, CRUD principal, fluxos de pagamento. Lógica complexa deve ser coberta por testes unitários.
 
+### Repetição em testes: o que extrair e o que manter
+
+Teste não segue DRY da mesma forma que código de produção. O corpo de um teste precisa contar a
+história inteira — quem lê tem que entender o caso sem pular para outro arquivo. Extrair demais
+produz testes que passam, falham e ninguém sabe por quê.
+
+**Extraia** o setup mecânico que se repete entre arquivos e não diz nada sobre o caso: a montagem do
+`TestingModule` com os mesmos providers, o mock do `PrismaService`, stubs de relógio e limpeza de
+estado global.
+
+**Mantenha no teste** o que dá sentido ao caso: o cenário sendo montado, os dados relevantes e todos
+os `expect`. Se o nome do teste diz "quando o passageiro pertence a outro circuito", a linha que
+coloca o passageiro em outro circuito pertence ao teste, não ao helper.
+
+**Não crie** helper que monta cenário inteiro (`setupTudo()`), nem helper usado por um único arquivo
+— nesse caso a função factory local no próprio `.spec.ts` já resolve, e é o padrão atual do projeto
+(ex: `buildPrismaPassenger()` em `passengers.service.spec.ts`).
+
+Antes de extrair um helper compartilhado, confirme que há **pelo menos dois** arquivos que o usam de
+verdade. Helpers compartilhados ficam em um módulo `*-testing/` dentro do domínio a que pertencem,
+ou em `test/support/` quando atravessarem domínios — nunca exportados pelo módulo NestJS nem pelas
+interfaces públicas, e excluídos da cobertura por não serem código de produção.
+
+**Este padrão é obrigatório para todo teste novo.** Os testes existentes migram pela regra do
+escoteiro: ao tocar num `.spec.ts`, se houver duplicação que o padrão resolve, migre **aquele
+arquivo** junto com a mudança. Não faça mutirão de migração nem migre arquivo que você não precisou
+tocar — refatoração ampla escondida dentro de um PR de funcionalidade torna a revisão impossível. Se
+a migração de um arquivo competir em tamanho com o trabalho da vez, ela vira card próprio.
+
 ### Regras Gerais
 
 - **Nunca ignore testes falhando:** Testes quebrando devem ser corrigidos, não desabilitados com `.skip`.
@@ -533,6 +585,11 @@ npm run test:e2e       # Testes end-to-end
 - Cabeçalho até 50 caracteres; corpo e rodapé com linhas até 72 caracteres
 - Escreva a descrição no imperativo e em português
 - `escopo` é opcional e em `kebab-case` (ex.: `user-form`, `segments-api`)
+- Inclua a chave do card no rodapé: `Refs: SUC-XX` (ver §10)
+- **Nunca** adicione trailers de atribuição a IA — `Co-Authored-By: Claude`, `Generated with…`,
+  `🤖` ou equivalente de qualquer modelo. O histórico do repositório registra autoria humana; a
+  ferramenta usada para escrever o código não é informação de commit. Vale também para descrições
+  de PR e comentários no Jira.
 
 ### Exemplos
 
@@ -559,9 +616,135 @@ Atualizar chamadas nas features de cadastro e perfis.
 
 ---
 
-## 10. Fluxo de Trabalho e AI Assistant
+## 10. Rastreamento do Trabalho no Jira
+
+O planejamento e o acompanhamento deste projeto vivem no Jira, no projeto **SUOAC (`SUC`)** — o
+**mesmo board do frontend**. A regra é simples: **todo trabalho feito neste repositório corresponde
+a um card**. Código sem card é trabalho invisível — ninguém consegue saber o que está em andamento,
+o que ficou pela metade nem por que uma decisão foi tomada.
+
+O site Atlassian é resolvido em tempo de execução via `getAccessibleAtlassianResources`. Não
+registre URL nem `cloudId` em arquivos do repositório.
+
+### Antes de começar qualquer tarefa
+
+1. **Localize o card.** Busque por JQL no projeto `SUC` (por épico, label `backend` ou texto) antes
+   de escrever qualquer linha.
+2. **Se o card não existir, crie antes de codificar** — descrevendo o que será feito, não o que já
+   foi. Card escrito depois vira relatório, não planejamento, e perde a função de avisar os outros
+   do que está em andamento.
+3. **Leia o card inteiro, inclusive os comentários.** Contrato de API acordado com o front, prazos
+   combinados e mudanças de escopo costumam estar lá e não no código.
+4. **Mova para `Em andamento`** quando começar de fato. Esse é o sinal que o board dá a quem olha de
+   fora.
+
+### Durante a execução
+
+- **Desvio do que está escrito no card**: comente no card explicando o motivo **antes** de seguir.
+  Não reescreva a descrição em silêncio — a descrição é o que foi combinado; o comentário é como a
+  realidade mudou.
+- **Decisão técnica relevante** (contrato de endpoint, formato de payload, mudança de schema
+  Prisma, troca de abordagem, limite descoberto): registre como comentário no card. É o que torna a
+  decisão recuperável meses depois — e, no caso de contrato de API, é o que o frontend lê.
+- **Mudança de contrato que afeta o frontend**: comente no card da fatia que consome o endpoint, não
+  apenas no card de backend. Quebra de contrato descoberta pelo front em tempo de integração é
+  retrabalho dos dois lados.
+- **Trabalho fora do escopo descoberto no caminho**: crie um card novo e siga. Inchar o card atual
+  esconde esforço e atrasa o fechamento.
+- **Bloqueio**: comente dizendo o que está bloqueando e de quem/do quê depende, e deixe o card em
+  `Em andamento` ou mova para `A fazer` se for parar de verdade. Bloqueio silencioso é o pior estado
+  possível do board.
+
+### Ao concluir
+
+- A verificação obrigatória (§11) precisa passar inteira.
+- Comente no card: o que foi entregue, branch/PR, o que ficou de fora e por quê. Se o card expõe um
+  endpoint novo, inclua método, rota, payload e códigos de resposta no comentário.
+- `Em análise` enquanto o PR aguarda revisão; `Concluído` apenas **após o merge**.
+- Nunca feche um card cujo trabalho você não executou ou não verificou.
+
+### Commits, branches e PRs
+
+- **Commitar, fazer push e abrir PR acontecem apenas quando o usuário pedir, explicitamente.**
+  Terminar a implementação **não** autoriza commitar. O padrão ao concluir um trabalho é deixá-lo na
+  árvore de trabalho e avisar que está pronto para revisão — o usuário revisa o diff antes de
+  qualquer coisa entrar no histórico. Commitar por conta própria atropela a revisão e obriga a
+  desfazer commits.
+- **Commits são organizados por significado, sempre.** Cada commit é uma unidade que faz sentido
+  sozinha, com um `Refs:` próprio, e pode ser revertida sem derrubar o resto. Nunca agrupe por
+  arquivo, por diretório ou pela ordem em que as coisas foram escritas; nunca misture documentação,
+  ajuste de ferramenta e código de produto no mesmo commit. Migration do Prisma entra no mesmo
+  commit da mudança de schema que a originou.
+- Branch: `tipo/suc-XX-descricao-curta` (ex.: `feat/suc-41-pagamentos-passageiro`).
+- Commit: Conventional Commits conforme §9, com a chave no rodapé — o cabeçalho continua limitado a
+  50 caracteres:
+
+```text
+feat(payments): registrar pagamento de passageiro
+
+Adiciona endpoint de criacao, validacao de valor contra o saldo da
+inscricao e log da mutacao.
+
+Refs: SUC-41
+```
+
+- Título do PR começa com a chave: `SUC-41 — pagamento de passageiro`.
+- **Todas estas seções são obrigatórias no corpo do PR**: card, o que muda, por que, como verificar,
+  riscos e checklist. "Nada" é resposta válida para riscos; deixar a seção em branco não é. Quando o
+  PR alterar contrato de API, migration ou variável de ambiente, diga isso explicitamente em
+  **riscos**.
+- Um PR por card, sempre que possível. Quando um PR carregar mais de um card — o que deve ser
+  exceção justificada —, o título leva o card principal e a seção **Card** lista todos.
+
+### Convenções do projeto SUC
+
+- Tipos disponíveis: **Epic**, **História**, **Tarefa**, **Subtask**. **Não existe o tipo Bug** —
+  use `Tarefa` com a label `bug`.
+- **Não há Story Points nem Prioridade** configurados. Não invente campos: a organização é por
+  **label**.
+- Trabalho de backend fica **no mesmo projeto do frontend**, com a label `backend`, dentro do épico
+  da fatia que o consome — a dependência entre front e API precisa ser visível no mesmo board.
+- Labels em uso: `redesign`, `fatia-N`, `frontend`, `backend`, `design-system`, `feature-flags`,
+  `corte-legado`, `divida-temporaria`, `decisao`, `testes`, `documentacao`, `bug`.
+- Hierarquia: Epic → História/Tarefa. Histórias descrevem o que o usuário ganha; Tarefas descrevem
+  trabalho técnico, de infraestrutura ou de backend.
+
+### Como um card deve ser escrito
+
+Um card é lido por alguém — ou por um agente — que não participou da conversa que o originou. Ele
+precisa bastar sozinho.
+
+Todo card tem:
+
+- **Título**: uma ação concreta, não um tema. "Registrar pagamento de passageiro", não "Pagamentos".
+- **Contexto**: por que o card existe e o que há hoje. Quando algo não existe no sistema, diga isso
+  explicitamente — é a informação que mais economiza tempo de quem for executar.
+- **Escopo** e, quando houver risco de confusão, **fora de escopo**.
+- **Critérios de aceite verificáveis**, em checklist, cobrindo também os **casos de erro** (403 de
+  outro circuito, 404, 409 de unicidade, 422 de regra de negócio) e não apenas o caminho feliz.
+- **Contrato esperado**, quando o card expõe endpoint: rota, método, payload e códigos de resposta.
+- **Dependências** nomeadas pela chave do card (`Depende de SUC-35`).
+- **Decisões pendentes** explicitadas, com quem decide e quando — nunca escondidas numa frase vaga.
+
+Não são aceitáveis: card de uma linha, título genérico ("melhorar a API"), critério de aceite não
+verificável ("ficar rápido"), ou escopo que só existe na cabeça de quem escreveu.
+
+### O que não fazer
+
+- Criar card duplicado sem buscar antes.
+- Usar o Jira como changelog de commits — o histórico do Git já faz isso. O card registra
+  **intenção, decisão e estado**.
+- Marcar como `Concluído` algo parcialmente entregue; o correto é comentar o que falta e manter o
+  estado real.
+- Alterar cards de épicos de fatias futuras para refletir ideias novas sem registrar o porquê.
+
+---
+
+## 11. Fluxo de Trabalho e AI Assistant
 
 Quando solicitado para implementar uma nova funcionalidade:
+0. **Jira:** Localize (ou crie) o card no projeto `SUC` com a label `backend` e mova para
+   `Em andamento` — ver §10.
 1. **Pense na Arquitetura:** Verifique em qual módulo a nova lógica pertence. Se não existe, crie o módulo.
 2. **SOLID Primeiro:** Separe DTOs, crie o Controller lidando só com a requisição, e o Service para a lógica.
 3. **Type Safety:** Garanta que todas as interfaces, retornos e payloads tenham tipagem completa. NUNCA sugira a desabilitação de regras do ESLint com `// eslint-disable-next-line` (apenas em exceções justificáveis de integração com bibliotecas untyped antigas).
@@ -577,4 +760,27 @@ Quando solicitado para implementar uma nova funcionalidade:
 6. **Postman:** Atualize sempre o arquivo `docs/suoac_postman_collection.json` com os novos endpoints criados, e se necessário, o arquivo `docs/suoac_postman_environment.json` com novas variáveis.
 7. **README:** Sempre que houver mudança relevante no setup do projeto, dependências, scripts, variáveis de ambiente ou instruções de desenvolvimento/deploy, atualize o `README.md` na raiz do repositório para refletir o estado atual.
 8. **Progresso:** Ao concluir a implementação de uma feature, atualize o arquivo `PROGRESS.md` na raiz do repositório registrando o que foi implementado, decisões relevantes e o estado atual do projeto.
-9. **Verificação:** Ao finalizar, o código deve passar ileso pelo `npm run typecheck`, `npm run lint` e `npm run test`.
+9. **Verificação obrigatória:** Antes de considerar a mudança terminada, rode e deixe passar ileso:
+
+   ```bash
+   npm run check
+   ```
+
+   Esse comando executa, em sequência:
+
+   ```bash
+   npm run typecheck
+   npm run lint
+   npm run test
+   npm run format:check
+   ```
+
+   Atalhos: `npm run validate` (alias de `check`), `npm run lint:fix` e `npm run format` para
+   corrigir. Testes E2E (`npm run test:e2e`) **não** entram no `check` — exigem banco em Docker e
+   rodam em job próprio no CI; rode-os quando a mudança tocar um fluxo crítico (autenticação, CRUD
+   principal, pagamentos).
+10. **Jira:** Comente no card o que foi entregue e atualize o estado dele — ver §10.
+
+Não implemente atalhos que enfraqueçam type safety, lint, arquitetura ou testes. Se uma regra
+parecer inadequada, explique o motivo e proponha ajuste explícito neste arquivo em vez de contornar
+localmente.
