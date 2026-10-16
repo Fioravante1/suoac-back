@@ -6,13 +6,20 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { PasswordResetVerificationDto } from './dto/password-reset-verification.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { AuthResponse } from './interfaces/auth-response.interface';
+import { PasswordResetService } from './password-reset.service';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordResetService: PasswordResetService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -40,5 +47,31 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async changePassword(@CurrentUser('sub') userId: string, @Body() dto: ChangePasswordDto): Promise<AuthResponse> {
     return this.authService.changePassword(userId, dto);
+  }
+
+  /**
+   * Responde sempre `204`, exista ou não a conta: status, corpo e tempo de
+   * resposta iguais impedem usar o endpoint para descobrir e-mails cadastrados.
+   */
+  @Public()
+  @Post('password-reset-requests')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto): Promise<void> {
+    return this.passwordResetService.requestReset(dto);
+  }
+
+  /** Estado do token sem consumi-lo: `204` válido, `400`/`409`/`410` nos demais. */
+  @Public()
+  @Post('password-reset-verifications')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async verifyPasswordResetToken(@Body() dto: PasswordResetVerificationDto): Promise<void> {
+    return this.passwordResetService.verifyToken(dto);
+  }
+
+  @Public()
+  @Post('password-resets')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    return this.passwordResetService.resetPassword(dto);
   }
 }

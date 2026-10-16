@@ -57,6 +57,11 @@ async function bootstrap(): Promise<void> {
   const authRateLimitMax = Number.isInteger(parsedAuthRateLimit) && parsedAuthRateLimit > 0 ? parsedAuthRateLimit : 10;
   const fastifyInstance = app.getHttpAdapter().getInstance();
   const authRateLimiter = fastifyInstance.rateLimit({ max: authRateLimitMax, timeWindow: '1 minute' });
+  // As rotas de recuperação de senha ficam de fora de propósito: o frontend é um
+  // BFF e chama a API pelo próprio servidor, então toda solicitação chega pelo
+  // mesmo IP. Um limite de 10/min ali bloquearia usuários legítimos uns pelos
+  // outros sem proteger ninguém. A defesa daquele fluxo é o limite persistente
+  // por e-mail, em PasswordResetService. Ver card SUC-47.
   const authThrottledPaths = new Set(['/auth/login', '/auth/refresh', '/auth/change-password']);
   fastifyInstance.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
