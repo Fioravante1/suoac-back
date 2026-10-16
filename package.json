@@ -8,6 +8,8 @@
   "scripts": {
     "build": "nest build",
     "typecheck": "tsc --noEmit --incremental false",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run format:check",
+    "validate": "npm run check",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
