@@ -35,7 +35,8 @@
     "db:reset": "./scripts/db.sh reset dev",
     "db:studio": "./scripts/db.sh studio dev",
     "db:push": "./scripts/db.sh push dev",
-    "setup:env": "node scripts/setup-env.js"
+    "setup:env": "node scripts/setup-env.js",
+    "email:test": "ts-node scripts/send-test-email.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
