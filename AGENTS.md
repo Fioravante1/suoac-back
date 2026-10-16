@@ -84,6 +84,38 @@ O Prisma v7 gera os tipos do cliente com a anotação `@ts-nocheck`, o que polui
   - `production` → `.env.production`
 - **Fail-fast:** Lança erro se `NODE_ENV` for inválido ou se `DATABASE_URL` não estiver definida.
 
+### Migrations no deploy (expand-and-contract)
+
+O deploy aplica as migrations pendentes **automaticamente**, via `preDeployCommand` no `railway.toml`
+(`npx prisma migrate deploy`). Roda num container separado, **antes** de a nova versão receber tráfego;
+se a migration falhar, o Railway aborta o deploy e a versão anterior continua servindo.
+
+**Isso muda como se escreve migration, e é a regra mais importante desta seção:** o pre-deploy roda
+enquanto a versão **antiga** da aplicação ainda está no ar. Toda migration precisa ser compatível com o
+código anterior, não só com o novo.
+
+- **Mudança aditiva** (coluna nova nullable ou com default, tabela nova, índice novo) pode ir num único
+  deploy. O código antigo ignora o que não conhece.
+- **Mudança destrutiva ou incompatível** — remover coluna, renomear, trocar tipo, tornar `NOT NULL` uma
+  coluna existente — **não pode** ir num único deploy. Divida em dois:
+  1. **expand:** adiciona o novo formato (nullable, com default), e o código novo passa a escrever nos
+     dois lugares;
+  2. **contract:** num deploy posterior, já com todas as instâncias no código novo, remove o antigo.
+- Renomear coluna é sempre dois deploys. `ALTER TABLE ... RENAME` quebra o código antigo no instante em
+  que roda.
+
+Outras regras:
+
+- **Nunca aplique migration no boot da aplicação.** Com várias instâncias elas competem; uma falha
+  deixa o processo em crash-loop em vez de abortar um deploy; e o healthcheck passa a depender do banco.
+- **`migrate deploy` em ambiente remoto, nunca `migrate dev`.** O segundo cria migration, usa shadow
+  database e pode resetar o banco.
+- **Migrations usam `DIRECT_URL`**, a conexão direta do Neon — não o pooler. O `prisma.config.ts` já
+  resolve isso (`DIRECT_URL ?? DATABASE_URL`); o pooler em modo transação atrapalha DDL e lock de
+  migration.
+- Os scripts `npm run db:migrate:staging` e `:prod` continuam existindo para situação excepcional
+  (aplicar antes do merge, reparar estado). O caminho normal é o deploy.
+
 ### Seed
 - O seed é configurado em `prisma.config.ts` (campo `migrations.seed`), **não** no `package.json`.
 - O arquivo de seed fica em `prisma/seed.ts` e usa `PrismaClient` + `@prisma/adapter-pg` diretamente (sem NestJS).

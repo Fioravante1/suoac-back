@@ -1,4 +1,23 @@
+# ============================================================
+# SUOAC Backend — configuração de deploy do Railway
+# ============================================================
+# Config-as-code sobrescreve o que estiver no dashboard, e só vale para o
+# deploy em questão. Ter isso versionado é o ponto: a regra de deploy entra em
+# revisão de código junto com a mudança que a exige.
+# ============================================================
+
 [deploy]
+# Aplica as migrations pendentes ANTES de a nova versão receber tráfego, num
+# container separado. Se falhar, o Railway aborta o deploy e a versão anterior
+# continua servindo — é o que torna seguro automatizar isso.
+#
+# `migrate deploy` apenas aplica o que está pendente: não cria migration, não
+# usa shadow database e nunca reseta. É o comando de ambiente remoto.
+#
+# A conexão vem do `prisma.config.ts`, que prefere DIRECT_URL à DATABASE_URL —
+# migration precisa da conexão direta do Neon, não do pooler.
+preDeployCommand = ["npx prisma migrate deploy"]
+
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

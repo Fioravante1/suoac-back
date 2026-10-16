@@ -58,6 +58,11 @@ A API estará disponível em: `http://localhost:8080`
 
 ## 🗄️ Banco de Dados — Operações por Ambiente
 
+> **Migrations em staging e produção são aplicadas pelo deploy, automaticamente.** O `railway.toml`
+> define `preDeployCommand = ["npx prisma migrate deploy"]`, que roda **antes** de a nova versão receber
+> tráfego. Se a migration falhar, o deploy é abortado e a versão anterior continua servindo. Os comandos
+> manuais abaixo seguem valendo para desenvolvimento e para situação excepcional — não para o dia a dia.
+
 Todas as operações de banco são feitas através do script unificado `scripts/db.sh`, com aliases no `package.json`:
 
 ### Ambientes
@@ -117,6 +122,32 @@ O projeto roda no [Railway](https://railway.app/) com dois environments conectad
 |-------------|--------|------------|---------|------|
 | **production** | `main` | `production` | Desabilitado | JSON (stdout) |
 | **homologacao** | `develop` | `staging` | Habilitado (`/api/docs`) | JSON (stdout) |
+
+### Migrations no deploy
+
+O `railway.toml` é config-as-code e **sobrescreve** o que estiver no dashboard:
+
+```toml
+[deploy]
+preDeployCommand = ["npx prisma migrate deploy"]
+```
+
+| Aspecto | Comportamento |
+|---------|---------------|
+| Quando roda | Entre o build e o deploy, em container separado, antes de receber tráfego |
+| Se falhar | O deploy **não prossegue**; a versão anterior continua servindo |
+| Conexão | `DIRECT_URL` (conexão direta do Neon), resolvida pelo `prisma.config.ts` — nunca o pooler |
+| Comando | `migrate deploy`: aplica o que está pendente, sem criar migration e sem shadow database |
+| Idempotência | Deploy sem migration pendente responde "No pending migrations to apply" e segue |
+
+**Consequência que muda como se escreve migration:** o pre-deploy roda enquanto a versão **antiga** ainda
+está no ar, então toda migration precisa ser compatível com o código anterior. Mudança destrutiva
+(remover ou renomear coluna, trocar tipo, tornar `NOT NULL`) exige dois deploys — expand e depois
+contract. A regra completa está no [`AGENTS.md`](./AGENTS.md), seção 3.
+
+**Timeout:** o pre-deploy não tem limite por padrão. O limite é configurável apenas no dashboard do
+Railway (service settings), de 1 a 3600 segundos — vale definir antes de uma migration longa, para o
+deploy não ficar pendurado indefinidamente.
 
 ### Workflow de branches
 
