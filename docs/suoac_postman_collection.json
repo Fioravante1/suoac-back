@@ -167,6 +167,99 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Request Password Reset",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"coordenador@suoac.dev\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password-reset-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password-reset-requests"
+              ]
+            },
+            "description": "Solicita o link de recuperacao de senha.\n\nResponde sempre 204, exista ou nao a conta — status, corpo e tempo de resposta iguais, para o endpoint nao servir de verificador de contas.\n\nLimite de 3 solicitacoes por hora por e-mail (PASSWORD_RESET_MAX_PER_HOUR); acima disso, 429. E-mails sem conta contam no mesmo balde, para o 429 tambem nao delatar quais existem.\n\nEm desenvolvimento nada e enviado: o link sai no log da aplicacao."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Password Reset Token",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"cole-aqui-o-token-do-link\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password-reset-verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password-reset-verifications"
+              ]
+            },
+            "description": "Informa o estado do token sem consumi-lo, para a tela de redefinicao decidir o que mostrar antes de pedir a senha nova.\n\n204 valido | 400 invalido ou superado por um pedido mais novo | 409 ja utilizado | 410 expirado.\n\nO token vai no corpo, nunca na URL: query string entra em log de acesso, historico do navegador e cabecalho Referer."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"cole-aqui-o-token-do-link\",\n  \"newPassword\": \"NovaSenha@456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/password-resets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "password-resets"
+              ]
+            },
+            "description": "Redefine a senha pelo token do link. Responde 204, sem tokens de sessao — a tela de sucesso leva ao login.\n\nMesmos estados de token do endpoint de verificacao. A senha segue a politica do projeto: minimo 8 caracteres, com maiuscula, minuscula e numero.\n\nA redefinicao encerra todas as sessoes ativas do usuario, inclusive em outros dispositivos: incrementa sessionVersion e limpa o refresh token."
+          },
+          "response": []
         }
       ]
     },
