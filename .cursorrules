@@ -1,9 +1,6 @@
-# SUOAC Backend - Diretrizes para Agentes de IA
+# SUOAC Backend — diretrizes para agentes de IA
 
-Todas as regras, padroes arquiteturais e boas praticas estao centralizadas em um unico arquivo:
-
-**Leia e siga rigorosamente o arquivo [`AGENTS.md`](./AGENTS.md).**
-
-Ele e a fonte unica de verdade para o projeto. Nenhuma regra deve ser duplicada aqui.
+As regras do projeto estão em [`AGENTS.md`](./AGENTS.md), que é a porta de entrada, e nos arquivos
+de `.claude/rules/`, referenciados por ele. Leia os dois antes de alterar código.
 
 @AGENTS.md
