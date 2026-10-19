@@ -143,7 +143,7 @@ preDeployCommand = ["npx prisma migrate deploy"]
 **Consequência que muda como se escreve migration:** o pre-deploy roda enquanto a versão **antiga** ainda
 está no ar, então toda migration precisa ser compatível com o código anterior. Mudança destrutiva
 (remover ou renomear coluna, trocar tipo, tornar `NOT NULL`) exige dois deploys — expand e depois
-contract. A regra completa está no [`AGENTS.md`](./AGENTS.md), seção 3.
+contract. A regra completa está em [`.claude/rules/prisma-e-banco.md`](./.claude/rules/prisma-e-banco.md).
 
 **Proteção contra migration pendurada**, em duas camadas — deploy travado é pior que deploy falho, porque
 ninguém é avisado:
