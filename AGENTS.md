@@ -33,7 +33,7 @@ carrega as regras de Prisma; mexer num script de banco não carrega as de Swagge
 | `swagger.md` | controllers e DTOs |
 | `logging.md` | services, `src/common/logger/**`, `main.ts` |
 | `hashing-de-senhas.md` | `src/common/hashing/**`, `src/auth/**`, `src/users/**` |
-| `autenticacao-jwt.md` | `src/auth/**`, guards e decorators |
+| `autenticacao-jwt.md` | `src/auth/**` — guards e decorators moram lá — e qualquer `*.guard.ts` |
 | `autorizacao-por-circuito.md` | **services, guards e controllers** — é a regra de isolamento multi-tenant |
 | `estilo-de-codigo.md` | `**/*.ts` |
 | `testes.md` | `**/*.spec.ts`, `**/*.e2e-spec.ts`, `test/**` |
