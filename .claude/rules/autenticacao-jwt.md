@@ -1,8 +1,6 @@
 ---
 paths:
   - "src/auth/**"
-  - "src/common/guards/**"
-  - "src/common/decorators/**"
   - "src/**/*.guard.ts"
 ---
 
