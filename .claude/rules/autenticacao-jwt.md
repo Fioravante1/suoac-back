@@ -24,7 +24,7 @@ paths:
    - Usar `@Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')` no controller/handler
    - Sem `@Roles()` definido → permite qualquer usuario autenticado
 3. **`CircuitOwnershipGuard`** — Verifica ownership do circuito em rotas com `:circuitId` no path.
-   - Ver seção 7.7 para detalhes
+   - Ver `.claude/rules/autorizacao-por-circuito.md` para detalhes
 
 ### Regras Gerais de Guards
 - **Guards sao a primeira barreira, nao a unica barreira:** guards validam autenticacao, role e parametros estruturais da rota. Services ainda **DEVEM** validar ownership do recurso real carregado do banco antes de retornar ou alterar dados.
