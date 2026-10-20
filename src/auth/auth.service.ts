@@ -12,6 +12,7 @@ import type { LoginDto } from './dto/login.dto';
 import type { RefreshTokenDto } from './dto/refresh-token.dto';
 import type { AuthResponse } from './interfaces/auth-response.interface';
 import type { JwtPayload } from './interfaces/jwt-payload.interface';
+import type { SessionUser } from './interfaces/session-user.interface';
 
 // Hash Argon2id válido (mesmos parâmetros do projeto) usado apenas para equalizar
 // o tempo de resposta do login quando o usuário não existe / não tem senha,
@@ -69,19 +70,11 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais invalidas');
     }
 
-    const tokens = await this.generateTokens(user);
-
-    await this.prisma.client.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
-    });
+    const session = await this.issueSession(user);
 
     this.logger.log(`Login bem-sucedido — userId=${user.id}`);
 
-    return {
-      ...tokens,
-      user: this.toUserResponse(user),
-    };
+    return session;
   }
 
   async refreshTokens(dto: RefreshTokenDto): Promise<AuthResponse> {
@@ -110,19 +103,11 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token invalido');
     }
 
-    const tokens = await this.generateTokens(user);
-
-    await this.prisma.client.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
-    });
+    const session = await this.issueSession(user);
 
     this.logger.log(`Tokens renovados — userId=${user.id}`);
 
-    return {
-      ...tokens,
-      user: this.toUserResponse(user),
-    };
+    return session;
   }
 
   async logout(userId: string): Promise<void> {
@@ -173,12 +158,7 @@ export class AuthService {
 
     // O token nasce com a versão já incrementada, para a sessão que trocou a
     // senha continuar válida enquanto as demais caem no próximo request.
-    const tokens = await this.generateTokens(updatedUser);
-
-    await this.prisma.client.user.update({
-      where: { id: userId },
-      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
-    });
+    const session = await this.issueSession(updatedUser);
 
     this.logger.log(`Senha alterada — userId=${userId}`);
 
@@ -189,9 +169,27 @@ export class AuthService {
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: userId }, 'Falha ao gravar audit log'));
 
+    return session;
+  }
+
+  /**
+   * Abre uma sessão: emite o par de tokens e grava o hash do refresh.
+   *
+   * É o caminho único de nascimento de sessão — login, renovação, troca de senha
+   * e autocadastro de circuito (SUC-37) passam por aqui, em vez de cada um
+   * repetir a sequência de gerar, gravar e mapear.
+   */
+  async issueSession(user: SessionUser): Promise<AuthResponse> {
+    const tokens = await this.generateTokens(user);
+
+    await this.prisma.client.user.update({
+      where: { id: user.id },
+      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
+    });
+
     return {
       ...tokens,
-      user: this.toUserResponse(updatedUser),
+      user: this.toUserResponse(user),
     };
   }
 
