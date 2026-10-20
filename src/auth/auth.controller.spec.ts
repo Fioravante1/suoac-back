@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import type { UserResponse } from '../users/interfaces/user-response.interface';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CircuitSignupService } from './circuit-signup.service';
 import type { AuthResponse } from './interfaces/auth-response.interface';
 import { PasswordResetService } from './password-reset.service';
 
@@ -39,6 +40,7 @@ describe('AuthController', () => {
   let controller: AuthController;
   let serviceMock: jest.Mocked<Pick<AuthService, 'login' | 'refreshTokens' | 'logout' | 'changePassword'>>;
   let passwordResetMock: jest.Mocked<Pick<PasswordResetService, 'requestReset' | 'verifyToken' | 'resetPassword'>>;
+  let circuitSignupMock: jest.Mocked<Pick<CircuitSignupService, 'requestSignup' | 'confirmSignup'>>;
 
   beforeEach(async () => {
     serviceMock = {
@@ -54,11 +56,17 @@ describe('AuthController', () => {
       resetPassword: jest.fn(),
     };
 
+    circuitSignupMock = {
+      requestSignup: jest.fn(),
+      confirmSignup: jest.fn(),
+    };
+
     const module = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: serviceMock },
         { provide: PasswordResetService, useValue: passwordResetMock },
+        { provide: CircuitSignupService, useValue: circuitSignupMock },
       ],
     }).compile();
 
@@ -210,6 +218,53 @@ describe('AuthController', () => {
       passwordResetMock.resetPassword.mockRejectedValue(new BadRequestException('Token de recuperacao invalido'));
 
       await expect(controller.resetPassword(dto)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ── requestCircuitSignup ───────────────────────────────────────
+  describe('requestCircuitSignup', () => {
+    const dto = {
+      coordinator: { name: 'João Silva', email: 'joao@example.com', phone: '11987654321', password: 'Senha123' },
+      circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' },
+      congregations: [{ code: 'SP17-CENTRAL', name: 'Central' }],
+    };
+
+    it('deve delegar ao service e nao retornar conteudo', async () => {
+      circuitSignupMock.requestSignup.mockResolvedValue(undefined);
+
+      const result = await controller.requestCircuitSignup(dto);
+
+      expect(result).toBeUndefined();
+      expect(circuitSignupMock.requestSignup).toHaveBeenCalledWith(dto);
+    });
+
+    it('deve propagar ConflictException de codigo de circuito em uso', async () => {
+      circuitSignupMock.requestSignup.mockRejectedValue(
+        new ConflictException('Este codigo de circuito ja esta em uso'),
+      );
+
+      await expect(controller.requestCircuitSignup(dto)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  // ── confirmCircuitSignup ───────────────────────────────────────
+  describe('confirmCircuitSignup', () => {
+    const dto = { email: 'joao@example.com', code: '042137' };
+
+    it('deve delegar ao service e retornar a sessao autenticada', async () => {
+      const expected = buildAuthResponse();
+      circuitSignupMock.confirmSignup.mockResolvedValue(expected);
+
+      const result = await controller.confirmCircuitSignup(dto);
+
+      expect(result).toEqual(expected);
+      expect(circuitSignupMock.confirmSignup).toHaveBeenCalledWith(dto);
+    });
+
+    it('deve propagar GoneException de codigo expirado', async () => {
+      circuitSignupMock.confirmSignup.mockRejectedValue(new GoneException('Codigo de confirmacao expirado'));
+
+      await expect(controller.confirmCircuitSignup(dto)).rejects.toThrow(GoneException);
     });
   });
 });
