@@ -68,6 +68,70 @@ describe('AllExceptionsFilter', () => {
       expectResponse(reply, 409, { statusCode: 409, message: 'Email já existe', error: 'Conflict' });
     });
 
+    it('deve repassar o campo que causou o erro quando o service o informa', () => {
+      // O autocadastro (SUC-37) tem três conflitos diferentes respondendo 409, e
+      // a tela só sabe onde pintar o erro por este campo.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Este codigo de circuito ja esta em uso',
+        error: 'Conflict',
+        field: 'circuit.code',
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expectResponse(reply, 409, { field: 'circuit.code' });
+    });
+
+    it('deve repassar a lista de campos em conflito', () => {
+      // O autocadastro reporta todos os conflitos de unicidade de uma vez, para
+      // o usuário corrigir tudo num envio só.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Este codigo de circuito ja esta em uso',
+        error: 'Conflict',
+        field: 'circuit.code',
+        fields: [
+          { field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' },
+          { field: 'circuit.name', message: 'Ja existe um circuito com este nome' },
+        ],
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expectResponse(reply, 409, {
+        field: 'circuit.code',
+        fields: [
+          { field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' },
+          { field: 'circuit.name', message: 'Ja existe um circuito com este nome' },
+        ],
+      });
+    });
+
+    it('nao deve inventar o campo quando a excecao nao o traz', () => {
+      const exception = new ConflictException('Email já existe');
+
+      const { reply } = catchException(filter, exception);
+
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ field: expect.anything() }));
+    });
+
+    it('nao deve deixar campos nao previstos vazarem para a resposta', () => {
+      // O corpo de erro é contrato público: repassar o objeto inteiro faria
+      // qualquer coisa anexada à exceção virar resposta sem ninguém decidir.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Conflito',
+        error: 'Conflict',
+        field: 'circuit.code',
+        internalQuery: 'SELECT * FROM circuits',
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ internalQuery: expect.anything() }));
+    });
+
     it('deve preservar BadRequestException com array de mensagens do ValidationPipe', () => {
       const messages = ['name must be a string', 'city should not be empty'];
       const exception = new BadRequestException({ statusCode: 400, message: messages, error: 'Bad Request' });

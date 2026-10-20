@@ -6,6 +6,23 @@ interface ErrorResponseBody {
   statusCode: number;
   message: string | string[];
   error: string;
+  /**
+   * Campo do payload que causou o erro, quando o service souber apontá-lo — por
+   * exemplo `circuit.code` no autocadastro (SUC-37), onde conflitos diferentes
+   * respondem `409` e a tela precisa saber em qual campo pintar o erro.
+   *
+   * Opcional de propósito: o formato de erro do projeto continua sendo
+   * `statusCode`/`message`/`error`, e este campo só aparece quando existe.
+   */
+  field?: string;
+  /**
+   * Todos os campos em conflito, quando houver mais de um. O autocadastro
+   * reporta os conflitos de unicidade de uma vez, para o usuário corrigir tudo
+   * num envio — cada envio consome uma ficha do limite por e-mail.
+   *
+   * `field` segue apontando o primeiro, para quem só sabe ler um.
+   */
+  fields?: { field: string; message: string }[];
 }
 
 @Catch()
@@ -59,12 +76,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     const res = response as Record<string, unknown>;
+    const field = res['field'];
+    const fields = res['fields'];
+
     return {
       statusCode: status,
       body: {
         statusCode: status,
         message: (res['message'] as string | string[]) ?? exception.message,
         error: (res['error'] as string) ?? exception.name,
+        // Repassados por nome, não por espalhamento do objeto: o corpo de erro é
+        // contrato público, e `...res` deixaria qualquer campo que um service
+        // colocasse na exceção vazar para a resposta sem ninguém decidir isso.
+        ...(typeof field === 'string' && { field }),
+        ...(Array.isArray(fields) && { fields: fields as { field: string; message: string }[] }),
       },
     };
   }
