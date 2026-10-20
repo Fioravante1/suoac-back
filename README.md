@@ -183,6 +183,7 @@ Cada environment deve ter suas próprias env vars configuradas no dashboard:
 - `FRONTEND_URL` — base dos links enviados por e-mail (obrigatória). Produção: `https://suoac.com`; staging: `https://staging.suoac.com`. O link de recuperação é `${FRONTEND_URL}/reset-password?token=...`
 - `RESEND_API_KEY`, `EMAIL_FROM` — credenciais do Resend (obrigatórias fora de dev/test). Uma chave por ambiente, para poder revogar staging sem derrubar produção. Remetente do projeto: `SUOAC <nao-responda@mail.suoac.com>`
 - `PASSWORD_RESET_MAX_PER_HOUR` — solicitações de recuperação de senha por hora, por e-mail (default: `3`)
+- `CIRCUIT_SIGNUP_MAX_PER_HOUR` — tentativas de autocadastro de circuito por hora, por e-mail (default: `5`)
 
 Fora do Railway, usadas apenas pelo seed de produção (`npm run db:seed:prod`, em `prisma/seeds/prod.ts`): `ADMIN_EMAIL` e `ADMIN_PASSWORD`, que criam o primeiro coordenador. Sem elas o seed cai em valores de fallback e avisa no console.
 
@@ -227,6 +228,25 @@ Três endpoints públicos, todos com o token no corpo da requisição — nunca 
 - **Limite por e-mail** (`PASSWORD_RESET_MAX_PER_HOUR`, default 3): é a defesa real deste fluxo, e não o limite por IP. As rotas de recuperação ficam **fora** do `AUTH_RATE_LIMIT_MAX` de propósito: atrás do BFF, um limite de 10/min por IP bloquearia usuários legítimos uns pelos outros sem proteger ninguém. Tentativas para e-mails sem conta contam no mesmo balde, para o `429` também não revelar quais existem.
 - **Sessões**: a redefinição incrementa `User.sessionVersion` e limpa o refresh token. O `JwtAuthGuard` compara a versão do token com a do banco em toda request autenticada, então o access token roubado morre no instante da redefinição em vez de sobreviver até expirar. A troca voluntária de senha (`/auth/change-password`) faz o mesmo, mantendo válida apenas a sessão que trocou.
 - **Envio**: boundary `EmailSender` em `src/common/email/`. Em `development` e `test` nada é enviado — o `LogEmailSender` registra a mensagem, e **o link de recuperação sai no log da aplicação**, que é como se testa o fluxo localmente. Fora disso, `ResendEmailSender` fala com a API HTTP do Resend, com timeout de 10s e registrando o `messageId` devolvido (é por ele que se rastreia uma entrega no painel do Resend).
+
+### Autocadastro de circuito
+
+Dois endpoints públicos. É o único caminho pelo qual um circuito nasce sem ninguém já estar dentro do sistema.
+
+| Endpoint | Resposta |
+|----------|----------|
+| `POST /auth/circuit-signups` | `202` rascunho guardado e código enviado · `409` conflito de unicidade · `422` código repetido na própria lista · `429` acima do limite |
+| `POST /auth/circuit-signups/confirmations` | `201` com sessão autenticada · `400` código inválido · `409` já confirmado · `410` expirado ou tentativas esgotadas |
+
+- **Nada é criado até a confirmação.** O primeiro endpoint valida o cadastro inteiro e grava **uma linha** em `circuit_signup_requests`, com a senha já em Argon2 e o SHA-256 do código. Circuito, congregações e usuário coordenador nascem juntos, numa transação, só quando o código é digitado. Abandonar o fluxo não deixa circuito meio-criado nem código de circuito reservado — deixa um rascunho que expira em 30 minutos e é purgado.
+- **A senha não volta pelo cliente.** Ela é hasheada no primeiro passo e nunca mais trafega; a confirmação manda apenas e-mail e código. Era a alternativa descartada: guardar o payload no navegador entre as etapas.
+- **Código vinculado ao e-mail.** O hash é de `email:code`, não só do código — seis dígitos dariam 10^6 hashes pré-computáveis, uma tabela que cabe num pen drive. A comparação é de tempo constante.
+- **Teto de tentativas** (5 por rascunho): o limite por e-mail cobre o envio, não o chute. Esgotadas as tentativas, o rascunho morre e responde `410`, como expirado — porque é o que ele virou.
+- **Limite por e-mail** (`CIRCUIT_SIGNUP_MAX_PER_HOUR`, default 5), contado dentro da transação com `pg_advisory_xact_lock`, pelo mesmo motivo da recuperação de senha. Tentativas recusadas por conflito também geram linha e contam no balde — se só as aceitas contassem, sondar e-mails sairia de graça. **Ressalva conhecida:** o limite é por e-mail, então protege o dono do endereço de uma enxurrada de códigos, mas não impede sondar um e-mail diferente a cada tentativa. O `409` de e-mail duplicado é um oráculo de enumeração assumido: toda tela de cadastro precisa dizer que o e-mail já está em uso.
+- **Conflito aponta os campos.** O corpo do `409`/`422` carrega `fields` com **todos** os conflitos de uma vez (`coordinator.email`, `circuit.code`, `circuit.name`, `congregations.N.code`), e `field` apontando o primeiro para quem só sabe ler um. Reportar um conflito por vez obrigava um envio por problema descoberto, e cada envio gasta uma ficha do limite por e-mail — quem tivesse quatro conflitos ficava sem orçamento antes de corrigir tudo. A unicidade é checada duas vezes: ao guardar o rascunho, para o erro chegar cedo, e na consolidação, porque entre uma e outra passam 30 minutos.
+- **O payload é descartado na consolidação.** Depois que os dados viram `users`, `circuits` e `congregations`, mantê-los no rascunho guardaria nome, e-mail, telefone e hash de senha por mais 7 dias sem motivo. O `codeHash` fica, porque é por ele que o duplo clique reencontra o rascunho usado e recebe `409` em vez de `400`.
+- **Duplo clique não cria dois circuitos:** o rascunho é marcado como usado dentro da mesma transação que cria tudo, então a segunda chamada não encontra rascunho pendente e recebe `409`.
+- **Reenviar é a mesma chamada** do envio inicial: o rascunho novo aposenta o anterior, porque a confirmação olha sempre o mais recente com código emitido.
 
 ### Envio de e-mail (Resend)
 

@@ -260,6 +260,69 @@
             "description": "Redefine a senha pelo token do link. Responde 204, sem tokens de sessao — a tela de sucesso leva ao login.\n\nMesmos estados de token do endpoint de verificacao. A senha segue a politica do projeto: minimo 8 caracteres, com maiuscula, minuscula e numero.\n\nA redefinicao encerra todas as sessoes ativas do usuario, inclusive em outros dispositivos: incrementa sessionVersion e limpa o refresh token."
           },
           "response": []
+        },
+        {
+          "name": "Request Circuit Signup",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coordinator\": {\n    \"name\": \"João Silva\",\n    \"email\": \"joao.silva@suoac.dev\",\n    \"phone\": \"(11) 98765-4321\",\n    \"password\": \"Senha123\"\n  },\n  \"circuit\": {\n    \"code\": \"SP-17\",\n    \"name\": \"Circuito São Paulo 17\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\"\n  },\n  \"congregations\": [\n    {\n      \"code\": \"SP17-CENTRAL\",\n      \"name\": \"Central\"\n    },\n    {\n      \"code\": \"SP17-JARDIM\",\n      \"name\": \"Jardim\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/circuit-signups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "circuit-signups"
+              ]
+            },
+            "description": "Autocadastro de circuito, passo 1 de 2: guarda o rascunho e envia o codigo de 6 digitos por e-mail.\n\nResponde 202, nao 201: nada foi criado ainda. Circuito, congregacoes e usuario coordenador nascem apenas na confirmacao (POST /auth/circuit-signups/confirmations). Durante o fluxo o banco tem so uma linha em circuit_signup_requests, que expira em 30 minutos.\n\nA primeira congregacao da lista e a do proprio coordenador — e ela que vai para o congregationId do usuario, e a ordem importa.\n\nO celular aceita mascara: a API guarda apenas os digitos.\n\nConflitos vem como 409 com TODOS os campos em conflito na lista 'fields', mais 'field' apontando o primeiro (para quem le so um). Campos possiveis: coordinator.email (e-mail ja cadastrado), circuit.code (codigo em uso), circuit.name (nome em uso) e congregations.N.code (codigo de congregacao em uso, N e o indice da linha). Reportar um conflito por vez obrigava um envio por problema, e cada envio gasta uma ficha do limite por e-mail. Codigo repetido dentro da propria lista vem como 422, com 'field'.\n\nLimite de 5 tentativas por hora por e-mail (CIRCUIT_SIGNUP_MAX_PER_HOUR); acima disso, 429. As tentativas recusadas por conflito contam no mesmo balde. Nao ha limite por IP aqui, pelo mesmo motivo da recuperacao de senha: o frontend e um BFF e todo request chega pelo mesmo IP (SUC-47).\n\nChamar de novo com o mesmo payload e o 'reenviar' da tela: o rascunho novo aposenta o anterior."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Circuit Signup",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joao.silva@suoac.dev\",\n  \"code\": \"042137\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/circuit-signups/confirmations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "circuit-signups",
+                "confirmations"
+              ]
+            },
+            "description": "Autocadastro de circuito, passo 2 de 2: valida o codigo e consolida o cadastro.\n\nCria circuito, congregacoes e usuario coordenador numa transacao so, e responde 201 com { accessToken, refreshToken, user } — sessao autenticada, para a tela de sucesso entrar no painel sem passar pelo login.\n\n400 codigo invalido; 409 cadastro ja confirmado (duplo clique cai aqui, e significa que deu certo antes); 410 codigo expirado, rascunho expirado ou tentativas esgotadas — nos tres casos o caminho e recomecar o cadastro, nao redigitar.\n\nSao toleradas 5 tentativas erradas por rascunho: seis digitos sao apenas 10^6 combinacoes, e o limite por e-mail cobre o envio, nao o chute.\n\nEm desenvolvimento nada e enviado por e-mail: o codigo sai no log da aplicacao.\n\nAo consolidar, o payload do rascunho e descartado (os dados ja estao em users/circuits/congregations); o hash do codigo e preservado, e e por ele que o duplo clique recebe 409 em vez de 400."
+          },
+          "response": []
         }
       ]
     },
