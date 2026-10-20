@@ -17,9 +17,18 @@ const USER_ID = 'u1u2u3u4-0000-0000-0000-000000000001';
 const FAKE_HASH = '$argon2id$v=19$m=65536,t=3,p=1$fakesalt$fakehash';
 
 // ── Helpers ──────────────────────────────────────────────────────
-function buildCircuit(): { id: string; name: string; city: string; state: string; createdAt: Date; updatedAt: Date } {
+function buildCircuit(): {
+  id: string;
+  code: string | null;
+  name: string;
+  city: string;
+  state: string;
+  createdAt: Date;
+  updatedAt: Date;
+} {
   return {
     id: CIRCUIT_ID,
+    code: 'SP-019-A',
     name: 'SP-019 A',
     city: 'São Paulo',
     state: 'SP',
@@ -57,6 +66,7 @@ function buildUserRaw(
     id: string;
     name: string;
     email: string;
+    phone: string | null;
     passwordHash: string | null;
     refreshTokenHash: string | null;
     role: UserRole;
@@ -70,6 +80,7 @@ function buildUserRaw(
   id: string;
   name: string;
   email: string;
+  phone: string | null;
   passwordHash: string | null;
   refreshTokenHash: string | null;
   role: UserRole;
@@ -85,6 +96,7 @@ function buildUserRaw(
     id: overrides.id ?? USER_ID,
     name: overrides.name ?? 'João Silva',
     email: overrides.email ?? 'joao@example.com',
+    phone: overrides.phone ?? null,
     passwordHash: overrides.passwordHash ?? FAKE_HASH,
     refreshTokenHash: overrides.refreshTokenHash ?? null,
     role: overrides.role ?? 'CIRCUIT_COORDINATOR',

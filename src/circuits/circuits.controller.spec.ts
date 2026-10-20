@@ -9,6 +9,7 @@ import type { CircuitResponse } from './interfaces/circuit-response.interface';
 function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse {
   return {
     id: overrides.id ?? 'a1b2c3d4-0000-0000-0000-000000000001',
+    code: overrides.code ?? 'SP-01',
     name: overrides.name ?? 'Circuito SP-01',
     city: overrides.city ?? 'São Paulo',
     state: overrides.state ?? 'SP',

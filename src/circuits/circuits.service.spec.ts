@@ -24,6 +24,7 @@ function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
 function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse {
   return {
     id: overrides.id ?? CIRCUIT_ID,
+    code: overrides.code ?? 'SP-01',
     name: overrides.name ?? 'Circuito SP-01',
     city: overrides.city ?? 'São Paulo',
     state: overrides.state ?? 'SP',
