@@ -23,8 +23,20 @@ describe('parseCircuitSignupPayload', () => {
     const result = parseCircuitSignupPayload(buildRawPayload());
 
     expect(result.coordinator.email).toBe('joao@example.com');
-    expect(result.circuit.code).toBe('SP-17');
+    expect(result.circuit.name).toBe('SP-17');
     expect(result.congregations).toHaveLength(2);
+  });
+
+  it('deve reconstruir o formato canonico sem code', () => {
+    const raw = buildRawPayload();
+    (raw.circuit as Record<string, unknown>).name = 'SP-019 A';
+    delete (raw.circuit as Record<string, unknown>).code;
+
+    expect(parseCircuitSignupPayload(raw).circuit.name).toBe('SP-019 A');
+  });
+
+  it('deve preferir o code de um rascunho legado ao nome descritivo', () => {
+    expect(parseCircuitSignupPayload(buildRawPayload()).circuit.name).toBe('SP-17');
   });
 
   it('deve preservar a ordem das congregacoes', () => {

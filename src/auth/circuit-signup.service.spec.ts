@@ -46,8 +46,7 @@ function buildDto(overrides: Partial<CreateCircuitSignupDto> = {}): CreateCircui
       ...overrides.coordinator,
     },
     circuit: {
-      code: 'SP-17',
-      name: 'Circuito São Paulo 17',
+      name: 'SP-17',
       city: 'São Paulo',
       state: 'SP',
       ...overrides.circuit,
@@ -67,7 +66,7 @@ function hashCode(email: string, code: string): string {
 function buildPayload(): Record<string, unknown> {
   return {
     coordinator: { name: 'João Silva', email: EMAIL, phone: '11987654321', passwordHash: PASSWORD_HASH },
-    circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' },
+    circuit: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
     congregations: [
       { code: 'SP17-CENTRAL', name: 'Central' },
       { code: 'SP17-JARDIM', name: 'Jardim' },
@@ -158,10 +157,9 @@ describe('CircuitSignupService', () => {
 
     service = module.get(CircuitSignupService);
 
-    // Caminho livre por padrão: nenhum e-mail, código ou nome já em uso.
+    // Caminho livre por padrão: nenhum e-mail, circuito ou congregação já em uso.
     prismaMock.circuitSignupRequest.count.mockResolvedValue(0);
     prismaMock.user.findFirst.mockResolvedValue(null);
-    prismaMock.circuit.findUnique.mockResolvedValue(null);
     prismaMock.circuit.findFirst.mockResolvedValue(null);
     prismaMock.congregation.findMany.mockResolvedValue([] as never);
 
@@ -209,6 +207,28 @@ describe('CircuitSignupService', () => {
       expect(JSON.stringify(createCall?.data.payload)).not.toContain('Senha123');
     });
 
+    it('deve guardar o rascunho no formato canonico sem code', async () => {
+      await service.requestSignup(buildDto());
+
+      const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
+      const payload = createCall?.data.payload as { circuit: Record<string, unknown> };
+
+      expect(payload.circuit).toEqual({ name: 'SP-17', city: 'São Paulo', state: 'SP' });
+      expect(payload.circuit).not.toHaveProperty('code');
+    });
+
+    it('deve converter o code legado no name canonico do rascunho', async () => {
+      await service.requestSignup(
+        buildDto({ circuit: { code: 'SP-18', name: 'Circuito São Paulo 18', city: 'São Paulo', state: 'SP' } }),
+      );
+
+      const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
+      const payload = createCall?.data.payload as { circuit: Record<string, unknown> };
+
+      expect(payload.circuit.name).toBe('SP-18');
+      expect(payload.circuit).not.toHaveProperty('code');
+    });
+
     it('nao deve gravar o codigo em claro, apenas o hash', async () => {
       await service.requestSignup(buildDto());
       await flushPendingWork();
@@ -239,21 +259,23 @@ describe('CircuitSignupService', () => {
       expect(emailSenderMock.send).not.toHaveBeenCalled();
     });
 
-    it('deve lancar 409 com o campo do codigo quando o circuito ja existe', async () => {
-      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+    it('deve lancar 409 com o campo canonico quando o circuito ja existe', async () => {
+      prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toMatchObject({
-        response: { field: 'circuit.code' },
+        response: { field: 'circuit.name' },
       });
     });
 
-    it('deve distinguir o conflito de nome do conflito de codigo do circuito', async () => {
+    it('deve manter o campo legado para um cliente que ainda envia code', async () => {
       prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
 
-      // Os dois campos existem e são independentes (SUC-30): a tela precisa
-      // saber em qual deles pintar o erro.
-      await expect(service.requestSignup(buildDto())).rejects.toMatchObject({
-        response: { field: 'circuit.name' },
+      await expect(
+        service.requestSignup(
+          buildDto({ circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' } }),
+        ),
+      ).rejects.toMatchObject({
+        response: { field: 'circuit.code' },
       });
     });
 
@@ -270,33 +292,26 @@ describe('CircuitSignupService', () => {
       // por e-mail para descobrir cada problema — com quatro conflitos, ele
       // ficava sem orçamento antes de conseguir corrigir tudo.
       prismaMock.user.findFirst.mockResolvedValue({ id: USER_ID } as never);
-      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
       prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
       prismaMock.congregation.findMany.mockResolvedValue([{ code: 'SP17-JARDIM' }] as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toMatchObject({
         response: {
-          fields: [
-            { field: 'coordinator.email' },
-            { field: 'circuit.code' },
-            { field: 'circuit.name' },
-            { field: 'congregations.1.code' },
-          ],
+          fields: [{ field: 'coordinator.email' }, { field: 'circuit.name' }, { field: 'congregations.1.code' }],
         },
       });
     });
 
     it('deve manter field apontando o primeiro conflito, para quem le so um', async () => {
-      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
       prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toMatchObject({
-        response: { field: 'circuit.code' },
+        response: { field: 'circuit.name' },
       });
     });
 
     it('deve gastar uma unica tentativa do limite ao reportar varios conflitos', async () => {
-      prismaMock.circuit.findUnique.mockResolvedValue({ id: CIRCUIT_ID } as never);
+      prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
       prismaMock.congregation.findMany.mockResolvedValue([{ code: 'SP17-CENTRAL' }] as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toThrow(ConflictException);
@@ -387,6 +402,14 @@ describe('CircuitSignupService', () => {
       expect(prismaMock.congregation.create).toHaveBeenCalledTimes(1);
       expect(prismaMock.congregation.createMany).toHaveBeenCalledTimes(1);
       expect(prismaMock.user.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('deve fazer dupla escrita interna do identificador durante a transicao', async () => {
+      await service.confirmSignup(confirmDto());
+
+      expect(prismaMock.circuit.create).toHaveBeenCalledWith({
+        data: { code: 'SP-17', name: 'SP-17', city: 'São Paulo', state: 'SP' },
+      });
     });
 
     it('deve ligar o coordenador a primeira congregacao da lista', async () => {
@@ -528,21 +551,17 @@ describe('CircuitSignupService', () => {
       });
     }
 
-    it('deve traduzir unicidade violada na consolidacao para 409 com o campo', async () => {
-      // O código estava livre quando o rascunho nasceu e foi tomado por outro
-      // cadastro dentro dos 30 minutos de validade.
+    it('deve traduzir a constraint legada para o campo canonico', async () => {
       prismaMock.circuit.create.mockRejectedValue(uniqueViolation('Circuit', 'code'));
 
       await expect(service.confirmSignup(confirmDto())).rejects.toMatchObject({
-        response: { field: 'circuit.code' },
+        response: { field: 'circuit.name' },
       });
     });
 
-    it('deve distinguir nome duplicado de codigo duplicado na consolidacao', async () => {
+    it('deve traduzir a constraint canonica para o mesmo campo', async () => {
       prismaMock.circuit.create.mockRejectedValue(uniqueViolation('Circuit', 'name'));
 
-      // Apontar o código quando foi o nome manda o usuário corrigir o campo
-      // errado: ele mudaria o código, que está livre, e falharia de novo.
       await expect(service.confirmSignup(confirmDto())).rejects.toMatchObject({
         response: { field: 'circuit.name' },
       });

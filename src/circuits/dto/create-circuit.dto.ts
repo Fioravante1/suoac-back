@@ -1,9 +1,11 @@
+import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsString, Length } from 'class-validator';
 
 export class CreateCircuitDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
   @IsString()
   @IsNotEmpty()
-  @Length(2, 100)
+  @Length(2, 20)
   name!: string;
 
   @IsString()

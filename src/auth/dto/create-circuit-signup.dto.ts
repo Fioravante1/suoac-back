@@ -5,11 +5,17 @@ import {
   IsArray,
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Length,
   Matches,
+  Validate,
   ValidateNested,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
 import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
 
@@ -28,6 +34,28 @@ function toUpperCase(value: unknown): unknown {
 
 function toLowerCase(value: unknown): unknown {
   return typeof value === 'string' ? value.trim().toLowerCase() : value;
+}
+
+@ValidatorConstraint({ name: 'circuitNameLength', async: false })
+class CircuitNameLengthConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown, args: ValidationArguments): boolean {
+    if (typeof value !== 'string') {
+      return false;
+    }
+
+    const circuit = args.object as CircuitSignupCircuitDto;
+    const maxLength = circuit.code === undefined ? 20 : 150;
+
+    return value.length >= 2 && value.length <= maxLength;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const circuit = args.object as CircuitSignupCircuitDto;
+
+    return circuit.code === undefined
+      ? 'O circuito deve ter entre 2 e 20 caracteres'
+      : 'O nome legado do circuito deve ter entre 2 e 150 caracteres';
+  }
 }
 
 /** Etapa 1 da tela: quem está cadastrando o circuito. */
@@ -62,21 +90,25 @@ export class CircuitSignupCoordinatorDto {
 /** Etapa 2 da tela: o circuito que está nascendo. */
 export class CircuitSignupCircuitDto {
   /**
-   * Código curto do circuito (`SP-17`). Normalizado em maiúsculas antes da
-   * validação, para `sp-17` e `SP-17` serem o mesmo circuito.
+   * Alias temporário para clientes anteriores à correção do contrato. Não faz
+   * parte da API pública e será removido no contract SUC-60.
    */
+  @ApiHideProperty()
   @Transform(({ value }) => toUpperCase(value))
+  @IsOptional()
   @IsString()
   @Length(2, 20)
   @Matches(/^[A-Z0-9]+(-[A-Z0-9]+)*$/, {
     message: 'O código do circuito aceita letras, números e hífen entre eles (ex.: SP-17)',
   })
-  code!: string;
+  code?: string;
 
-  @Transform(({ value }) => toTrimmed(value))
+  /** Identificador real do circuito (`SP-17`, `SP-019 A`). */
+  @ApiProperty({ example: 'SP-17', minLength: 2, maxLength: 20 })
+  @Transform(({ value }) => toUpperCase(value))
   @IsString()
   @IsNotEmpty()
-  @Length(2, 100)
+  @Validate(CircuitNameLengthConstraint)
   name!: string;
 
   @Transform(({ value }) => toTrimmed(value))

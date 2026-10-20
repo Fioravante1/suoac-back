@@ -16,7 +16,6 @@ export type CircuitSignupPayload = {
     passwordHash: string;
   };
   circuit: {
-    code: string;
     name: string;
     city: string;
     state: string;
