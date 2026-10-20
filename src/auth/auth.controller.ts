@@ -1,10 +1,13 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { CircuitSignupService } from './circuit-signup.service';
 import { AllowWhilePasswordChange } from './decorators/allow-while-password-change.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ConfirmCircuitSignupDto } from './dto/confirm-circuit-signup.dto';
+import { CreateCircuitSignupDto } from './dto/create-circuit-signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { PasswordResetVerificationDto } from './dto/password-reset-verification.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -19,6 +22,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly passwordResetService: PasswordResetService,
+    private readonly circuitSignupService: CircuitSignupService,
   ) {}
 
   @Public()
@@ -73,5 +77,27 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
     return this.passwordResetService.resetPassword(dto);
+  }
+
+  /**
+   * Guarda o rascunho do autocadastro e envia o código de confirmação. Responde
+   * `202`, e não `201`: nada foi criado ainda — circuito, congregações e
+   * coordenador nascem só na confirmação.
+   *
+   * Chamar de novo com o mesmo payload é o "reenviar" da tela.
+   */
+  @Public()
+  @Post('circuit-signups')
+  @HttpCode(HttpStatus.ACCEPTED)
+  async requestCircuitSignup(@Body() dto: CreateCircuitSignupDto): Promise<void> {
+    return this.circuitSignupService.requestSignup(dto);
+  }
+
+  /** Consolida o cadastro e devolve sessão autenticada para a tela de sucesso. */
+  @Public()
+  @Post('circuit-signups/confirmations')
+  @HttpCode(HttpStatus.CREATED)
+  async confirmCircuitSignup(@Body() dto: ConfirmCircuitSignupDto): Promise<AuthResponse> {
+    return this.circuitSignupService.confirmSignup(dto);
   }
 }

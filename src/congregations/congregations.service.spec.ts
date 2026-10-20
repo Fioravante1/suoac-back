@@ -41,9 +41,18 @@ function buildExpectedResponse(overrides: Partial<CongregationResponse> = {}): C
   };
 }
 
-function buildCircuit(): { id: string; name: string; city: string; state: string; createdAt: Date; updatedAt: Date } {
+function buildCircuit(): {
+  id: string;
+  code: string | null;
+  name: string;
+  city: string;
+  state: string;
+  createdAt: Date;
+  updatedAt: Date;
+} {
   return {
     id: 'a1b2c3d4-0000-0000-0000-000000000001',
+    code: 'SP-019-A',
     name: 'SP-019 A',
     city: 'São Paulo',
     state: 'SP',

@@ -73,10 +73,16 @@ enum ExpenseCategory {
 // ============================================================
 
 model Circuit {
-  id    String @id @default(uuid()) @db.Uuid
-  name  String @unique @db.VarChar(100)
-  city  String @db.VarChar(100)
-  state String @db.VarChar(2)
+  id    String  @id @default(uuid()) @db.Uuid
+  /// Código curto que identifica o circuito (ex.: `SP-17`), sempre em maiúsculas.
+  ///
+  /// Nulo nos circuitos criados antes do autocadastro (SUC-37): a coluna nasceu
+  /// numa tabela com dados, e `NOT NULL` só pode ser imposto depois que todas as
+  /// linhas tiverem valor — ver SUC-60 e a regra de expand-and-contract.
+  code  String? @unique @db.VarChar(20)
+  name  String  @unique @db.VarChar(100)
+  city  String  @db.VarChar(100)
+  state String  @db.VarChar(2)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -97,7 +103,11 @@ model Congregation {
   id       String  @id @default(uuid()) @db.Uuid
   code     String  @unique @db.VarChar(20)
   name     String  @db.VarChar(150)
-  email    String  @unique @db.VarChar(255)
+  /// Opcional desde o autocadastro (SUC-37): a etapa de congregações coleta
+  /// apenas nome e código, porque o coordenador do circuito não tem como saber o
+  /// e-mail de cada congregação na hora do cadastro. Entra depois, na
+  /// configuração da congregação ou no aceite do convite.
+  email    String? @unique @db.VarChar(255)
   city     String? @db.VarChar(100)
   isActive Boolean @default(true) @map("is_active")
 
@@ -107,11 +117,11 @@ model Congregation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users                    User[]
-  passengers               Passenger[]
-  eventPassengers          EventPassenger[]
-  congregationEventStatus  CongregationEventStatus[]
-  invitations              Invitation[]
+  users                   User[]
+  passengers              Passenger[]
+  eventPassengers         EventPassenger[]
+  congregationEventStatus CongregationEventStatus[]
+  invitations             Invitation[]
 
   @@index([circuitId])
   @@map("congregations")
@@ -122,22 +132,26 @@ model Congregation {
 // ============================================================
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  name         String   @db.VarChar(150)
-  email        String   @unique @db.VarChar(255)
-  passwordHash     String?  @map("password_hash") @db.VarChar(255)
-  refreshTokenHash String?  @map("refresh_token_hash") @db.VarChar(255)
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @db.VarChar(150)
+  email              String   @unique @db.VarChar(255)
+  /// Celular de contato, apenas dígitos com DDD. A máscara do desenho é
+  /// apresentação: guardar `(11) 98765-4321` tornaria qualquer comparação futura
+  /// dependente de formatação.
+  phone              String?  @db.VarChar(20)
+  passwordHash       String?  @map("password_hash") @db.VarChar(255)
+  refreshTokenHash   String?  @map("refresh_token_hash") @db.VarChar(255)
   /// Versao da sessao. Toda redefinicao ou troca de senha incrementa, e o
   /// JwtAuthGuard recusa access tokens emitidos com versao anterior — e o que
   /// mata o token roubado no instante da redefinicao, sem esperar os 15 minutos
   /// de expiracao natural.
-  sessionVersion   Int      @default(0) @map("session_version")
-  role             UserRole
-  isActive     Boolean  @default(true) @map("is_active")
-  mustChangePassword Boolean @default(false) @map("must_change_password")
+  sessionVersion     Int      @default(0) @map("session_version")
+  role               UserRole
+  isActive           Boolean  @default(true) @map("is_active")
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
 
-  circuitId      String  @map("circuit_id") @db.Uuid
-  circuit        Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+  circuitId String  @map("circuit_id") @db.Uuid
+  circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
 
   congregationId String?       @map("congregation_id") @db.Uuid
   congregation   Congregation? @relation(fields: [congregationId], references: [id], onDelete: SetNull)
@@ -145,15 +159,15 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  accounts                Account[]
-  createdEvents           Event[]               @relation("EventCreatedBy")
-  registeredPassengers    EventPassenger[]       @relation("RegisteredBy")
-  registeredPayments      Payment[]              @relation("PaymentRegisteredBy")
-  registeredExpenses      Expense[]              @relation("ExpenseRegisteredBy")
-  finalizedLists          CongregationEventStatus[] @relation("FinalizedBy")
-  createdInvitations      Invitation[]           @relation("InvitationCreatedBy")
-  passwordResetRequests   PasswordResetRequest[]
-  auditLogs               AuditLog[]
+  accounts              Account[]
+  createdEvents         Event[]                   @relation("EventCreatedBy")
+  registeredPassengers  EventPassenger[]          @relation("RegisteredBy")
+  registeredPayments    Payment[]                 @relation("PaymentRegisteredBy")
+  registeredExpenses    Expense[]                 @relation("ExpenseRegisteredBy")
+  finalizedLists        CongregationEventStatus[] @relation("FinalizedBy")
+  createdInvitations    Invitation[]              @relation("InvitationCreatedBy")
+  passwordResetRequests PasswordResetRequest[]
+  auditLogs             AuditLog[]
 
   @@index([circuitId])
   @@index([congregationId])
@@ -195,8 +209,8 @@ model Event {
   state        String  @db.VarChar(2)
   observations String? @db.Text
 
-  circuitId   String @map("circuit_id") @db.Uuid
-  circuit     Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
+  circuitId String  @map("circuit_id") @db.Uuid
+  circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
 
   createdById String @map("created_by_id") @db.Uuid
   createdBy   User   @relation("EventCreatedBy", fields: [createdById], references: [id])
@@ -295,8 +309,8 @@ model EventPassenger {
 }
 
 model EventPassengerDay {
-  id          String   @id @default(uuid()) @db.Uuid
-  checkedIn   Boolean  @default(false) @map("checked_in")
+  id          String    @id @default(uuid()) @db.Uuid
+  checkedIn   Boolean   @default(false) @map("checked_in")
   checkedInAt DateTime? @map("checked_in_at")
 
   eventPassengerId String         @map("event_passenger_id") @db.Uuid
@@ -452,17 +466,80 @@ model PasswordResetRequest {
   @@map("password_reset_requests")
 }
 
+/// Rascunhos de autocadastro de circuito (SUC-37).
+///
+/// Esta tabela é o fluxo inteiro antes da confirmação: enquanto o coordenador
+/// não digita o código de 6 dígitos, não existe circuito, usuário nem
+/// congregação — existe uma linha aqui. Na confirmação, tudo nasce numa
+/// transação e a linha é marcada como usada.
+///
+/// O rascunho **não é um circuito incompleto**: nenhum código fica reservado, e
+/// a unicidade de `Circuit.code` e `Congregation.code` só é imposta na
+/// consolidação. Abandonar o fluxo deixa uma linha que expira e é purgada.
+///
+/// Toda tentativa gera uma linha, inclusive a recusada por e-mail ou código já
+/// em uso — é esse histórico que alimenta o limite por e-mail. Linha sem
+/// `codeHash` nunca teve e-mail enviado, e não guarda `payload`: dados de um
+/// cadastro recusado não têm por que ficar armazenados.
+///
+/// Limitação conhecida: o limite é **por e-mail**, então ele protege o dono do
+/// endereço de receber uma enxurrada de códigos, mas não impede sondar um
+/// e-mail diferente a cada tentativa para descobrir quais já têm conta. O `409`
+/// de e-mail duplicado é um oráculo de enumeração assumido — toda tela de
+/// cadastro precisa dizer ao usuário que o e-mail já está em uso, e o card
+/// SUC-37 pede o erro distinguível de propósito.
+model CircuitSignupRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Sempre normalizado em minúsculas, para que variações de caixa caiam no
+  /// mesmo balde do limite por e-mail.
+  email String @db.VarChar(255)
+
+  /// SHA-256 do código de 6 dígitos. O valor em claro existe somente no e-mail.
+  ///
+  /// Deliberadamente **não** é único: com 6 dígitos, dois rascunhos vivos podem
+  /// sortear o mesmo código, e uma constraint faria o segundo cadastro falhar
+  /// por azar. A busca é sempre pelo rascunho pendente mais recente do e-mail, e
+  /// o código é comparado depois.
+  codeHash String? @map("code_hash") @db.VarChar(64)
+
+  /// Cadastro já validado, com a senha em Argon2 — ela é hasheada aqui, no
+  /// primeiro passo, e nunca mais trafega.
+  ///
+  /// Serializado porque nada aqui é consultável: ou o rascunho vira circuito, ou
+  /// expira. Modelar coordenador, circuito e N congregações em colunas e tabelas
+  /// filhas custaria um schema que só existe para ser lido uma vez.
+  payload Json?
+
+  /// Tentativas de código erradas. Seis dígitos são apenas 10^6 combinações, e
+  /// sem teto de tentativas o código cai por força bruta — o limite por e-mail
+  /// cobre o envio, não o chute.
+  attempts Int @default(0)
+
+  expiresAt DateTime? @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  /// A purga filtra só por `createdAt`, e o índice composto acima não serve:
+  /// com `email` na frente, o Postgres não o usa para um range apenas de data.
+  /// Mesmo motivo do `@@index([createdAt])` em `PasswordResetRequest`.
+  @@index([createdAt])
+  @@map("circuit_signup_requests")
+}
+
 // ============================================================
 // AUDIT LOG
 // ============================================================
 
 model AuditLog {
-  id       String   @id @default(uuid()) @db.Uuid
-  action   String   @db.VarChar(50)
-  entity   String   @db.VarChar(50)
-  entityId String   @map("entity_id") @db.Uuid
+  id       String  @id @default(uuid()) @db.Uuid
+  action   String  @db.VarChar(50)
+  entity   String  @db.VarChar(50)
+  entityId String  @map("entity_id") @db.Uuid
   details  Json?
-  ip       String?  @db.VarChar(45)
+  ip       String? @db.VarChar(45)
 
   userId String? @map("user_id") @db.Uuid
   user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)

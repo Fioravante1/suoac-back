@@ -178,7 +178,7 @@ export class CongregationsService {
     id: string;
     code: string;
     name: string;
-    email: string;
+    email: string | null;
     city: string | null;
     circuitId: string;
     createdAt: Date;
