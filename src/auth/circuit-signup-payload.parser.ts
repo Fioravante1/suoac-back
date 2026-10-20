@@ -13,6 +13,7 @@ export function parseCircuitSignupPayload(value: unknown): CircuitSignupPayload 
   const root = asRecord(value, 'payload');
   const coordinator = asRecord(root.coordinator, 'payload.coordinator');
   const circuit = asRecord(root.circuit, 'payload.circuit');
+  const legacyCircuitCode = asOptionalString(circuit.code, 'payload.circuit.code');
 
   if (!Array.isArray(root.congregations) || root.congregations.length === 0) {
     throw new Error('Rascunho de autocadastro inválido: payload.congregations');
@@ -26,8 +27,9 @@ export function parseCircuitSignupPayload(value: unknown): CircuitSignupPayload 
       passwordHash: asString(coordinator.passwordHash, 'payload.coordinator.passwordHash'),
     },
     circuit: {
-      code: asString(circuit.code, 'payload.circuit.code'),
-      name: asString(circuit.name, 'payload.circuit.name'),
+      // Rascunhos da versão anterior carregam código e nome descritivo. O
+      // código é o identificador que o domínio agora chama de `name`.
+      name: legacyCircuitCode ?? asString(circuit.name, 'payload.circuit.name'),
       city: asString(circuit.city, 'payload.circuit.city'),
       state: asString(circuit.state, 'payload.circuit.state'),
     },
@@ -56,4 +58,12 @@ function asString(value: unknown, path: string): string {
   }
 
   return value;
+}
+
+function asOptionalString(value: unknown, path: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return asString(value, path);
 }

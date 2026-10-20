@@ -8,7 +8,7 @@ interface ErrorResponseBody {
   error: string;
   /**
    * Campo do payload que causou o erro, quando o service souber apontá-lo — por
-   * exemplo `circuit.code` no autocadastro (SUC-37), onde conflitos diferentes
+   * exemplo `circuit.name` no autocadastro (SUC-37), onde conflitos diferentes
    * respondem `409` e a tela precisa saber em qual campo pintar o erro.
    *
    * Opcional de propósito: o formato de erro do projeto continua sendo

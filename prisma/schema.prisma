@@ -74,11 +74,11 @@ enum ExpenseCategory {
 
 model Circuit {
   id    String  @id @default(uuid()) @db.Uuid
-  /// Código curto que identifica o circuito (ex.: `SP-17`), sempre em maiúsculas.
+  /// Coluna transitória de compatibilidade com o contrato anterior ao SUC-28.
   ///
-  /// Nulo nos circuitos criados antes do autocadastro (SUC-37): a coluna nasceu
-  /// numa tabela com dados, e `NOT NULL` só pode ser imposto depois que todas as
-  /// linhas tiverem valor — ver SUC-60 e a regra de expand-and-contract.
+  /// A API pública usa `name` como identificador do circuito. Durante o rollout,
+  /// `code = name` preserva a unicidade entre versões; o SUC-60 remove a coluna
+  /// em deploy posterior, conforme a regra de expand-and-contract.
   code  String? @unique @db.VarChar(20)
   name  String  @unique @db.VarChar(100)
   city  String  @db.VarChar(100)
@@ -473,8 +473,9 @@ model PasswordResetRequest {
 /// congregação — existe uma linha aqui. Na confirmação, tudo nasce numa
 /// transação e a linha é marcada como usada.
 ///
-/// O rascunho **não é um circuito incompleto**: nenhum código fica reservado, e
-/// a unicidade de `Circuit.code` e `Congregation.code` só é imposta na
+/// O rascunho **não é um circuito incompleto**: nenhum identificador fica
+/// reservado, e a unicidade de `Circuit.name` (também gravado na coluna
+/// transitória `Circuit.code`) e `Congregation.code` só é imposta na
 /// consolidação. Abandonar o fluxo deixa uma linha que expira e é purgada.
 ///
 /// Toda tentativa gera uma linha, inclusive a recusada por e-mail ou código já

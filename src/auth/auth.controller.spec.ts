@@ -225,7 +225,7 @@ describe('AuthController', () => {
   describe('requestCircuitSignup', () => {
     const dto = {
       coordinator: { name: 'João Silva', email: 'joao@example.com', phone: '11987654321', password: 'Senha123' },
-      circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' },
+      circuit: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
       congregations: [{ code: 'SP17-CENTRAL', name: 'Central' }],
     };
 

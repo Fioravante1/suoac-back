@@ -88,6 +88,7 @@ export class CircuitSignupService {
    */
   async requestSignup(dto: CreateCircuitSignupDto): Promise<void> {
     const email = dto.coordinator.email;
+    const circuitName = this.resolveCircuitName(dto);
 
     // Duplicata dentro do próprio payload não depende do banco: o usuário
     // repetiu um código na lista de congregações.
@@ -120,7 +121,7 @@ export class CircuitSignupService {
 
       await this.assertWithinRateLimit(tx, email);
 
-      const conflicts = await this.findConflicts(tx, dto);
+      const conflicts = await this.findConflicts(tx, dto, circuitName);
 
       if (conflicts.length > 0) {
         // Linha sem `codeHash` e sem `payload`: a tentativa entra na contagem do
@@ -136,7 +137,7 @@ export class CircuitSignupService {
         data: {
           email,
           codeHash: this.hashCode(email, code),
-          payload: this.buildPayload(dto, passwordHash),
+          payload: this.buildPayload(dto, passwordHash, circuitName),
           expiresAt: new Date(Date.now() + CIRCUIT_SIGNUP.CODE_TTL_MS),
         },
       });
@@ -150,11 +151,11 @@ export class CircuitSignupService {
       throw new ConflictException(this.buildConflictBody(outcome.conflicts));
     }
 
-    this.logger.log(`Rascunho de autocadastro criado — circuitCode=${dto.circuit.code}`);
+    this.logger.log(`Rascunho de autocadastro criado — circuitName=${circuitName}`);
 
     // Envio depois do commit e fora do request, como na recuperação de senha:
     // esperar o provedor atrasaria a resposta sem nenhum ganho para quem chamou.
-    void this.deliver(email, dto.coordinator.name, outcome.code, dto.circuit.code);
+    void this.deliver(email, dto.coordinator.name, outcome.code, circuitName);
   }
 
   /**
@@ -178,7 +179,7 @@ export class CircuitSignupService {
     void this.auditLogService
       .log('CREATE', 'Circuit', user.circuitId, user.id, {
         oldValues: null,
-        newValues: { circuitCode: payload.circuit.code, congregations: payload.congregations.length, selfSignup: true },
+        newValues: { circuitName: payload.circuit.name, congregations: payload.congregations.length, selfSignup: true },
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: user.circuitId }, 'Falha ao gravar audit log'));
 
@@ -253,7 +254,9 @@ export class CircuitSignupService {
 
         const circuit = await tx.circuit.create({
           data: {
-            code: payload.circuit.code,
+            // Dupla escrita transitória: a versão anterior ainda protege a
+            // unicidade pelo campo `code`. O contract SUC-60 remove a coluna.
+            code: payload.circuit.name,
             name: payload.circuit.name,
             city: payload.circuit.city,
             state: payload.circuit.state,
@@ -315,15 +318,10 @@ export class CircuitSignupService {
       return { field: 'coordinator.email', message: 'Este e-mail ja esta cadastrado' };
     }
 
-    // Circuito tem dois campos únicos independentes, e apontar um pelo outro
-    // manda o usuário corrigir o campo errado — ele mudaria o código, que está
-    // livre, e falharia de novo.
-    if (model === 'Circuit' && fields.includes('code')) {
-      return { field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' };
-    }
-
-    if (model === 'Circuit' && fields.includes('name')) {
-      return { field: 'circuit.name', message: 'Ja existe um circuito com este nome' };
+    // Durante a dupla escrita, a colisão pode vir de qualquer uma das duas
+    // constraints. Para o contrato público ambas representam o mesmo campo.
+    if (model === 'Circuit' && (fields.includes('code') || fields.includes('name'))) {
+      return { field: 'circuit.name', message: 'Este circuito ja esta em uso' };
     }
 
     if (model === 'Congregation' && fields.includes('code')) {
@@ -335,7 +333,7 @@ export class CircuitSignupService {
 
     this.logger.error(`Unicidade violada em campo não mapeado — model=${model} fields=${fields.join(',')}`);
 
-    return { field: 'circuit.code', message: `Conflito ao criar o circuito ${payload.circuit.code}` };
+    return { field: 'circuit.name', message: `Conflito ao criar o circuito ${payload.circuit.name}` };
   }
 
   /**
@@ -511,7 +509,11 @@ export class CircuitSignupService {
    * congregações em uso ficava sem orçamento antes de conseguir corrigir tudo, e
    * travava por uma hora sem entender por quê.
    */
-  private async findConflicts(tx: PrismaTransaction, dto: CreateCircuitSignupDto): Promise<SignupConflict[]> {
+  private async findConflicts(
+    tx: PrismaTransaction,
+    dto: CreateCircuitSignupDto,
+    circuitName: string,
+  ): Promise<SignupConflict[]> {
     const conflicts: SignupConflict[] = [];
 
     // Busca sem distinguir maiúsculas: `User.email` é único e sensível a caixa,
@@ -526,22 +528,15 @@ export class CircuitSignupService {
       conflicts.push({ field: 'coordinator.email', message: 'Este e-mail ja esta cadastrado' });
     }
 
-    const existingCode = await tx.circuit.findUnique({
-      where: { code: dto.circuit.code },
+    const existingCircuit = await tx.circuit.findFirst({
+      where: {
+        OR: [{ name: { equals: circuitName, mode: 'insensitive' } }, { code: circuitName }],
+      },
       select: { id: true },
     });
 
-    if (existingCode) {
-      conflicts.push({ field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' });
-    }
-
-    const existingName = await tx.circuit.findFirst({
-      where: { name: { equals: dto.circuit.name, mode: 'insensitive' } },
-      select: { id: true },
-    });
-
-    if (existingName) {
-      conflicts.push({ field: 'circuit.name', message: 'Ja existe um circuito com este nome' });
+    if (existingCircuit) {
+      conflicts.push({ field: this.circuitConflictField(dto), message: 'Este circuito ja esta em uso' });
     }
 
     const codes = dto.congregations.map((congregation) => congregation.code);
@@ -598,7 +593,7 @@ export class CircuitSignupService {
     );
   }
 
-  private buildPayload(dto: CreateCircuitSignupDto, passwordHash: string): CircuitSignupPayload {
+  private buildPayload(dto: CreateCircuitSignupDto, passwordHash: string, circuitName: string): CircuitSignupPayload {
     return {
       coordinator: {
         name: dto.coordinator.name,
@@ -607,8 +602,7 @@ export class CircuitSignupService {
         passwordHash,
       },
       circuit: {
-        code: dto.circuit.code,
-        name: dto.circuit.name,
+        name: circuitName,
         city: dto.circuit.city,
         state: dto.circuit.state,
       },
@@ -619,14 +613,22 @@ export class CircuitSignupService {
     };
   }
 
-  private async deliver(to: string, name: string, code: string, circuitCode: string): Promise<void> {
+  private resolveCircuitName(dto: CreateCircuitSignupDto): string {
+    return dto.circuit.code ?? dto.circuit.name;
+  }
+
+  private circuitConflictField(dto: CreateCircuitSignupDto): 'circuit.code' | 'circuit.name' {
+    return dto.circuit.code === undefined ? 'circuit.name' : 'circuit.code';
+  }
+
+  private async deliver(to: string, name: string, code: string, circuitName: string): Promise<void> {
     try {
-      await this.emailSender.send(buildCircuitSignupEmail(to, name, code, circuitCode));
-      this.logger.log(`E-mail de confirmação de autocadastro enviado — circuitCode=${circuitCode}`);
+      await this.emailSender.send(buildCircuitSignupEmail(to, name, code, circuitName));
+      this.logger.log(`E-mail de confirmação de autocadastro enviado — circuitName=${circuitName}`);
     } catch (err: unknown) {
       // A falha fica registrada aqui e não muda a resposta já devolvida: o
       // rascunho existe, e o usuário pode pedir o reenvio na própria tela.
-      this.logger.error({ err, circuitCode }, 'Falha ao enviar e-mail de confirmação de autocadastro');
+      this.logger.error({ err, circuitName }, 'Falha ao enviar e-mail de confirmação de autocadastro');
     }
   }
 

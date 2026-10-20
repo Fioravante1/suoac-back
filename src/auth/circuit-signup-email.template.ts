@@ -7,11 +7,11 @@ const SUBJECT = 'Confirme seu cadastro — SUOAC';
  * único lugar onde ele aparece em claro: no banco fica apenas o SHA-256, e ele
  * não vai para log nenhum.
  */
-export function buildCircuitSignupEmail(to: string, name: string, code: string, circuitCode: string): EmailMessage {
+export function buildCircuitSignupEmail(to: string, name: string, code: string, circuitName: string): EmailMessage {
   const text = [
     `Olá, ${name}.`,
     '',
-    `Recebemos o cadastro do circuito ${circuitCode} no SUOAC.`,
+    `Recebemos o cadastro do circuito ${circuitName} no SUOAC.`,
     'Para concluir, digite o código abaixo na tela de confirmação:',
     '',
     code,
@@ -23,7 +23,7 @@ export function buildCircuitSignupEmail(to: string, name: string, code: string, 
 
   const html = [
     `<p>Olá, ${escapeHtml(name)}.</p>`,
-    `<p>Recebemos o cadastro do circuito <strong>${escapeHtml(circuitCode)}</strong> no SUOAC.</p>`,
+    `<p>Recebemos o cadastro do circuito <strong>${escapeHtml(circuitName)}</strong> no SUOAC.</p>`,
     '<p>Para concluir, digite o código abaixo na tela de confirmação:</p>',
     `<p style="font-size:28px;letter-spacing:6px;font-weight:700">${escapeHtml(code)}</p>`,
     '<p>O código vale por 30 minutos.</p>',

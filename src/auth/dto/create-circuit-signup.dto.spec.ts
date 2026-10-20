@@ -12,7 +12,7 @@ function buildRaw(overrides: Record<string, unknown> = {}): Record<string, unkno
       phone: '11987654321',
       password: 'Senha123',
     },
-    circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' },
+    circuit: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
     congregations: [{ code: 'SP17-CENTRAL', name: 'Central' }],
     ...overrides,
   };
@@ -29,21 +29,28 @@ async function failedFields(raw: Record<string, unknown>): Promise<string[]> {
 // ── Test Suite ───────────────────────────────────────────────────
 describe('CreateCircuitSignupDto', () => {
   describe('normalização', () => {
-    it('deve passar o código do circuito para maiúsculas', () => {
+    it('deve passar o circuito para maiúsculas', () => {
       const dto = plainToInstance(
         CreateCircuitSignupDto,
-        buildRaw({ circuit: { code: ' sp-17 ', name: 'X', city: 'Y', state: 'sp' } }),
+        buildRaw({ circuit: { name: ' sp-17 ', city: 'Y', state: 'sp' } }),
       );
 
-      // `sp-17` e `SP-17` precisam ser o mesmo circuito, senão a unicidade do
-      // código não vale nada.
+      expect(dto.circuit.name).toBe('SP-17');
+    });
+
+    it('deve normalizar o alias legado quando ele vier no payload', () => {
+      const dto = plainToInstance(
+        CreateCircuitSignupDto,
+        buildRaw({ circuit: { code: ' sp-17 ', name: 'Circuito São Paulo 17', city: 'Y', state: 'sp' } }),
+      );
+
       expect(dto.circuit.code).toBe('SP-17');
     });
 
     it('deve passar a UF para maiúsculas', () => {
       const dto = plainToInstance(
         CreateCircuitSignupDto,
-        buildRaw({ circuit: { code: 'SP-17', name: 'X', city: 'Y', state: 'sp' } }),
+        buildRaw({ circuit: { name: 'SP-17', city: 'Y', state: 'sp' } }),
       );
 
       expect(dto.circuit.state).toBe('SP');
@@ -134,23 +141,52 @@ describe('CreateCircuitSignupDto', () => {
     });
 
     it('deve recusar UF que não tenha duas letras', async () => {
-      expect(
-        await failedFields(buildRaw({ circuit: { code: 'SP-17', name: 'X', city: 'Y', state: 'SAO' } })),
-      ).toContain('circuit.state');
+      expect(await failedFields(buildRaw({ circuit: { name: 'SP-17', city: 'Y', state: 'SAO' } }))).toContain(
+        'circuit.state',
+      );
     });
 
-    it('deve recusar código de circuito com caracteres fora do padrão', async () => {
+    it('deve aceitar o formato real de circuito com espaço', async () => {
+      const dto = plainToInstance(
+        CreateCircuitSignupDto,
+        buildRaw({ circuit: { name: 'SP-019 A', city: 'Campinas', state: 'SP' } }),
+      );
+
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('deve aceitar o nome descritivo longo enviado junto do alias legado', async () => {
+      const dto = plainToInstance(
+        CreateCircuitSignupDto,
+        buildRaw({
+          circuit: {
+            code: 'SP-17',
+            name: 'Circuito Metropolitano de São Paulo Dezessete',
+            city: 'São Paulo',
+            state: 'SP',
+          },
+        }),
+      );
+
+      expect(await validate(dto)).toHaveLength(0);
+    });
+
+    it('deve recusar o alias legado com caracteres fora do padrão', async () => {
       expect(
-        await failedFields(buildRaw({ circuit: { code: 'SP 17!', name: 'X', city: 'Y', state: 'SP' } })),
+        await failedFields(
+          buildRaw({ circuit: { code: 'SP 17!', name: 'Circuito São Paulo 17', city: 'Y', state: 'SP' } }),
+        ),
       ).toContain('circuit.code');
     });
 
-    it('deve exigir o nome do circuito', async () => {
-      // Divergência deliberada do protótipo, registrada em SUC-30: o circuito
-      // tem código e nome, e o nome é obrigatório.
-      expect(await failedFields(buildRaw({ circuit: { code: 'SP-17', name: '', city: 'Y', state: 'SP' } }))).toContain(
-        'circuit.name',
-      );
+    it('deve exigir o circuito no campo canonico', async () => {
+      expect(await failedFields(buildRaw({ circuit: { name: '', city: 'Y', state: 'SP' } }))).toContain('circuit.name');
+    });
+
+    it('deve recusar circuito acima de 20 caracteres durante a compatibilidade', async () => {
+      expect(
+        await failedFields(buildRaw({ circuit: { name: 'CIRCUITO-COM-MAIS-DE-20', city: 'Y', state: 'SP' } })),
+      ).toContain('circuit.name');
     });
 
     it('deve exigir ao menos uma congregação', async () => {

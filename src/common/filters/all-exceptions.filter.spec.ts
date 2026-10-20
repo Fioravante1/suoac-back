@@ -73,14 +73,14 @@ describe('AllExceptionsFilter', () => {
       // a tela só sabe onde pintar o erro por este campo.
       const exception = new ConflictException({
         statusCode: 409,
-        message: 'Este codigo de circuito ja esta em uso',
+        message: 'Este circuito ja esta em uso',
         error: 'Conflict',
-        field: 'circuit.code',
+        field: 'circuit.name',
       });
 
       const { reply } = catchException(filter, exception);
 
-      expectResponse(reply, 409, { field: 'circuit.code' });
+      expectResponse(reply, 409, { field: 'circuit.name' });
     });
 
     it('deve repassar a lista de campos em conflito', () => {
@@ -88,22 +88,22 @@ describe('AllExceptionsFilter', () => {
       // o usuário corrigir tudo num envio só.
       const exception = new ConflictException({
         statusCode: 409,
-        message: 'Este codigo de circuito ja esta em uso',
+        message: 'Existem campos em conflito',
         error: 'Conflict',
-        field: 'circuit.code',
+        field: 'circuit.name',
         fields: [
-          { field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' },
-          { field: 'circuit.name', message: 'Ja existe um circuito com este nome' },
+          { field: 'circuit.name', message: 'Este circuito ja esta em uso' },
+          { field: 'coordinator.email', message: 'Este e-mail ja esta em uso' },
         ],
       });
 
       const { reply } = catchException(filter, exception);
 
       expectResponse(reply, 409, {
-        field: 'circuit.code',
+        field: 'circuit.name',
         fields: [
-          { field: 'circuit.code', message: 'Este codigo de circuito ja esta em uso' },
-          { field: 'circuit.name', message: 'Ja existe um circuito com este nome' },
+          { field: 'circuit.name', message: 'Este circuito ja esta em uso' },
+          { field: 'coordinator.email', message: 'Este e-mail ja esta em uso' },
         ],
       });
     });
@@ -123,7 +123,7 @@ describe('AllExceptionsFilter', () => {
         statusCode: 409,
         message: 'Conflito',
         error: 'Conflict',
-        field: 'circuit.code',
+        field: 'circuit.name',
         internalQuery: 'SELECT * FROM circuits',
       });
 
