@@ -69,13 +69,46 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
   }
 
+  /**
+   * Nome do campo duplicado num `P2002`.
+   *
+   * **Sob Prisma 7 com `@prisma/adapter-pg` não existe `meta.target`.** O que o
+   * erro traz é `meta.driverAdapterError.cause.constraint.fields`; verificado
+   * contra o banco. Enquanto só `target` era lido, toda violação de unicidade
+   * respondia com o literal `"Registro duplicado no campo: campo"`, porque o
+   * `?? 'campo'` sempre caía — e o teste desta classe passava por usar um mock
+   * com a forma que o adapter não produz.
+   *
+   * `meta.target` continua sendo lido depois: é a forma emitida sem driver
+   * adapter, e a que volta se o adapter for trocado.
+   */
+  private resolveUniqueTarget(exception: Prisma.PrismaClientKnownRequestError): string {
+    const meta = exception.meta as
+      | { target?: unknown; driverAdapterError?: { cause?: { constraint?: { fields?: unknown } } } }
+      | undefined;
+
+    const adapterFields = meta?.driverAdapterError?.cause?.constraint?.fields;
+
+    if (Array.isArray(adapterFields) && adapterFields.length > 0) {
+      return adapterFields.map((item) => String(item)).join(', ');
+    }
+
+    const target = meta?.target;
+
+    if (Array.isArray(target) && target.length > 0) {
+      return target.map((item) => String(item)).join(', ');
+    }
+
+    return typeof target === 'string' && target.length > 0 ? target : 'campo';
+  }
+
   private handlePrismaKnownError(exception: Prisma.PrismaClientKnownRequestError): {
     statusCode: number;
     body: ErrorResponseBody;
   } {
     switch (exception.code) {
       case 'P2002': {
-        const target = (exception.meta?.['target'] as string[] | undefined)?.join(', ') ?? 'campo';
+        const target = this.resolveUniqueTarget(exception);
         this.logger.warn(`Registro duplicado: ${target}`);
         return {
           statusCode: 409,

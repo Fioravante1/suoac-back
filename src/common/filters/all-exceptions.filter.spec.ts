@@ -90,7 +90,44 @@ describe('AllExceptionsFilter', () => {
 
   // ── Prisma.PrismaClientKnownRequestError ──────────────────────────────
   describe('Prisma.PrismaClientKnownRequestError', () => {
-    it('deve mapear P2002 para 409 Conflict com campo duplicado', () => {
+    /**
+     * Forma real do `P2002` sob Prisma 7 com `@prisma/adapter-pg`, verificada
+     * contra o banco: **não há `meta.target`**, e o campo violado vem de
+     * `meta.driverAdapterError.cause.constraint.fields`.
+     */
+    it('deve mapear P2002 do driver adapter para 409 com o campo duplicado', () => {
+      const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '7.0.0',
+        meta: {
+          modelName: 'User',
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: { kind: 'UniqueConstraintViolation', constraint: { fields: ['email'] } },
+          },
+        },
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, {
+        statusCode: 409,
+        message: 'Registro duplicado no campo: email',
+        error: 'Conflict',
+      });
+    });
+
+    it('deve cair no literal "campo" so quando o erro nao diz qual foi', () => {
+      // Era o que acontecia em **todo** P2002 antes da correção: só `meta.target`
+      // era lido, e o adapter não o emite.
+      const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '7.0.0',
+        meta: { modelName: 'User' },
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, { message: 'Registro duplicado no campo: campo' });
+    });
+
+    it('deve mapear P2002 na forma antiga, sem driver adapter', () => {
       const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
         clientVersion: '7.0.0',
