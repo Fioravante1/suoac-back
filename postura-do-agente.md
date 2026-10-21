@@ -1,3 +1,8 @@
+---
+trigger: always_on
+description: Postura esperada do agente (decisões do usuário, dependências pendentes e verificação)
+---
+
 # Postura esperada do agente
 
 ## Decisões são do usuário

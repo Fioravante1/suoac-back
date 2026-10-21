@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar código TypeScript/React (*.ts, *.tsx) (uso obrigatório de early returns, sem if ou ternário aninhado)
 paths:
   - "**/*.{ts,tsx}"
 ---

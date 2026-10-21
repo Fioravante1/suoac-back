@@ -1,3 +1,8 @@
+---
+trigger: always_on
+description: Regras de branches, commits apenas sob pedido explícito e template de pull request
+---
+
 # Branches, commits e pull requests
 
 **Commitar, fazer push e abrir PR acontecem apenas quando o usuário pedir, explicitamente.**
