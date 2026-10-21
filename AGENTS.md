@@ -1,7 +1,12 @@
 # SUOAC Backend — regras para agentes de IA
 
-Este arquivo é a porta de entrada. As regras detalhadas vivem em `.claude/rules/` e entram em
-contexto conforme o caminho do arquivo que está sendo tocado — ver o índice abaixo.
+Este arquivo é a porta de entrada. As regras detalhadas vivem em `.claude/rules/` (referenciadas
+também por `.agents/rules.json` para o Gemini / Antigravity) — ver o índice abaixo.
+
+**Obrigatório para agentes sem injeção automática de `.claude/rules/` (como OpenAI Codex e Gemini
+CLI):** antes de planejar ou editar qualquer arquivo, **leia explicitamente com sua ferramenta de
+leitura** as regras sempre ativas em `.claude/rules/compartilhado/*.md` e os arquivos de
+`.claude/rules/` correspondentes aos caminhos listados nas tabelas da seção 2.
 
 ---
 
@@ -22,26 +27,36 @@ contexto conforme o caminho do arquivo que está sendo tocado — ver o índice 
 
 ## 2. Onde as regras vivem
 
-Cada arquivo abaixo declara no próprio frontmatter os caminhos que o ativam. Mexer num teste não
-carrega as regras de Prisma; mexer num script de banco não carrega as de Swagger.
+Cada arquivo em `.claude/rules/` declara no próprio frontmatter os caminhos (`paths:`) e gatilhos
+(`trigger:` / `description:`) que o ativam. Mexer num teste não carrega as regras de Prisma; mexer
+num script de banco não carrega as de Swagger. Se o seu runtime não injeta `.claude/rules/`
+automaticamente, **abra e leia** os arquivos aplicáveis antes de escrever código:
 
-| Regra | Vale para |
+| Regra (`.claude/rules/`) | Vale para |
 | - | - |
 | `arquitetura.md` | `src/**` |
-| `prisma-e-banco.md` | `prisma/**`, `src/prisma/**`, `prisma.config.ts`, `scripts/**`, `railway.toml` |
+| `prisma-e-banco.md` | `prisma/**`, `src/prisma/**`, `prisma.config.ts`, `scripts/**`, `railway.toml`, `src/generated/**` |
 | `api-rest.md` | controllers, DTOs, interfaces de resposta |
 | `swagger.md` | controllers e DTOs |
-| `logging.md` | services, `src/common/logger/**`, `main.ts` |
+| `logging.md` | services, `src/common/logger/**`, `src/main.ts` |
 | `hashing-de-senhas.md` | `src/common/hashing/**`, `src/auth/**`, `src/users/**` |
 | `autenticacao-jwt.md` | `src/auth/**` — guards e decorators moram lá — e qualquer `*.guard.ts` |
 | `autorizacao-por-circuito.md` | **services, guards e controllers** — é a regra de isolamento multi-tenant |
 | `estilo-de-codigo.md` | `**/*.ts` |
 | `testes.md` | `**/*.spec.ts`, `**/*.e2e-spec.ts`, `test/**` |
 
-O subdiretório `compartilhado/` vem do repositório `suoac-ai` por `git subtree` e traz o que vale
-igual no backend e no frontend: commits, Jira, branches e PRs, postura do agente, idioma do código e
-veto a aninhamento. **Não edite esses arquivos aqui** — a fonte é `suoac-ai/rules/`, e a próxima
-sincronização sobrescreve qualquer mudança local.
+O subdiretório `.claude/rules/compartilhado/` vem do repositório `suoac-ai` por `git subtree` e traz
+o que vale igual no backend e no frontend. **Não edite esses arquivos aqui** — a fonte é
+`suoac-ai/rules/`, e a próxima sincronização sobrescreve qualquer mudança local:
+
+| Regra (`.claude/rules/compartilhado/`) | Vale para |
+| - | - |
+| `postura-do-agente.md` | sempre — decisões são do usuário, dependências pendentes e verificação obrigatória |
+| `jira.md` | sempre — rastreamento obrigatório de cards no projeto `SUC` |
+| `branches-e-prs.md` | sempre — nome de branch, template de PR e regra de só commitar quando pedido explicitamente |
+| `commits.md` | sempre — Conventional Commits em português, organização por significado, sem trailer de IA |
+| `idioma-do-codigo.md` | `**/*.{ts,tsx}`, `**/*.{js,mjs,cjs}`, `prisma/schema.prisma` — identificadores em inglês, textos humanos em português |
+| `aninhamento-e-ternarios.md` | `**/*.{ts,tsx}` — early returns obrigatórios, proibido `if` ou ternário aninhado |
 
 ---
 

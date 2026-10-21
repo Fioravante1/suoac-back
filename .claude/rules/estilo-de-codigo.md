@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar arquivos TypeScript (**/*.ts) no backend (ESLint Flat Config, Prettier e tipagem estrita)
 paths:
   - "**/*.ts"
 ---

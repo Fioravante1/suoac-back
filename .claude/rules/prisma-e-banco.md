@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar schemas, migrations ou queries do Prisma em prisma/**, src/prisma/**, prisma.config.ts, scripts/**, railway.toml ou src/generated/**
 paths:
   - "prisma/**"
   - "src/prisma/**"

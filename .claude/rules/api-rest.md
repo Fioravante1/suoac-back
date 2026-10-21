@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar controllers, DTOs ou interfaces de resposta em src/**/*.controller.ts, src/**/dto/** ou src/**/interfaces/**
 paths:
   - "src/**/*.controller.ts"
   - "src/**/dto/**"

@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar testes unitários ou E2E com Jest em **/*.spec.ts, **/*.e2e-spec.ts ou test/**
 paths:
   - "**/*.spec.ts"
   - "**/*.e2e-spec.ts"
