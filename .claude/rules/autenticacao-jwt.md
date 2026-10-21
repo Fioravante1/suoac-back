@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar autenticação JWT, guards ou decorators em src/auth/** ou src/**/*.guard.ts
 paths:
   - "src/auth/**"
   - "src/**/*.guard.ts"

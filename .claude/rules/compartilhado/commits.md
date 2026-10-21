@@ -1,3 +1,8 @@
+---
+trigger: always_on
+description: Padrão de commits (Conventional Commits, organização por significado, sem trailer de IA)
+---
+
 # Padrão de commits
 
 Formato: `tipo(escopo opcional): descrição breve no imperativo`, em português.

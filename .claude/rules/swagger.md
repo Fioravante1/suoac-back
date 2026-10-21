@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar documentação OpenAPI/Swagger em controllers (src/**/*.controller.ts) ou DTOs (src/**/dto/**)
 paths:
   - "src/**/*.controller.ts"
   - "src/**/dto/**"

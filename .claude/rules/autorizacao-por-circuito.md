@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar services (src/**/*.service.ts), guards (src/**/*.guard.ts), controllers (src/**/*.controller.ts) ou src/common/authorization/** (isolamento multi-tenant por circuito)
 paths:
   - "src/**/*.service.ts"
   - "src/**/*.guard.ts"

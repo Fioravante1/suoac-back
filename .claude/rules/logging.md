@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar logs estruturados (Pino) em services (src/**/*.service.ts), src/common/logger/** ou src/main.ts
 paths:
   - "src/**/*.service.ts"
   - "src/common/logger/**"

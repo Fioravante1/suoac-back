@@ -1,3 +1,8 @@
+---
+trigger: always_on
+description: Rastreamento obrigatório do trabalho e convenções dos cards no Jira (projeto SUC)
+---
+
 # Rastreamento do trabalho no Jira
 
 O planejamento e o acompanhamento do SUOAC vivem no Jira, no projeto **SUOAC (`SUC`)** — o **mesmo

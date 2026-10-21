@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar arquivos em src/** (Feature-based Clean Architecture e princípios SOLID)
 paths:
   - "src/**"
 ---

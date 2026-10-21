@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar lógica de senhas e autenticação em src/common/hashing/**, src/auth/** ou src/users/** (Argon2id + pepper)
 paths:
   - "src/common/hashing/**"
   - "src/auth/**"

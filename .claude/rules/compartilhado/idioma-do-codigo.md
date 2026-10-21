@@ -1,4 +1,6 @@
 ---
+trigger: model_decision
+description: Quando criar ou editar arquivos de código (*.ts, *.tsx, *.js, *.mjs, *.cjs) ou prisma/schema.prisma (identificadores em inglês e textos para humanos em português)
 paths:
   - "**/*.{ts,tsx}"
   - "**/*.{js,mjs,cjs}"
