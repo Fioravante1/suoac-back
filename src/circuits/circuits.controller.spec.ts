@@ -9,7 +9,7 @@ import type { CircuitResponse } from './interfaces/circuit-response.interface';
 function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse {
   return {
     id: overrides.id ?? 'a1b2c3d4-0000-0000-0000-000000000001',
-    name: overrides.name ?? 'Circuito SP-01',
+    name: overrides.name ?? 'SP-01',
     city: overrides.city ?? 'São Paulo',
     state: overrides.state ?? 'SP',
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -87,8 +87,8 @@ describe('CircuitsController', () => {
   describe('update', () => {
     it('deve delegar a atualização ao service e retornar o resultado', async () => {
       const existing = buildCircuit();
-      const updated = buildCircuit({ name: 'Circuito SP-02' });
-      const dto = { name: 'Circuito SP-02' };
+      const updated = buildCircuit({ name: 'SP-02' });
+      const dto = { name: 'SP-02' };
       const user = buildUser();
 
       serviceMock.update.mockResolvedValue(updated);

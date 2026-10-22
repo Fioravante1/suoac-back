@@ -68,6 +68,70 @@ describe('AllExceptionsFilter', () => {
       expectResponse(reply, 409, { statusCode: 409, message: 'Email já existe', error: 'Conflict' });
     });
 
+    it('deve repassar o campo que causou o erro quando o service o informa', () => {
+      // O autocadastro (SUC-37) tem três conflitos diferentes respondendo 409, e
+      // a tela só sabe onde pintar o erro por este campo.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Este circuito ja esta em uso',
+        error: 'Conflict',
+        field: 'circuit.name',
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expectResponse(reply, 409, { field: 'circuit.name' });
+    });
+
+    it('deve repassar a lista de campos em conflito', () => {
+      // O autocadastro reporta todos os conflitos de unicidade de uma vez, para
+      // o usuário corrigir tudo num envio só.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Existem campos em conflito',
+        error: 'Conflict',
+        field: 'circuit.name',
+        fields: [
+          { field: 'circuit.name', message: 'Este circuito ja esta em uso' },
+          { field: 'coordinator.email', message: 'Este e-mail ja esta em uso' },
+        ],
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expectResponse(reply, 409, {
+        field: 'circuit.name',
+        fields: [
+          { field: 'circuit.name', message: 'Este circuito ja esta em uso' },
+          { field: 'coordinator.email', message: 'Este e-mail ja esta em uso' },
+        ],
+      });
+    });
+
+    it('nao deve inventar o campo quando a excecao nao o traz', () => {
+      const exception = new ConflictException('Email já existe');
+
+      const { reply } = catchException(filter, exception);
+
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ field: expect.anything() }));
+    });
+
+    it('nao deve deixar campos nao previstos vazarem para a resposta', () => {
+      // O corpo de erro é contrato público: repassar o objeto inteiro faria
+      // qualquer coisa anexada à exceção virar resposta sem ninguém decidir.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Conflito',
+        error: 'Conflict',
+        field: 'circuit.name',
+        internalQuery: 'SELECT * FROM circuits',
+      });
+
+      const { reply } = catchException(filter, exception);
+
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ internalQuery: expect.anything() }));
+    });
+
     it('deve preservar BadRequestException com array de mensagens do ValidationPipe', () => {
       const messages = ['name must be a string', 'city should not be empty'];
       const exception = new BadRequestException({ statusCode: 400, message: messages, error: 'Bad Request' });
@@ -90,7 +154,44 @@ describe('AllExceptionsFilter', () => {
 
   // ── Prisma.PrismaClientKnownRequestError ──────────────────────────────
   describe('Prisma.PrismaClientKnownRequestError', () => {
-    it('deve mapear P2002 para 409 Conflict com campo duplicado', () => {
+    /**
+     * Forma real do `P2002` sob Prisma 7 com `@prisma/adapter-pg`, verificada
+     * contra o banco: **não há `meta.target`**, e o campo violado vem de
+     * `meta.driverAdapterError.cause.constraint.fields`.
+     */
+    it('deve mapear P2002 do driver adapter para 409 com o campo duplicado', () => {
+      const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '7.0.0',
+        meta: {
+          modelName: 'User',
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: { kind: 'UniqueConstraintViolation', constraint: { fields: ['email'] } },
+          },
+        },
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, {
+        statusCode: 409,
+        message: 'Registro duplicado no campo: email',
+        error: 'Conflict',
+      });
+    });
+
+    it('deve cair no literal "campo" so quando o erro nao diz qual foi', () => {
+      // Era o que acontecia em **todo** P2002 antes da correção: só `meta.target`
+      // era lido, e o adapter não o emite.
+      const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '7.0.0',
+        meta: { modelName: 'User' },
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, { message: 'Registro duplicado no campo: campo' });
+    });
+
+    it('deve mapear P2002 na forma antiga, sem driver adapter', () => {
       const exception = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
         clientVersion: '7.0.0',

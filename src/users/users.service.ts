@@ -169,6 +169,7 @@ export class UsersService {
     role: string;
     isActive: boolean;
     mustChangePassword: boolean;
+    sessionVersion: number;
     circuitId: string;
     congregationId: string | null;
     createdAt: Date;
@@ -190,6 +191,7 @@ export class UsersService {
       role: user.role,
       isActive: user.isActive,
       mustChangePassword: user.mustChangePassword,
+      sessionVersion: user.sessionVersion,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
       createdAt: user.createdAt,

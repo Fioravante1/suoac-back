@@ -6,6 +6,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateCircuitDto } from './dto/update-circuit.dto';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
 
+interface CircuitRecord extends CircuitResponse {
+  code: string | null;
+}
+
+const CIRCUIT_SELECT = {
+  id: true,
+  code: true,
+  name: true,
+  city: true,
+  state: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 @Injectable()
 export class CircuitsService {
   private readonly logger = new Logger(CircuitsService.name);
@@ -20,6 +34,7 @@ export class CircuitsService {
 
     const circuit = await this.prisma.client.circuit.findUnique({
       where: { id: user.circuitId },
+      select: CIRCUIT_SELECT,
     });
 
     if (!circuit) {
@@ -27,12 +42,13 @@ export class CircuitsService {
       throw new NotFoundException('Circuito não encontrado');
     }
 
-    return circuit;
+    return this.toResponse(circuit);
   }
 
   async findOne(id: string, user: JwtPayload): Promise<CircuitResponse> {
     const circuit = await this.prisma.client.circuit.findUnique({
       where: { id },
+      select: CIRCUIT_SELECT,
     });
 
     if (!circuit) {
@@ -42,20 +58,25 @@ export class CircuitsService {
 
     checkCircuitOwnership(user, circuit.id);
 
-    return circuit;
+    return this.toResponse(circuit);
   }
 
   async update(id: string, dto: UpdateCircuitDto, user: JwtPayload): Promise<CircuitResponse> {
     const existing = await this.findOne(id, user);
+    const name = dto.name?.trim().toUpperCase();
 
-    const circuit = await this.prisma.client.circuit.update({
+    const record = await this.prisma.client.circuit.update({
       where: { id },
       data: {
-        ...(dto.name !== undefined && { name: dto.name }),
+        // Dupla escrita temporária enquanto versões antigas ainda usam `code`
+        // para proteger a unicidade. O campo não faz parte da resposta pública.
+        ...(name !== undefined && { name, code: name }),
         ...(dto.city !== undefined && { city: dto.city }),
         ...(dto.state !== undefined && { state: dto.state.toUpperCase() }),
       },
+      select: CIRCUIT_SELECT,
     });
+    const circuit = this.toResponse(record);
 
     this.logger.log(`Circuito atualizado — id=${id}`);
 
@@ -97,6 +118,17 @@ export class CircuitsService {
       role: user.role,
       circuitId: user.circuitId,
       congregationId: user.congregationId,
+    };
+  }
+
+  private toResponse(circuit: CircuitRecord): CircuitResponse {
+    return {
+      id: circuit.id,
+      name: circuit.code ?? circuit.name,
+      city: circuit.city,
+      state: circuit.state,
+      createdAt: circuit.createdAt,
+      updatedAt: circuit.updatedAt,
     };
   }
 }

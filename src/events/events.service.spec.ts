@@ -47,9 +47,18 @@ const CIRCUIT_ID = circuitId;
 const userId = 'u1u2u3u4-0000-0000-0000-000000000001';
 const eventId = 'e1e2e3e4-0000-0000-0000-000000000001';
 
-function buildCircuit(): { id: string; name: string; city: string; state: string; createdAt: Date; updatedAt: Date } {
+function buildCircuit(): {
+  id: string;
+  code: string | null;
+  name: string;
+  city: string;
+  state: string;
+  createdAt: Date;
+  updatedAt: Date;
+} {
   return {
     id: circuitId,
+    code: 'SP-019-A',
     name: 'SP-019 A',
     city: 'São Paulo',
     state: 'SP',
