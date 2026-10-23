@@ -14,6 +14,13 @@ import { InvitationsController } from '../src/invitations/invitations.controller
 import { InvitationsService } from '../src/invitations/invitations.service';
 
 const TOKEN = 'a'.repeat(64);
+const VALID_BODY = { name: 'Maria Souza', phone: '11987654321', password: 'Senha123' };
+const EXPIRED_DETAILS = {
+  email: 'maria@example.com',
+  invitedBy: 'João Silva',
+  sentAt: new Date('2026-10-14T12:00:00Z'),
+  expiresAt: new Date('2026-10-21T12:00:00Z'),
+};
 
 describe('Contrato HTTP do convite de congregação (e2e)', () => {
   let app: NestFastifyApplication;
@@ -51,7 +58,7 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
 
     it.each([
       ['inexistente', invitationNotFound(), 404, 'INVITATION_NOT_FOUND'],
-      ['expirado', invitationExpired(), 410, 'INVITATION_EXPIRED'],
+      ['expirado', invitationExpired(EXPIRED_DETAILS), 410, 'INVITATION_EXPIRED'],
       ['já utilizado', invitationUsed(), 409, 'INVITATION_USED'],
       ['revogado', invitationRevoked(), 403, 'INVITATION_REVOKED'],
     ])('distingue o convite %s por status e code', async (_state, exception, status, code) => {
@@ -63,13 +70,41 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
     });
   });
 
+  describe('GET /invitations/:token — convite expirado', () => {
+    it('leva no corpo do 410 para quem foi enviado, por quem e quando valeu', async () => {
+      findByToken.mockRejectedValue(invitationExpired(EXPIRED_DETAILS));
+
+      const response = await request(app.getHttpServer()).get(`/invitations/${TOKEN}`).expect(410);
+
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          code: 'INVITATION_EXPIRED',
+          invitation: {
+            email: 'maria@example.com',
+            invitedBy: 'João Silva',
+            sentAt: '2026-10-14T12:00:00.000Z',
+            expiresAt: '2026-10-21T12:00:00.000Z',
+          },
+        }),
+      );
+    });
+
+    it('não leva contexto nos demais estados', async () => {
+      findByToken.mockRejectedValue(invitationUsed());
+
+      const response = await request(app.getHttpServer()).get(`/invitations/${TOKEN}`).expect(409);
+
+      expect(response.body).not.toHaveProperty('invitation');
+    });
+  });
+
   describe('POST /invitations/:token/acceptances', () => {
     it('responde 201 com a sessão autenticada', async () => {
       accept.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh', user: { id: 'u1' } });
 
       const response = await request(app.getHttpServer())
         .post(`/invitations/${TOKEN}/acceptances`)
-        .send({ password: 'Senha123' })
+        .send(VALID_BODY)
         .expect(201);
 
       expect(response.body).toEqual(expect.objectContaining({ accessToken: 'access', refreshToken: 'refresh' }));
@@ -78,9 +113,32 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
     it('repassa o token da rota e a senha ao service', async () => {
       accept.mockResolvedValue({});
 
-      await request(app.getHttpServer()).post(`/invitations/${TOKEN}/acceptances`).send({ password: 'Senha123' });
+      await request(app.getHttpServer()).post(`/invitations/${TOKEN}/acceptances`).send(VALID_BODY);
 
-      expect(accept).toHaveBeenCalledWith(TOKEN, { password: 'Senha123' });
+      expect(accept).toHaveBeenCalledWith(TOKEN, VALID_BODY);
+    });
+
+    it('normaliza o celular e o nome antes de chegar ao service', async () => {
+      accept.mockResolvedValue({});
+
+      await request(app.getHttpServer())
+        .post(`/invitations/${TOKEN}/acceptances`)
+        .send({ ...VALID_BODY, name: '  Maria   Souza ', phone: '(11) 98765-4321' })
+        .expect(201);
+
+      expect(accept).toHaveBeenCalledWith(TOKEN, VALID_BODY);
+    });
+
+    it.each([
+      ['sem nome', { phone: VALID_BODY.phone, password: VALID_BODY.password }],
+      ['sem celular', { name: VALID_BODY.name, password: VALID_BODY.password }],
+      ['só com a senha', { password: VALID_BODY.password }],
+      ['com nome sem sobrenome', { ...VALID_BODY, name: 'Maria' }],
+      ['com celular incompleto', { ...VALID_BODY, phone: '(11) 9876' }],
+    ])('recusa o aceite %s sem chamar o service', async (_case, body) => {
+      await request(app.getHttpServer()).post(`/invitations/${TOKEN}/acceptances`).send(body).expect(400);
+
+      expect(accept).not.toHaveBeenCalled();
     });
 
     it('responde 409 com code próprio quando o e-mail já tem conta', async () => {
@@ -88,7 +146,7 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post(`/invitations/${TOKEN}/acceptances`)
-        .send({ password: 'Senha123' })
+        .send(VALID_BODY)
         .expect(409);
 
       expect(response.body).toEqual(expect.objectContaining({ code: 'INVITATION_EMAIL_ALREADY_REGISTERED' }));
@@ -97,17 +155,17 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
     it('recusa senha fraca sem chamar o service', async () => {
       await request(app.getHttpServer())
         .post(`/invitations/${TOKEN}/acceptances`)
-        .send({ password: 'fraca' })
+        .send({ ...VALID_BODY, password: 'fraca' })
         .expect(400);
 
       expect(accept).not.toHaveBeenCalled();
     });
 
     it('recusa campos fora do contrato, como nome, e-mail ou papel', async () => {
-      // O convite define quem é o usuário; o aceite não pode sobrescrever isso.
+      // O convite define e-mail, papel e congregação; o aceite não pode sobrescrevê-los.
       await request(app.getHttpServer())
         .post(`/invitations/${TOKEN}/acceptances`)
-        .send({ password: 'Senha123', role: 'CIRCUIT_COORDINATOR', email: 'outro@example.com' })
+        .send({ ...VALID_BODY, role: 'CIRCUIT_COORDINATOR', email: 'outro@example.com' })
         .expect(400);
 
       expect(accept).not.toHaveBeenCalled();
