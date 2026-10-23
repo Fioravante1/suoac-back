@@ -347,7 +347,7 @@
                 "{{invitationToken}}"
               ]
             },
-            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, phone, role, invitedBy, circuit, circuitCity, circuitState, congregation, congregationCode, expiresAt }. 'phone' vem so com digitos e pre-preenche o campo que o convidado confirma; Nao devolve ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED. O 410 leva tambem 'invitation': { email, invitedBy, sentAt, expiresAt }, para a tela mostrar para quem o convite foi enviado, por quem e ate quando valeu."
+            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, phone, role, invitedBy, circuit, circuitCity, circuitState, congregation, congregationCode, expiresAt }. 'phone' vem so com digitos e pre-preenche o campo que o convidado confirma; Nao devolve ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED, 409 INVITATION_DECLINED. O 410 leva tambem 'invitation': { email, invitedBy, sentAt, expiresAt }, para a tela mostrar para quem o convite foi enviado, por quem e ate quando valeu."
           },
           "response": []
         },
@@ -379,6 +379,38 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"Maria Souza\",\n  \"phone\": \"(11) 98765-4321\",\n  \"password\": \"Senha123\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Decline Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/declines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "declines"
+              ]
+            },
+            "description": "Recusa o convite (rota publica). O convidado escolhe um motivo fechado: NOT_THE_PERSON (Nao sou a pessoa indicada), CANNOT_ASSUME_NOW (Nao posso assumir este privilegio agora) ou RECEIVED_BY_MISTAKE (Recebi por engano). Qualquer outro valor ou campo extra responde 400.\n\n204 sem corpo: grava a data e o motivo, o convite passa a DECLINED e quem o enviou recebe um e-mail com o motivo. O circuito pode reenviar o convite, que volta a pendente com token novo.\n\nEstados em que nao pode ser recusado, todos com 'code' no corpo e sem alterar nada: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 409 INVITATION_DECLINED, 403 INVITATION_REVOKED. Aceite e recusa simultaneos tem um unico vencedor.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"NOT_THE_PERSON\"\n}"
             }
           },
           "response": []

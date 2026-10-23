@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, GoneException, NotFoundException } from '@nestjs/common';
 import { INVITATION_ERROR_CODE } from './invitations.constants';
 import type { ExpiredInvitationDetails } from './interfaces/expired-invitation-details.interface';
+import type { ClosedInvitationState } from './interfaces/invitation-state.type';
 
 /**
  * Exceções do convite. Cada uma leva `code` no corpo, repassado pelo
@@ -45,6 +46,15 @@ export function invitationRevoked(): ForbiddenException {
   });
 }
 
+export function invitationDeclined(): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message: 'Este convite foi recusado. Se foi engano, peça um novo convite a quem convidou você.',
+    error: 'Conflict',
+    code: INVITATION_ERROR_CODE.DECLINED,
+  });
+}
+
 export function invitationEmailAlreadyRegistered(): ConflictException {
   return new ConflictException({
     statusCode: 409,
@@ -59,9 +69,13 @@ export function invitationEmailAlreadyRegistered(): ConflictException {
  * ser aceito. O expirado fica de fora porque carrega contexto: ver
  * `invitationExpired`.
  */
-export function exceptionForState(state: 'USED' | 'REVOKED'): Error {
+export function exceptionForState(state: ClosedInvitationState): Error {
   if (state === 'USED') {
     return invitationUsed();
+  }
+
+  if (state === 'DECLINED') {
+    return invitationDeclined();
   }
 
   return invitationRevoked();

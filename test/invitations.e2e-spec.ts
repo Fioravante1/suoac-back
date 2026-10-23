@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import {
+  invitationDeclined,
   invitationEmailAlreadyRegistered,
   invitationExpired,
   invitationNotFound,
@@ -26,14 +27,16 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
   let app: NestFastifyApplication;
   let findByToken: jest.Mock;
   let accept: jest.Mock;
+  let decline: jest.Mock;
 
   beforeEach(async () => {
     findByToken = jest.fn();
     accept = jest.fn();
+    decline = jest.fn();
 
     const moduleFixture = await Test.createTestingModule({
       controllers: [InvitationsController],
-      providers: [{ provide: InvitationsService, useValue: { findByToken, accept } }],
+      providers: [{ provide: InvitationsService, useValue: { findByToken, accept, decline } }],
     }).compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -61,6 +64,7 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
       ['expirado', invitationExpired(EXPIRED_DETAILS), 410, 'INVITATION_EXPIRED'],
       ['já utilizado', invitationUsed(), 409, 'INVITATION_USED'],
       ['revogado', invitationRevoked(), 403, 'INVITATION_REVOKED'],
+      ['recusado', invitationDeclined(), 409, 'INVITATION_DECLINED'],
     ])('distingue o convite %s por status e code', async (_state, exception, status, code) => {
       findByToken.mockRejectedValue(exception);
 
@@ -169,6 +173,54 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
         .expect(400);
 
       expect(accept).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /invitations/:token/declines', () => {
+    it('responde 204 sem corpo', async () => {
+      decline.mockResolvedValue(undefined);
+
+      const response = await request(app.getHttpServer())
+        .post(`/invitations/${TOKEN}/declines`)
+        .send({ reason: 'NOT_THE_PERSON' })
+        .expect(204);
+
+      expect(response.body).toEqual({});
+    });
+
+    it.each(['NOT_THE_PERSON', 'CANNOT_ASSUME_NOW', 'RECEIVED_BY_MISTAKE'])('aceita o motivo %s', async (reason) => {
+      decline.mockResolvedValue(undefined);
+
+      await request(app.getHttpServer()).post(`/invitations/${TOKEN}/declines`).send({ reason }).expect(204);
+
+      expect(decline).toHaveBeenCalledWith(TOKEN, { reason });
+    });
+
+    it.each([
+      ['sem motivo', {}],
+      ['com motivo fora da lista', { reason: 'OUTRO' }],
+      ['com texto livre além do motivo', { reason: 'NOT_THE_PERSON', comment: 'x' }],
+    ])('recusa o pedido %s sem chamar o service', async (_case, body) => {
+      await request(app.getHttpServer()).post(`/invitations/${TOKEN}/declines`).send(body).expect(400);
+
+      expect(decline).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['inexistente', invitationNotFound(), 404, 'INVITATION_NOT_FOUND'],
+      ['expirado', invitationExpired(EXPIRED_DETAILS), 410, 'INVITATION_EXPIRED'],
+      ['já utilizado', invitationUsed(), 409, 'INVITATION_USED'],
+      ['revogado', invitationRevoked(), 403, 'INVITATION_REVOKED'],
+      ['já recusado', invitationDeclined(), 409, 'INVITATION_DECLINED'],
+    ])('distingue o convite %s por status e code', async (_state, exception, status, code) => {
+      decline.mockRejectedValue(exception);
+
+      const response = await request(app.getHttpServer())
+        .post(`/invitations/${TOKEN}/declines`)
+        .send({ reason: 'NOT_THE_PERSON' })
+        .expect(status);
+
+      expect(response.body).toEqual(expect.objectContaining({ statusCode: status, code }));
     });
   });
 });

@@ -16,9 +16,11 @@ import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/ci
 import { EmailSender } from '../common/email/email-sender';
 import { HashingService } from '../common/hashing/hashing.service';
 import { Prisma } from '../generated/prisma/client';
+import type { InvitationDeclineReason } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AcceptInvitationDto } from './dto/accept-invitation.dto';
-import { buildInvitationEmail } from './invitation-email.template';
+import type { DeclineInvitationDto } from './dto/decline-invitation.dto';
+import { buildInvitationDeclinedEmail, buildInvitationEmail } from './invitation-email.template';
 import {
   exceptionForState,
   invitationEmailAlreadyRegistered,
@@ -37,11 +39,14 @@ interface InvitationRow {
   email: string;
   phone: string | null;
   role: string;
+  tokenHash: string;
   congregationId: string;
   circuitId: string;
+  createdById: string;
   expiresAt: Date;
   usedAt: Date | null;
   revokedAt: Date | null;
+  declinedAt: Date | null;
   createdAt: Date;
 }
 
@@ -139,6 +144,22 @@ export class InvitationsService {
   }
 
   /**
+   * Recusa feita pelo próprio convidado. O convite deixa de poder ser aceito, e
+   * quem o enviou recebe um e-mail com o motivo para convidar outra pessoa.
+   * O reenvio pelo circuito reabre o convite.
+   */
+  async decline(token: string, dto: DeclineInvitationDto): Promise<void> {
+    const invitation = await this.loadByToken(token);
+
+    this.assertPending(invitation);
+    await this.claimDecline(invitation, dto.reason);
+
+    this.logger.log(`Convite recusado — invitationId=${invitation.id} reason=${dto.reason}`);
+
+    void this.sendDeclinedEmail(invitation, dto.reason);
+  }
+
+  /**
    * Cria o convite e envia o link por e-mail. Ainda não exposto por endpoint:
    * entra na Fatia 6, quando o cadastro de congregação passa a convidar.
    */
@@ -189,8 +210,9 @@ export class InvitationsService {
   }
 
   /**
-   * Gera um token novo e renova o prazo. Serve a convite pendente ou expirado;
-   * o link antigo deixa de valer, porque só o hash do novo fica no banco.
+   * Gera um token novo e renova o prazo. Serve a convite pendente, expirado ou
+   * recusado (que volta a pendente); o link antigo deixa de valer, porque só o
+   * hash do novo fica no banco.
    */
   async resend(id: string, user: JwtPayload): Promise<IssuedInvitationResponse> {
     const invitation = await this.loadOwned(id, user);
@@ -208,6 +230,8 @@ export class InvitationsService {
     const updated = await this.updateWhilePending(id, {
       tokenHash: this.hashToken(token),
       expiresAt: this.newExpiration(),
+      declinedAt: null,
+      declineReason: null,
     });
 
     this.logger.log(`Convite reenviado — invitationId=${id}`);
@@ -215,7 +239,10 @@ export class InvitationsService {
     return this.deliver(updated, token, invitation.createdBy.name, invitation.congregation.name);
   }
 
-  /** Cancela o convite. Repetir a chamada num convite já revogado não muda nada. */
+  /**
+   * Cancela o convite. Repetir a chamada num convite já revogado, ou revogar um
+   * já recusado, não muda nada: o recusado segue reenviável pelo circuito.
+   */
   async revoke(id: string, user: JwtPayload): Promise<InvitationResponse> {
     const invitation = await this.loadOwned(id, user);
     const state = this.resolveState(invitation);
@@ -224,7 +251,7 @@ export class InvitationsService {
       throw exceptionForState(state);
     }
 
-    if (state === 'REVOKED') {
+    if (state === 'REVOKED' || state === 'DECLINED') {
       return this.toResponse(invitation);
     }
 
@@ -248,7 +275,14 @@ export class InvitationsService {
     try {
       return await this.prisma.client.$transaction(async (tx) => {
         const claimed = await tx.invitation.updateMany({
-          where: { id: invitation.id, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+          where: {
+            id: invitation.id,
+            tokenHash: invitation.tokenHash,
+            usedAt: null,
+            revokedAt: null,
+            declinedAt: null,
+            expiresAt: { gt: new Date() },
+          },
           data: { usedAt: new Date() },
         });
 
@@ -284,6 +318,40 @@ export class InvitationsService {
 
       throw err;
     }
+  }
+
+  /**
+   * Marca a recusa só se o convite ainda está pendente e o token é o lido. Se o
+   * aceite, a revogação ou outra recusa chegaram entre a leitura e este ponto,
+   * relê e responde com o estado verdadeiro, então há um único vencedor. O
+   * token no filtro impede que um link já trocado por um reenvio recuse o
+   * convite novo.
+   */
+  private async claimDecline(invitation: InvitationWithContext, reason: InvitationDeclineReason): Promise<void> {
+    const claimed = await this.prisma.client.invitation.updateMany({
+      where: {
+        id: invitation.id,
+        tokenHash: invitation.tokenHash,
+        usedAt: null,
+        revokedAt: null,
+        declinedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { declinedAt: new Date(), declineReason: reason },
+    });
+
+    if (claimed.count === 1) {
+      return;
+    }
+
+    const current = await this.findWithContext({ id: invitation.id });
+
+    if (!current) {
+      throw invitationNotFound();
+    }
+
+    this.assertPending(current);
+    throw new ConflictException('Não foi possível recusar o convite. Tente novamente.');
   }
 
   private async loadByToken(token: string): Promise<InvitationWithContext> {
@@ -379,7 +447,10 @@ export class InvitationsService {
     throw exceptionForState(state);
   }
 
-  /** Usado vence revogado, que vence expirado: é a ordem do que aconteceu de mais definitivo. */
+  /**
+   * Usado vence revogado, que vence recusado, que vence expirado: é a ordem do
+   * que aconteceu de mais definitivo.
+   */
   private resolveState(invitation: InvitationRow): InvitationState {
     if (invitation.usedAt) {
       return 'USED';
@@ -387,6 +458,10 @@ export class InvitationsService {
 
     if (invitation.revokedAt) {
       return 'REVOKED';
+    }
+
+    if (invitation.declinedAt) {
+      return 'DECLINED';
     }
 
     if (invitation.expiresAt.getTime() <= Date.now()) {
@@ -439,6 +514,35 @@ export class InvitationsService {
       // O link também volta na resposta, então o coordenador ainda pode
       // repassá-lo por outro canal; a falha fica só no log.
       this.logger.error({ err, invitationId: invitation.id }, 'Falha ao enviar e-mail de convite');
+    }
+  }
+
+  private async sendDeclinedEmail(invitation: InvitationWithContext, reason: InvitationDeclineReason): Promise<void> {
+    try {
+      const inviter = await this.prisma.client.user.findUnique({
+        where: { id: invitation.createdById },
+        select: { email: true },
+      });
+
+      if (!inviter) {
+        this.logger.warn(`Aviso de recusa sem destinatário — invitationId=${invitation.id}`);
+        return;
+      }
+
+      await this.emailSender.send(
+        buildInvitationDeclinedEmail({
+          to: inviter.email,
+          inviterName: invitation.createdBy.name,
+          inviteeName: invitation.name,
+          inviteeEmail: invitation.email,
+          congregation: invitation.congregation.name,
+          reason,
+        }),
+      );
+      this.logger.log(`Aviso de recusa enviado — invitationId=${invitation.id}`);
+    } catch (err: unknown) {
+      // A recusa já foi gravada e vale mesmo sem o aviso; a falha fica só no log.
+      this.logger.error({ err, invitationId: invitation.id }, 'Falha ao enviar aviso de recusa de convite');
     }
   }
 
