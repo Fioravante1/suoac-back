@@ -23,6 +23,12 @@ interface ErrorResponseBody {
    */
   code?: string;
   /**
+   * Contexto do convite expirado (SUC-67): para quem foi enviado, por quem e
+   * quando valeu. A tela do `410` mostra isso, e o erro é a única resposta que
+   * ela recebe.
+   */
+  invitation?: Record<string, unknown>;
+  /**
    * Todos os campos em conflito, quando houver mais de um. O autocadastro
    * reporta os conflitos de unicidade de uma vez, para o usuário corrigir tudo
    * num envio — cada envio consome uma ficha do limite por e-mail.
@@ -30,6 +36,10 @@ interface ErrorResponseBody {
    * `field` segue apontando o primeiro, para quem só sabe ler um.
    */
   fields?: { field: string; message: string }[];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 @Catch()
@@ -86,6 +96,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const field = res['field'];
     const code = res['code'];
     const fields = res['fields'];
+    const invitation = res['invitation'];
 
     return {
       statusCode: status,
@@ -98,6 +109,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         // colocasse na exceção vazar para a resposta sem ninguém decidir isso.
         ...(typeof field === 'string' && { field }),
         ...(typeof code === 'string' && { code }),
+        ...(isPlainObject(invitation) && { invitation }),
         ...(Array.isArray(fields) && { fields: fields as { field: string; message: string }[] }),
       },
     };
