@@ -410,8 +410,9 @@ model CongregationEventStatus {
 /// `revokedAt` e `expiresAt`, para não haver como os dois divergirem.
 model Invitation {
   id        String   @id @default(uuid()) @db.Uuid
-  /// Dados do destinatário. O aceite cria o usuário a partir deles, e por isso
-  /// a tela de aceite só pede a senha.
+  /// Dados do destinatário, como o coordenador do circuito os informou. Na tela
+  /// de aceite são só pré-preenchimento: o convidado os confirma ou corrige, e o
+  /// usuário nasce com o que ele enviou. `phone` guarda apenas dígitos.
   name      String   @db.VarChar(150)
   email     String   @db.VarChar(255)
   phone     String?  @db.VarChar(20)
