@@ -184,11 +184,14 @@
     uuid circuit_id FK
     uuid congregation_id FK
     uuid created_by_id FK
+    string name
     string email
+    string phone nullable
     enum role
-    string token UK
+    string token_hash UK
     datetime expires_at
     datetime used_at
+    datetime revoked_at
     datetime created_at
   }
 

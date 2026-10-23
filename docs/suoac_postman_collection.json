@@ -327,6 +327,65 @@
       ]
     },
     {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "Get Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}"
+              ]
+            },
+            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, role, invitedBy, circuit, congregation, expiresAt }. Nao devolve telefone, ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/acceptances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "acceptances"
+              ]
+            },
+            "description": "Aceita o convite: cria o usuario com os dados do convite e a senha definida, liga a congregacao e ao papel do convite, consome o token e responde 201 com { accessToken, refreshToken, user } — sessao autenticada, sem passar pelo login.\n\nO usuario NAO cai na troca de senha obrigatoria (mustChangePassword=false): acabou de escolher a senha.\n\nO corpo aceita apenas 'password'; nome, e-mail, telefone, papel e congregacao vem do convite, e qualquer outro campo responde 400.\n\nErros, com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED e 409 INVITATION_EMAIL_ALREADY_REGISTERED (o e-mail do convite ja tem conta; o caminho e entrar com a senha).\n\nO token do convite e o valor em claro do link recebido; so o SHA-256 fica no banco. Criar, reenviar e revogar convites ainda nao tem endpoint (Fatia 6).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Senha123\"\n}"
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Circuits",
       "item": [
         {
