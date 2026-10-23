@@ -159,7 +159,7 @@ describe('CircuitSignupService', () => {
 
     // Caminho livre por padrão: nenhum e-mail, circuito ou congregação já em uso.
     prismaMock.circuitSignupRequest.count.mockResolvedValue(0);
-    prismaMock.user.findFirst.mockResolvedValue(null);
+    prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.circuit.findFirst.mockResolvedValue(null);
     prismaMock.congregation.findMany.mockResolvedValue([] as never);
 
@@ -253,7 +253,7 @@ describe('CircuitSignupService', () => {
     });
 
     it('deve lancar 409 com o campo do e-mail quando a conta ja existe', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: USER_ID } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ id: USER_ID } as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toThrow(ConflictException);
       expect(emailSenderMock.send).not.toHaveBeenCalled();
@@ -291,7 +291,7 @@ describe('CircuitSignupService', () => {
       // Um conflito por envio obrigava o usuário a gastar uma ficha do limite
       // por e-mail para descobrir cada problema — com quatro conflitos, ele
       // ficava sem orçamento antes de conseguir corrigir tudo.
-      prismaMock.user.findFirst.mockResolvedValue({ id: USER_ID } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ id: USER_ID } as never);
       prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
       prismaMock.congregation.findMany.mockResolvedValue([{ code: 'SP17-JARDIM' }] as never);
 
@@ -320,7 +320,7 @@ describe('CircuitSignupService', () => {
     });
 
     it('deve registrar a tentativa recusada, sem guardar o payload', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: USER_ID } as never);
+      prismaMock.user.findUnique.mockResolvedValue({ id: USER_ID } as never);
 
       await expect(service.requestSignup(buildDto())).rejects.toThrow(ConflictException);
 

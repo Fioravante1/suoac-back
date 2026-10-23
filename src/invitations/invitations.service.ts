@@ -16,6 +16,7 @@ import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/ci
 import { EmailSender } from '../common/email/email-sender';
 import type { EmailMessage } from '../common/email/interfaces/email-message.interface';
 import { HashingService } from '../common/hashing/hashing.service';
+import { normalizeEmail } from '../common/validators/email.transform';
 import { onlyDigits } from '../common/validators/phone.constants';
 import { Prisma } from '../generated/prisma/client';
 import type { InvitationDeclineReason } from '../generated/prisma/enums';
@@ -238,7 +239,7 @@ export class InvitationsService {
 
     checkCircuitOwnership(user, congregation.circuitId);
 
-    const email = this.normalizeEmail(input.email);
+    const email = normalizeEmail(input.email);
 
     // Falha cedo: um convite para quem já tem conta nunca poderia ser aceito.
     await this.assertEmailAvailable(email);
@@ -614,8 +615,9 @@ export class InvitationsService {
   }
 
   private async assertEmailAvailable(email: string): Promise<void> {
-    const existing = await this.prisma.client.user.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
+    // Busca por igualdade, no índice: o banco só guarda e-mail em minúsculas.
+    const existing = await this.prisma.client.user.findUnique({
+      where: { email: normalizeEmail(email) },
       select: { id: true },
     });
 
@@ -718,10 +720,6 @@ export class InvitationsService {
     const digits = onlyDigits(phone ?? '');
 
     return digits === '' ? null : digits;
-  }
-
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
   }
 
   private hashToken(token: string): string {

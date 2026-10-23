@@ -16,6 +16,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { Prisma } from '../generated/prisma/client';
 import { EmailSender } from '../common/email/email-sender';
 import { HashingService } from '../common/hashing/hashing.service';
+import { normalizeEmail } from '../common/validators/email.transform';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
 import { buildCircuitSignupEmail } from './circuit-signup-email.template';
@@ -516,11 +517,10 @@ export class CircuitSignupService {
   ): Promise<SignupConflict[]> {
     const conflicts: SignupConflict[] = [];
 
-    // Busca sem distinguir maiúsculas: `User.email` é único e sensível a caixa,
-    // e quem já tem conta como "Fulano@..." não deve conseguir criar outra como
-    // "fulano@...".
-    const existingUser = await tx.user.findFirst({
-      where: { email: { equals: dto.coordinator.email, mode: 'insensitive' } },
+    // O e-mail do DTO já vem normalizado (minúsculas), como o banco exige: a busca
+    // por igualdade usa o índice e ainda pega quem já tem conta como "Fulano@...".
+    const existingUser = await tx.user.findUnique({
+      where: { email: normalizeEmail(dto.coordinator.email) },
       select: { id: true },
     });
 

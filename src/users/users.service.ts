@@ -3,6 +3,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { HashingService } from '../common/hashing/hashing.service';
+import { normalizeEmail } from '../common/validators/email.transform';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import type { User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,14 +24,15 @@ export class UsersService {
   async create(circuitId: string, dto: CreateUserDto, caller: JwtPayload): Promise<UserResponse> {
     await this.ensureCircuitExists(circuitId);
     await this.ensureCongregationBelongsToCircuit(dto.congregationId, circuitId);
-    await this.ensureEmailUnique(dto.email);
+    const email = normalizeEmail(dto.email);
+    await this.ensureEmailUnique(email);
 
     const passwordHash = await this.hashing.hash(dto.password);
 
     const user = await this.prisma.client.user.create({
       data: {
         name: dto.name,
-        email: dto.email,
+        email,
         passwordHash,
         role: dto.role,
         circuitId,
@@ -106,8 +108,10 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, caller: JwtPayload): Promise<UserResponse> {
     const existing = await this.findOneRaw(id, caller);
 
-    if (dto.email !== undefined) {
-      await this.ensureEmailUnique(dto.email, id);
+    const email = dto.email === undefined ? undefined : normalizeEmail(dto.email);
+
+    if (email !== undefined) {
+      await this.ensureEmailUnique(email, id);
     }
 
     if (dto.congregationId !== undefined) {
@@ -121,7 +125,7 @@ export class UsersService {
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.email !== undefined && { email: dto.email }),
+        ...(email !== undefined && { email }),
         ...(passwordHash !== undefined && { passwordHash }),
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.congregationId !== undefined && { congregationId: dto.congregationId }),
@@ -176,7 +180,7 @@ export class UsersService {
     updatedAt: Date;
   } | null> {
     const user = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (!user) {
@@ -201,7 +205,7 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<UserResponse | null> {
     const user = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (!user) {
@@ -244,7 +248,7 @@ export class UsersService {
 
   private async ensureEmailUnique(email: string, excludeId?: string): Promise<void> {
     const existing = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (existing && existing.id !== excludeId) {

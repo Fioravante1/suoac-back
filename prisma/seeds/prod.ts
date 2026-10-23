@@ -1,3 +1,4 @@
+import { normalizeEmail } from '../../src/common/validators/email.transform';
 import type { PrismaClient } from '../../src/generated/prisma/client';
 import { type SeedContext, hashPassword } from './common';
 
@@ -20,7 +21,8 @@ export async function seedProd(prisma: PrismaClient, context: SeedContext): Prom
     console.warn('ADMIN_PASSWORD not set, using fallback password');
   }
 
-  const email = adminEmail ?? 'coordenador@suoac.dev';
+  // `ADMIN_EMAIL` vem do ambiente e pode ter maiúsculas; o banco só aceita minúsculas.
+  const email = normalizeEmail(adminEmail ?? 'coordenador@suoac.dev');
   const passwordHash = await hashPassword(adminPassword ?? 'Senha@123');
 
   const admin = await prisma.user.upsert({

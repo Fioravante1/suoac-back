@@ -194,6 +194,31 @@ describe('UsersService', () => {
       });
     });
 
+    it('deve gravar o e-mail em minúsculas e checar a unicidade com ele, mesmo que o service seja chamado sem o DTO', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation());
+      prismaMock.user.findUnique.mockResolvedValue(null);
+      prismaMock.user.create.mockResolvedValue(buildUserRaw());
+
+      await service.create(CIRCUIT_ID, { ...baseDto, email: ' Joao@EXAMPLE.com ' }, buildCaller());
+
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: 'joao@example.com' } });
+      expect(prismaMock.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ email: 'joao@example.com' }),
+      });
+    });
+
+    it('deve lancar ConflictException quando o email existe com outra caixa', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation());
+      prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
+
+      await expect(
+        service.create(CIRCUIT_ID, { ...baseDto, email: 'JOAO@example.com' }, buildCaller()),
+      ).rejects.toThrow(ConflictException);
+      expect(prismaMock.user.create).not.toHaveBeenCalled();
+    });
+
     it('deve chamar HashingService.hash com a senha', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.congregation.findUnique.mockResolvedValue(buildCongregation());
@@ -303,6 +328,18 @@ describe('UsersService', () => {
 
   // ── update ────────────────────────────────────────────────────
   describe('update', () => {
+    it('deve gravar o novo e-mail em minúsculas', async () => {
+      prismaMock.user.findUnique.mockResolvedValueOnce(buildUserRaw()).mockResolvedValueOnce(null);
+      prismaMock.user.update.mockResolvedValue(buildUserRaw({ email: 'novo@example.com' }));
+
+      await service.update(USER_ID, { email: ' Novo@EXAMPLE.com ' }, buildCaller());
+
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
+        where: { id: USER_ID },
+        data: { email: 'novo@example.com' },
+      });
+    });
+
     it('deve atualizar apenas os campos enviados', async () => {
       const existing = buildUserRaw();
       const updated = buildUserRaw({ name: 'Novo Nome' });
@@ -479,6 +516,18 @@ describe('UsersService', () => {
       expect(result!.email).toBe('joao@example.com');
     });
 
+    it.each(['JOAO@example.com', 'Joao@Example.COM', '  joao@example.com '])(
+      'deve achar a conta com o e-mail digitado como %j, buscando sempre em minúsculas',
+      async (typed) => {
+        prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
+
+        const result = await service.findByEmailForAuth(typed);
+
+        expect(result?.id).toBe(USER_ID);
+        expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: 'joao@example.com' } });
+      },
+    );
+
     it('deve retornar null quando nao existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(null);
 
@@ -490,6 +539,14 @@ describe('UsersService', () => {
 
   // ── findByEmail ───────────────────────────────────────────────
   describe('findByEmail', () => {
+    it('deve buscar em minúsculas, qualquer que seja a caixa digitada', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
+
+      await service.findByEmail('JOAO@Example.com');
+
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: 'joao@example.com' } });
+    });
+
     it('deve retornar usuario quando existe', async () => {
       prismaMock.user.findUnique.mockResolvedValue(buildUserRaw());
 

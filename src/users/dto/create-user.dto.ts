@@ -1,4 +1,6 @@
+import { Transform } from 'class-transformer';
 import { IsEmail, IsEnum, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { toNormalizedEmail } from '../../common/validators/email.transform';
 import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
 
 export const USER_ROLES = [
@@ -13,6 +15,7 @@ export class CreateUserDto {
   @Length(2, 150)
   name!: string;
 
+  @Transform(({ value }) => toNormalizedEmail(value))
   @IsEmail()
   @MaxLength(255)
   email!: string;
