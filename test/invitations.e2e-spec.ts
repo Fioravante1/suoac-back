@@ -7,6 +7,7 @@ import {
   invitationDeclined,
   invitationEmailAlreadyRegistered,
   invitationExpired,
+  invitationNotExpired,
   invitationNotFound,
   invitationRevoked,
   invitationUsed,
@@ -28,15 +29,17 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
   let findByToken: jest.Mock;
   let accept: jest.Mock;
   let decline: jest.Mock;
+  let requestRenewal: jest.Mock;
 
   beforeEach(async () => {
     findByToken = jest.fn();
     accept = jest.fn();
     decline = jest.fn();
+    requestRenewal = jest.fn();
 
     const moduleFixture = await Test.createTestingModule({
       controllers: [InvitationsController],
-      providers: [{ provide: InvitationsService, useValue: { findByToken, accept, decline } }],
+      providers: [{ provide: InvitationsService, useValue: { findByToken, accept, decline, requestRenewal } }],
     }).compile();
 
     app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -219,6 +222,32 @@ describe('Contrato HTTP do convite de congregação (e2e)', () => {
         .post(`/invitations/${TOKEN}/declines`)
         .send({ reason: 'NOT_THE_PERSON' })
         .expect(status);
+
+      expect(response.body).toEqual(expect.objectContaining({ statusCode: status, code }));
+    });
+  });
+
+  describe('POST /invitations/:token/renewal-requests', () => {
+    it('responde 204 sem corpo e sem exigir corpo na requisição', async () => {
+      requestRenewal.mockResolvedValue(undefined);
+
+      const response = await request(app.getHttpServer()).post(`/invitations/${TOKEN}/renewal-requests`).expect(204);
+
+      expect(response.body).toEqual({});
+      expect(requestRenewal).toHaveBeenCalledWith(TOKEN);
+    });
+
+    it.each([
+      ['inexistente', invitationNotFound(), 404, 'INVITATION_NOT_FOUND'],
+      ['ainda válido', invitationNotExpired(), 409, 'INVITATION_NOT_EXPIRED'],
+      ['já utilizado', invitationUsed(), 409, 'INVITATION_USED'],
+      ['revogado', invitationRevoked(), 403, 'INVITATION_REVOKED'],
+      ['recusado', invitationDeclined(), 409, 'INVITATION_DECLINED'],
+      ['de e-mail já cadastrado', invitationEmailAlreadyRegistered(), 409, 'INVITATION_EMAIL_ALREADY_REGISTERED'],
+    ])('distingue o convite %s por status e code', async (_state, exception, status, code) => {
+      requestRenewal.mockRejectedValue(exception);
+
+      const response = await request(app.getHttpServer()).post(`/invitations/${TOKEN}/renewal-requests`).expect(status);
 
       expect(response.body).toEqual(expect.objectContaining({ statusCode: status, code }));
     });

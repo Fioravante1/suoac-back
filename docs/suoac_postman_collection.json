@@ -414,6 +414,29 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Request Invitation Renewal",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/renewal-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "renewal-requests"
+              ]
+            },
+            "description": "Pedido de novo convite feito por quem abriu o link depois de expirado (rota publica, sem corpo).\n\n204 sem corpo: avisa por e-mail quem enviou o convite, que decide se reenvia. Nao gera token novo nem reabre o convite. Um pedido por convite a cada 24 horas: repetido dentro da janela responde 204 igual, sem novo e-mail.\n\nSo vale para convite expirado. Os demais respondem com 'code' no corpo e sem alterar nada: 409 INVITATION_NOT_EXPIRED (ainda valido), 409 INVITATION_USED, 409 INVITATION_DECLINED, 403 INVITATION_REVOKED, 404 INVITATION_NOT_FOUND. O reenvio pelo circuito limpa o pedido."
+          },
+          "response": []
         }
       ]
     },

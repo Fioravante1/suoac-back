@@ -384,6 +384,39 @@ describe('InvitationsService', () => {
       });
     });
 
+    it('deve avisar por e-mail quem enviou o convite, com o nome confirmado pelo convidado', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      prismaMock.user.create.mockResolvedValue(buildUser({ name: 'Maria de Souza Lima' }) as never);
+
+      await service.accept(TOKEN, dto);
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).toHaveBeenCalledTimes(1);
+      const message = emailSenderMock.send.mock.calls[0]?.[0];
+      expect(message?.to).toBe('joao@example.com');
+      expect(message?.text).toContain('Maria de Souza Lima');
+    });
+
+    it('deve manter o aceite e devolver a sessão quando o envio do aviso falha', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
+
+      const result = await service.accept(TOKEN, dto);
+      await flushPendingWork();
+
+      expect(result.accessToken).toBe('access');
+    });
+
+    it('nao deve avisar ninguém quando o aceite falha', async () => {
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.invitation.findUniqueOrThrow.mockResolvedValue(buildInvitation({ usedAt: new Date() }) as never);
+
+      await captureError(service.accept(TOKEN, dto));
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
     it('deve gravar audit log da criação do usuário', async () => {
       await service.accept(TOKEN, dto);
       await flushPendingWork();
@@ -560,6 +593,199 @@ describe('InvitationsService', () => {
     });
   });
 
+  // ── requestRenewal ─────────────────────────────────────────────
+  describe('requestRenewal', () => {
+    const expired = (overrides: Record<string, unknown> = {}): never =>
+      buildInvitation({ expiresAt: new Date(Date.now() - 1000), ...overrides }) as never;
+
+    beforeEach(() => {
+      prismaMock.invitation.findUnique.mockResolvedValue(expired());
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+    });
+
+    it('deve gravar o pedido só se o convite segue expirado, com o token lido e fora da janela', async () => {
+      await service.requestRenewal(TOKEN);
+
+      expect(prismaMock.invitation.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: INVITATION_ID,
+          tokenHash: hashToken(TOKEN),
+          usedAt: null,
+          revokedAt: null,
+          declinedAt: null,
+          expiresAt: { lte: expect.any(Date) },
+          OR: [{ renewalRequestedAt: null }, { renewalRequestedAt: { lte: expect.any(Date) } }],
+        },
+        data: { renewalRequestedAt: expect.any(Date) },
+      });
+    });
+
+    it('deve usar a janela de 24 horas', async () => {
+      const before = Date.now();
+
+      await service.requestRenewal(TOKEN);
+
+      const call = prismaMock.invitation.updateMany.mock.calls[0]?.[0];
+      const threshold = (call?.where?.OR?.[1] as { renewalRequestedAt: { lte: Date } }).renewalRequestedAt.lte;
+      expect(before - threshold.getTime()).toBeGreaterThanOrEqual(INVITATION.RENEWAL_REQUEST_WINDOW_MS);
+      expect(before - threshold.getTime()).toBeLessThan(INVITATION.RENEWAL_REQUEST_WINDOW_MS + 5000);
+      expect(INVITATION.RENEWAL_REQUEST_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
+    });
+
+    it('deve avisar por e-mail quem enviou o convite, sem link', async () => {
+      await service.requestRenewal(TOKEN);
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).toHaveBeenCalledTimes(1);
+      const message = emailSenderMock.send.mock.calls[0]?.[0];
+      expect(message?.to).toBe('joao@example.com');
+      expect(message?.text).toContain('Maria Souza');
+      expect(message?.text).not.toContain('http');
+    });
+
+    it('nao deve gerar token novo nem reabrir o convite', async () => {
+      await service.requestRenewal(TOKEN);
+
+      expect(prismaMock.invitation.update).not.toHaveBeenCalled();
+      const call = prismaMock.invitation.updateMany.mock.calls[0]?.[0];
+      expect(call?.data).toEqual({ renewalRequestedAt: expect.any(Date) });
+    });
+
+    it('deve responder igual e não enviar outro e-mail quando o aviso já foi dado na janela', async () => {
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.invitation.findUnique
+        .mockResolvedValueOnce(expired())
+        .mockResolvedValueOnce(expired({ renewalRequestedAt: new Date() }));
+
+      await expect(service.requestRenewal(TOKEN)).resolves.toBeUndefined();
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve responder 204 mesmo quando o envio do aviso falha', async () => {
+      emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
+
+      await expect(service.requestRenewal(TOKEN)).resolves.toBeUndefined();
+      await flushPendingWork();
+    });
+
+    it('deve desfazer só o pedido gravado quando o envio do aviso falha, para a próxima tentativa avisar', async () => {
+      emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
+
+      await service.requestRenewal(TOKEN);
+      await flushPendingWork();
+
+      const claim = prismaMock.invitation.updateMany.mock.calls[0]?.[0];
+      const claimedAt = (claim?.data as { renewalRequestedAt: Date }).renewalRequestedAt;
+      expect(prismaMock.invitation.updateMany).toHaveBeenLastCalledWith({
+        where: { id: INVITATION_ID, renewalRequestedAt: claimedAt },
+        data: { renewalRequestedAt: null },
+      });
+    });
+
+    it('deve desfazer o pedido quando quem criou o convite não existe mais', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await service.requestRenewal(TOKEN);
+      await flushPendingWork();
+
+      expect(prismaMock.invitation.updateMany).toHaveBeenCalledTimes(2);
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('nao deve desfazer o pedido quando o aviso sai', async () => {
+      await service.requestRenewal(TOKEN);
+      await flushPendingWork();
+
+      expect(prismaMock.invitation.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('deve manter a resposta quando desfazer o pedido também falha', async () => {
+      emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
+      prismaMock.invitation.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(new Error('banco fora'));
+
+      await expect(service.requestRenewal(TOKEN)).resolves.toBeUndefined();
+      await flushPendingWork();
+    });
+
+    it('deve lançar 409 de e-mail já cadastrado quando o convidado criou conta depois do convite', async () => {
+      prismaMock.user.findFirst.mockResolvedValue({ id: 'u9' } as never);
+
+      const err = await captureError(service.requestRenewal(TOKEN));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.EMAIL_ALREADY_REGISTERED);
+    });
+
+    it('nao deve gravar o pedido nem avisar quando o convidado já tem conta', async () => {
+      prismaMock.user.findFirst.mockResolvedValue({ id: 'u9' } as never);
+
+      await captureError(service.requestRenewal(TOKEN));
+      await flushPendingWork();
+
+      expect(prismaMock.invitation.updateMany).not.toHaveBeenCalled();
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 409 com código próprio quando o convite ainda é válido', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
+
+      const err = await captureError(service.requestRenewal(TOKEN));
+
+      expect((err as { getStatus: () => number }).getStatus()).toBe(409);
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.NOT_EXPIRED);
+    });
+
+    it.each([
+      ['usado', { usedAt: new Date() }, INVITATION_ERROR_CODE.USED],
+      ['revogado', { revokedAt: new Date() }, INVITATION_ERROR_CODE.REVOKED],
+      ['recusado', { declinedAt: new Date() }, INVITATION_ERROR_CODE.DECLINED],
+    ])('deve responder com o código do estado e não gravar nada quando o convite está %s', async (_s, state, code) => {
+      prismaMock.invitation.findUnique.mockResolvedValue(expired(state));
+
+      const err = await captureError(service.requestRenewal(TOKEN));
+
+      expect(errorCodeOf(err)).toBe(code);
+      expect(prismaMock.invitation.updateMany).not.toHaveBeenCalled();
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 404 com código próprio quando o token não existe', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(null);
+
+      const err = await captureError(service.requestRenewal(TOKEN));
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.NOT_FOUND);
+    });
+
+    it('deve responder com o estado verdadeiro quando um reenvio troca o token entre a leitura e o pedido', async () => {
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.invitation.findUnique
+        .mockResolvedValueOnce(expired())
+        .mockResolvedValueOnce(buildInvitation() as never);
+
+      const err = await captureError(service.requestRenewal(TOKEN));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.NOT_EXPIRED);
+    });
+
+    it('nao deve avisar ninguém quando perde a corrida', async () => {
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.invitation.findUnique
+        .mockResolvedValueOnce(expired())
+        .mockResolvedValueOnce(expired({ usedAt: new Date() }));
+
+      await captureError(service.requestRenewal(TOKEN));
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+  });
+
   // ── create ─────────────────────────────────────────────────────
   describe('create', () => {
     const input = {
@@ -728,6 +954,7 @@ describe('InvitationsService', () => {
         expiresAt: expect.any(Date),
         declinedAt: null,
         declineReason: null,
+        renewalRequestedAt: null,
       });
       expect(result.link).toContain('token=');
     });

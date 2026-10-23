@@ -81,6 +81,65 @@ export function buildInvitationDeclinedEmail(input: DeclinedEmailInput): EmailMe
   return { to, subject: 'Um convite do SUOAC foi recusado', html, text };
 }
 
+interface AcceptedEmailInput {
+  to: string;
+  inviterName: string;
+  userName: string;
+  userEmail: string;
+  congregation: string;
+}
+
+/** Avisa quem enviou o convite que ele foi aceito e que a conta já pode entrar. */
+export function buildInvitationAcceptedEmail(input: AcceptedEmailInput): EmailMessage {
+  const { to, inviterName, userName, userEmail, congregation } = input;
+
+  const text = [
+    `Olá, ${inviterName}.`,
+    '',
+    `${userName} (${userEmail}) aceitou o convite para a congregação ${congregation}.`,
+    'O acesso já está liberado.',
+  ].join('\n');
+
+  const html = [
+    `<p>Olá, ${escapeHtml(inviterName)}.</p>`,
+    `<p>${escapeHtml(userName)} (${escapeHtml(userEmail)}) aceitou o convite para a congregação <strong>${escapeHtml(congregation)}</strong>.</p>`,
+    '<p>O acesso já está liberado.</p>',
+  ].join('');
+
+  return { to, subject: 'Um convite do SUOAC foi aceito', html, text };
+}
+
+interface RenewalRequestEmailInput {
+  to: string;
+  inviterName: string;
+  inviteeName: string;
+  inviteeEmail: string;
+  congregation: string;
+}
+
+/**
+ * Avisa quem enviou o convite que o convidado tentou usar o link depois de
+ * expirado e pede outro. Não leva link: quem decide reenviar é o coordenador.
+ */
+export function buildInvitationRenewalRequestEmail(input: RenewalRequestEmailInput): EmailMessage {
+  const { to, inviterName, inviteeName, inviteeEmail, congregation } = input;
+
+  const text = [
+    `Olá, ${inviterName}.`,
+    '',
+    `${inviteeName} (${inviteeEmail}) abriu o convite para a congregação ${congregation} depois de ele expirar e pediu um novo.`,
+    'Reenvie o convite para que a pessoa possa concluir o cadastro.',
+  ].join('\n');
+
+  const html = [
+    `<p>Olá, ${escapeHtml(inviterName)}.</p>`,
+    `<p>${escapeHtml(inviteeName)} (${escapeHtml(inviteeEmail)}) abriu o convite para a congregação <strong>${escapeHtml(congregation)}</strong> depois de ele expirar e pediu um novo.</p>`,
+    '<p>Reenvie o convite para que a pessoa possa concluir o cadastro.</p>',
+  ].join('');
+
+  return { to, subject: 'Pedido de novo convite no SUOAC', html, text };
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
