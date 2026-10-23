@@ -68,6 +68,30 @@ describe('AllExceptionsFilter', () => {
       expectResponse(reply, 409, { statusCode: 409, message: 'Email já existe', error: 'Conflict' });
     });
 
+    it('deve repassar o código de erro quando o service o informa', () => {
+      // Os estados do convite (SUC-36) respondem com status próprios, e o front
+      // os distingue por este código, não pelo texto da mensagem.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Este convite já foi utilizado.',
+        error: 'Conflict',
+        code: 'INVITATION_USED',
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, { code: 'INVITATION_USED' });
+    });
+
+    it('nao deve repassar campos arbitrários do corpo da exceção', () => {
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'x',
+        error: 'Conflict',
+        internal: 'segredo',
+      });
+      const { reply } = catchException(filter, exception);
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ internal: 'segredo' }));
+    });
+
     it('deve repassar o campo que causou o erro quando o service o informa', () => {
       // O autocadastro (SUC-37) tem três conflitos diferentes respondendo 409, e
       // a tela só sabe onde pintar o erro por este campo.
