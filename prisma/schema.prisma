@@ -403,28 +403,38 @@ model CongregationEventStatus {
 // INVITATIONS
 // ============================================================
 
+/// Convite para um coordenador ou assistente de congregação entrar no sistema.
+///
+/// Apenas o SHA-256 do token é persistido; o valor em claro existe somente no
+/// link enviado ao convidado. O estado não é uma coluna: deriva de `usedAt`,
+/// `revokedAt` e `expiresAt`, para não haver como os dois divergirem.
 model Invitation {
-  id    String   @id @default(uuid()) @db.Uuid
-  email String   @db.VarChar(255)
-  role  UserRole
-  token String   @unique @db.VarChar(255)
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Dados do destinatário. O aceite cria o usuário a partir deles, e por isso
+  /// a tela de aceite só pede a senha.
+  name      String   @db.VarChar(150)
+  email     String   @db.VarChar(255)
+  phone     String?  @db.VarChar(20)
+  role      UserRole
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
 
   expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
 
   circuitId String  @map("circuit_id") @db.Uuid
   circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)
 
-  congregationId String?       @map("congregation_id") @db.Uuid
-  congregation   Congregation? @relation(fields: [congregationId], references: [id], onDelete: SetNull)
+  congregationId String       @map("congregation_id") @db.Uuid
+  congregation   Congregation @relation(fields: [congregationId], references: [id], onDelete: Cascade)
 
   createdById String @map("created_by_id") @db.Uuid
   createdBy   User   @relation("InvitationCreatedBy", fields: [createdById], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([token])
   @@index([circuitId])
+  @@index([congregationId])
   @@map("invitations")
 }
 
