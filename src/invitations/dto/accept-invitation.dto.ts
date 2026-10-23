@@ -1,6 +1,13 @@
 import { Transform } from 'class-transformer';
 import { IsString, Length, Matches } from 'class-validator';
+import {
+  FULL_NAME_MESSAGE,
+  FULL_NAME_REGEX,
+  PERSON_NAME_LENGTH,
+  toCollapsedName,
+} from '../../common/validators/name.constants';
 import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
+import { PHONE_DIGITS_MESSAGE, PHONE_DIGITS_REGEX, toPhoneDigits } from '../../common/validators/phone.constants';
 
 /**
  * O convidado confirma nome e celular e escolhe a senha. O e-mail, o papel e a
@@ -11,19 +18,19 @@ import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../co
  * confirmação dos dados pelo próprio convidado.
  */
 export class AcceptInvitationDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value))
+  @Transform(({ value }) => toCollapsedName(value))
   @IsString()
-  @Length(2, 150)
-  @Matches(/^\S+(\s\S+)+$/, { message: 'Informe nome e sobrenome' })
+  @Length(PERSON_NAME_LENGTH.MIN, PERSON_NAME_LENGTH.MAX)
+  @Matches(FULL_NAME_REGEX, { message: FULL_NAME_MESSAGE })
   name!: string;
 
   /**
    * Apenas dígitos, com DDD. A máscara da tela é apresentação: o valor é
-   * normalizado antes de validar, como no autocadastro do circuito.
+   * normalizado antes de validar, pela mesma regra do autocadastro do circuito.
    */
-  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '') : value))
+  @Transform(({ value }) => toPhoneDigits(value))
   @IsString()
-  @Matches(/^\d{10,11}$/, { message: 'O celular deve ter DDD e 8 ou 9 dígitos' })
+  @Matches(PHONE_DIGITS_REGEX, { message: PHONE_DIGITS_MESSAGE })
   phone!: string;
 
   @IsString()

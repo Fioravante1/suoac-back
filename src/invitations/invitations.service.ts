@@ -16,6 +16,7 @@ import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/ci
 import { EmailSender } from '../common/email/email-sender';
 import type { EmailMessage } from '../common/email/interfaces/email-message.interface';
 import { HashingService } from '../common/hashing/hashing.service';
+import { onlyDigits } from '../common/validators/phone.constants';
 import { Prisma } from '../generated/prisma/client';
 import type { InvitationDeclineReason } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -714,7 +715,7 @@ export class InvitationsService {
 
   /** Só dígitos, como o `User.phone`; vazio vira `null`. A máscara é apresentação. */
   private normalizePhone(phone: string | null | undefined): string | null {
-    const digits = phone?.replace(/\D/g, '') ?? '';
+    const digits = onlyDigits(phone ?? '');
 
     return digits === '' ? null : digits;
   }

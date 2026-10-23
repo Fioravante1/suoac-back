@@ -626,10 +626,14 @@ describe('InvitationsService', () => {
 
       await service.requestRenewal(TOKEN);
 
+      const after = Date.now();
       const call = prismaMock.invitation.updateMany.mock.calls[0]?.[0];
-      const threshold = (call?.where?.OR?.[1] as { renewalRequestedAt: { lte: Date } }).renewalRequestedAt.lte;
-      expect(before - threshold.getTime()).toBeGreaterThanOrEqual(INVITATION.RENEWAL_REQUEST_WINDOW_MS);
-      expect(before - threshold.getTime()).toBeLessThan(INVITATION.RENEWAL_REQUEST_WINDOW_MS + 5000);
+      const threshold = (
+        call?.where?.OR?.[1] as { renewalRequestedAt: { lte: Date } }
+      ).renewalRequestedAt.lte.getTime();
+      // O limite é calculado durante a chamada, entre `before` e `after`: compara contra os dois, não só contra o primeiro.
+      expect(threshold).toBeGreaterThanOrEqual(before - INVITATION.RENEWAL_REQUEST_WINDOW_MS);
+      expect(threshold).toBeLessThanOrEqual(after - INVITATION.RENEWAL_REQUEST_WINDOW_MS);
       expect(INVITATION.RENEWAL_REQUEST_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
     });
 
