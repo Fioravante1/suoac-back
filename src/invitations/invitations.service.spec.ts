@@ -45,6 +45,7 @@ function buildInvitation(overrides: Record<string, unknown> = {}): Record<string
     expiresAt: new Date(Date.now() + INVITATION.TOKEN_TTL_MS),
     usedAt: null,
     revokedAt: null,
+    declinedAt: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     circuit: { name: 'SP-17', city: 'Campinas', state: 'SP' },
     congregation: { name: 'Central', code: '31245' },
@@ -278,6 +279,35 @@ describe('InvitationsService', () => {
       expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.REVOKED);
     });
 
+    it('deve lançar 409 com código próprio quando o convite foi recusado', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ declinedAt: new Date() }) as never);
+
+      const err = await captureError(service.findByToken(TOKEN));
+
+      expect((err as { getStatus: () => number }).getStatus()).toBe(409);
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.DECLINED);
+    });
+
+    it('deve tratar convite recusado e expirado como recusado', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(
+        buildInvitation({ declinedAt: new Date(), expiresAt: new Date(Date.now() - 1000) }) as never,
+      );
+
+      const err = await captureError(service.findByToken(TOKEN));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.DECLINED);
+    });
+
+    it('deve tratar convite revogado e recusado como revogado', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(
+        buildInvitation({ revokedAt: new Date(), declinedAt: new Date() }) as never,
+      );
+
+      const err = await captureError(service.findByToken(TOKEN));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.REVOKED);
+    });
+
     it('deve tratar convite usado e expirado como usado', async () => {
       prismaMock.invitation.findUnique.mockResolvedValue(
         buildInvitation({ usedAt: new Date(), expiresAt: new Date(Date.now() - 1000) }) as never,
@@ -338,11 +368,18 @@ describe('InvitationsService', () => {
       expect(result.accessToken).toBe('access');
     });
 
-    it('deve consumir o token só se o convite ainda estiver pendente', async () => {
+    it('deve consumir o token só se o convite ainda estiver pendente e o token for o lido', async () => {
       await service.accept(TOKEN, dto);
 
       expect(prismaMock.invitation.updateMany).toHaveBeenCalledWith({
-        where: { id: INVITATION_ID, usedAt: null, revokedAt: null, expiresAt: { gt: expect.any(Date) } },
+        where: {
+          id: INVITATION_ID,
+          tokenHash: hashToken(TOKEN),
+          usedAt: null,
+          revokedAt: null,
+          declinedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
         data: { usedAt: expect.any(Date) },
       });
     });
@@ -405,6 +442,121 @@ describe('InvitationsService', () => {
       await captureError(service.accept(TOKEN, dto));
 
       expect(prismaMock.user.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── decline ────────────────────────────────────────────────────
+  describe('decline', () => {
+    const dto = { reason: 'NOT_THE_PERSON' } as const;
+
+    beforeEach(() => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+    });
+
+    it('deve gravar a data e o motivo só se o convite ainda estiver pendente e o token for o lido', async () => {
+      await service.decline(TOKEN, dto);
+
+      expect(prismaMock.invitation.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: INVITATION_ID,
+          tokenHash: hashToken(TOKEN),
+          usedAt: null,
+          revokedAt: null,
+          declinedAt: null,
+          expiresAt: { gt: expect.any(Date) },
+        },
+        data: { declinedAt: expect.any(Date), declineReason: 'NOT_THE_PERSON' },
+      });
+    });
+
+    it('deve avisar por e-mail quem enviou o convite, com o motivo', async () => {
+      await service.decline(TOKEN, { reason: 'RECEIVED_BY_MISTAKE' });
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).toHaveBeenCalledTimes(1);
+      const message = emailSenderMock.send.mock.calls[0]?.[0];
+      expect(message?.to).toBe('joao@example.com');
+      expect(message?.text).toContain('Recebi por engano');
+    });
+
+    it('deve buscar o e-mail de quem criou o convite', async () => {
+      await service.decline(TOKEN, dto);
+      await flushPendingWork();
+
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { id: INVITER_ID }, select: { email: true } });
+    });
+
+    it('deve manter a recusa e não enviar nada quando quem criou o convite não existe mais', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.decline(TOKEN, dto)).resolves.toBeUndefined();
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve manter a recusa quando o envio do aviso falha', async () => {
+      emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
+
+      await expect(service.decline(TOKEN, dto)).resolves.toBeUndefined();
+      await flushPendingWork();
+    });
+
+    it.each([
+      ['usado', { usedAt: new Date() }, INVITATION_ERROR_CODE.USED],
+      ['revogado', { revokedAt: new Date() }, INVITATION_ERROR_CODE.REVOKED],
+      ['já recusado', { declinedAt: new Date() }, INVITATION_ERROR_CODE.DECLINED],
+      ['expirado', { expiresAt: new Date(Date.now() - 1000) }, INVITATION_ERROR_CODE.EXPIRED],
+    ])('deve responder com o código do estado e não gravar nada quando o convite está %s', async (_s, state, code) => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation(state) as never);
+
+      const err = await captureError(service.decline(TOKEN, dto));
+
+      expect(errorCodeOf(err)).toBe(code);
+      expect(prismaMock.invitation.updateMany).not.toHaveBeenCalled();
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 404 com código próprio quando o token não existe', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(null);
+
+      const err = await captureError(service.decline(TOKEN, dto));
+
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.NOT_FOUND);
+    });
+
+    it('deve responder com o estado verdadeiro quando um aceite concorrente vence a corrida', async () => {
+      prismaMock.invitation.findUnique
+        .mockResolvedValueOnce(buildInvitation() as never)
+        .mockResolvedValueOnce(buildInvitation({ usedAt: new Date() }) as never);
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+      const err = await captureError(service.decline(TOKEN, dto));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.USED);
+    });
+
+    it('nao deve avisar ninguém quando perde a corrida', async () => {
+      prismaMock.invitation.findUnique
+        .mockResolvedValueOnce(buildInvitation() as never)
+        .mockResolvedValueOnce(buildInvitation({ usedAt: new Date() }) as never);
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+      await captureError(service.decline(TOKEN, dto));
+      await flushPendingWork();
+
+      expect(emailSenderMock.send).not.toHaveBeenCalled();
+    });
+
+    it('deve lançar 409 genérico quando perde a corrida e o convite segue pendente', async () => {
+      prismaMock.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+      const err = await captureError(service.decline(TOKEN, dto));
+
+      expect((err as { getStatus: () => number }).getStatus()).toBe(409);
     });
   });
 
@@ -571,7 +723,22 @@ describe('InvitationsService', () => {
       const result = await service.resend(INVITATION_ID, buildActor());
 
       const call = prismaMock.invitation.update.mock.calls[0]?.[0];
-      expect(call?.data).toEqual({ tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/), expiresAt: expect.any(Date) });
+      expect(call?.data).toEqual({
+        tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        expiresAt: expect.any(Date),
+        declinedAt: null,
+        declineReason: null,
+      });
+      expect(result.link).toContain('token=');
+    });
+
+    it('deve reabrir o convite recusado com token novo', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ declinedAt: new Date() }) as never);
+
+      const result = await service.resend(INVITATION_ID, buildActor());
+
+      const call = prismaMock.invitation.update.mock.calls[0]?.[0];
+      expect(call?.data).toEqual(expect.objectContaining({ declinedAt: null, declineReason: null }));
       expect(result.link).toContain('token=');
     });
 
@@ -699,6 +866,15 @@ describe('InvitationsService', () => {
       const err = await captureError(service.revoke(INVITATION_ID, buildActor()));
 
       expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.USED);
+    });
+
+    it('nao deve gravar nada ao revogar um convite recusado, que segue reenviável', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ declinedAt: new Date() }) as never);
+
+      const result = await service.revoke(INVITATION_ID, buildActor());
+
+      expect(prismaMock.invitation.update).not.toHaveBeenCalled();
+      expect(result.state).toBe('DECLINED');
     });
 
     it('nao deve gravar nada ao revogar um convite já revogado', async () => {

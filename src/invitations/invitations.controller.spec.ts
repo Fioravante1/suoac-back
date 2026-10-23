@@ -8,10 +8,10 @@ const TOKEN = 'a'.repeat(64);
 
 describe('InvitationsController', () => {
   let controller: InvitationsController;
-  let serviceMock: jest.Mocked<Pick<InvitationsService, 'findByToken' | 'accept'>>;
+  let serviceMock: jest.Mocked<Pick<InvitationsService, 'findByToken' | 'accept' | 'decline'>>;
 
   beforeEach(async () => {
-    serviceMock = { findByToken: jest.fn(), accept: jest.fn() };
+    serviceMock = { findByToken: jest.fn(), accept: jest.fn(), decline: jest.fn() };
 
     const module = await Test.createTestingModule({
       controllers: [InvitationsController],
@@ -41,5 +41,16 @@ describe('InvitationsController', () => {
 
     expect(serviceMock.accept).toHaveBeenCalledWith(TOKEN, dto);
     expect(result).toBe(session);
+  });
+
+  it('deve delegar a recusa ao service sem devolver corpo', async () => {
+    serviceMock.decline.mockResolvedValue(undefined);
+
+    const dto = { reason: 'NOT_THE_PERSON' } as const;
+
+    const result = await controller.decline(TOKEN, dto);
+
+    expect(serviceMock.decline).toHaveBeenCalledWith(TOKEN, dto);
+    expect(result).toBeUndefined();
   });
 });
