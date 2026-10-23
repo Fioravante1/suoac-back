@@ -1,4 +1,9 @@
-import { buildInvitationDeclinedEmail, buildInvitationEmail } from './invitation-email.template';
+import {
+  buildInvitationAcceptedEmail,
+  buildInvitationDeclinedEmail,
+  buildInvitationEmail,
+  buildInvitationRenewalRequestEmail,
+} from './invitation-email.template';
 
 const LINK = 'https://suoac.example.com/accept-invitation?token=abc';
 
@@ -51,6 +56,67 @@ describe('buildInvitationDeclinedEmail', () => {
 
   it('deve escapar HTML em nomes vindos do usuário', () => {
     const message = buildInvitationDeclinedEmail({ ...input, inviteeName: '<script>x</script>' });
+
+    expect(message.html).not.toContain('<script>');
+  });
+});
+
+describe('buildInvitationAcceptedEmail', () => {
+  const input = {
+    to: 'joao@example.com',
+    inviterName: 'João',
+    userName: 'Maria Souza',
+    userEmail: 'maria@example.com',
+    congregation: 'Central',
+  };
+
+  it('deve endereçar o e-mail a quem enviou o convite', () => {
+    expect(buildInvitationAcceptedEmail(input).to).toBe('joao@example.com');
+  });
+
+  it('deve dizer quem aceitou e em qual congregação', () => {
+    const message = buildInvitationAcceptedEmail(input);
+
+    expect(message.text).toContain('Maria Souza (maria@example.com)');
+    expect(message.text).toContain('Central');
+  });
+
+  it('deve escapar HTML em nomes vindos do usuário', () => {
+    const message = buildInvitationAcceptedEmail({ ...input, userName: '<script>x</script>' });
+
+    expect(message.html).not.toContain('<script>');
+  });
+});
+
+describe('buildInvitationRenewalRequestEmail', () => {
+  const input = {
+    to: 'joao@example.com',
+    inviterName: 'João',
+    inviteeName: 'Maria Souza',
+    inviteeEmail: 'maria@example.com',
+    congregation: 'Central',
+  };
+
+  it('deve endereçar o e-mail a quem enviou o convite', () => {
+    expect(buildInvitationRenewalRequestEmail(input).to).toBe('joao@example.com');
+  });
+
+  it('deve dizer quem pediu o novo convite, para qual e-mail e em qual congregação', () => {
+    const message = buildInvitationRenewalRequestEmail(input);
+
+    expect(message.text).toContain('Maria Souza (maria@example.com)');
+    expect(message.text).toContain('Central');
+  });
+
+  it('nao deve levar link: quem decide reenviar é o coordenador', () => {
+    const message = buildInvitationRenewalRequestEmail(input);
+
+    expect(message.html).not.toContain('http');
+    expect(message.text).not.toContain('http');
+  });
+
+  it('deve escapar HTML em nomes vindos do usuário', () => {
+    const message = buildInvitationRenewalRequestEmail({ ...input, inviteeName: '<script>x</script>' });
 
     expect(message.html).not.toContain('<script>');
   });

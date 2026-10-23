@@ -8,6 +8,12 @@ export const INVITATION = {
   /** 32 bytes = 256 bits de entropia, serializados em hexadecimal (64 caracteres). */
   TOKEN_BYTES: 32,
   TOKEN_TTL_MS: 7 * 24 * 60 * 60 * 1000,
+  /**
+   * Janela em que um convite expirado avisa o circuito uma única vez. A rota é
+   * pública e cada pedido vira e-mail para o coordenador; o limite por IP não
+   * serve atrás do BFF, então o limite é por convite.
+   */
+  RENEWAL_REQUEST_WINDOW_MS: 24 * 60 * 60 * 1000,
 } as const;
 
 /**
@@ -30,6 +36,7 @@ export const INVITATION_ERROR_CODE = {
   USED: 'INVITATION_USED',
   REVOKED: 'INVITATION_REVOKED',
   DECLINED: 'INVITATION_DECLINED',
+  NOT_EXPIRED: 'INVITATION_NOT_EXPIRED',
   EMAIL_ALREADY_REGISTERED: 'INVITATION_EMAIL_ALREADY_REGISTERED',
 } as const;
 

@@ -55,6 +55,15 @@ export function invitationDeclined(): ConflictException {
   });
 }
 
+export function invitationNotExpired(): ConflictException {
+  return new ConflictException({
+    statusCode: 409,
+    message: 'Este convite ainda é válido. Use o link que você recebeu.',
+    error: 'Conflict',
+    code: INVITATION_ERROR_CODE.NOT_EXPIRED,
+  });
+}
+
 export function invitationEmailAlreadyRegistered(): ConflictException {
   return new ConflictException({
     statusCode: 409,

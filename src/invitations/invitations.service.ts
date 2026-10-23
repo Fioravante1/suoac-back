@@ -14,17 +14,24 @@ import type { AuthResponse } from '../auth/interfaces/auth-response.interface';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import { EmailSender } from '../common/email/email-sender';
+import type { EmailMessage } from '../common/email/interfaces/email-message.interface';
 import { HashingService } from '../common/hashing/hashing.service';
 import { Prisma } from '../generated/prisma/client';
 import type { InvitationDeclineReason } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import type { DeclineInvitationDto } from './dto/decline-invitation.dto';
-import { buildInvitationDeclinedEmail, buildInvitationEmail } from './invitation-email.template';
+import {
+  buildInvitationAcceptedEmail,
+  buildInvitationDeclinedEmail,
+  buildInvitationEmail,
+  buildInvitationRenewalRequestEmail,
+} from './invitation-email.template';
 import {
   exceptionForState,
   invitationEmailAlreadyRegistered,
   invitationExpired,
+  invitationNotExpired,
   invitationNotFound,
 } from './invitation-errors';
 import { INVITABLE_ROLES, INVITATION } from './invitations.constants';
@@ -47,6 +54,7 @@ interface InvitationRow {
   usedAt: Date | null;
   revokedAt: Date | null;
   declinedAt: Date | null;
+  renewalRequestedAt: Date | null;
   createdAt: Date;
 }
 
@@ -133,6 +141,16 @@ export class InvitationsService {
 
     this.logger.log(`Convite aceito — invitationId=${invitation.id} userId=${user.id}`);
 
+    void this.notifyInviter(invitation, 'aceite', (to) =>
+      buildInvitationAcceptedEmail({
+        to,
+        inviterName: invitation.createdBy.name,
+        userName: user.name,
+        userEmail: invitation.email,
+        congregation: invitation.congregation.name,
+      }),
+    );
+
     void this.auditLogService
       .log('CREATE', 'User', user.id, user.id, {
         oldValues: null,
@@ -156,7 +174,43 @@ export class InvitationsService {
 
     this.logger.log(`Convite recusado — invitationId=${invitation.id} reason=${dto.reason}`);
 
-    void this.sendDeclinedEmail(invitation, dto.reason);
+    void this.notifyInviter(invitation, 'recusa', (to) =>
+      buildInvitationDeclinedEmail({
+        to,
+        inviterName: invitation.createdBy.name,
+        inviteeName: invitation.name,
+        inviteeEmail: invitation.email,
+        congregation: invitation.congregation.name,
+        reason: dto.reason,
+      }),
+    );
+  }
+
+  /**
+   * Pedido do convidado que abriu o link depois de expirado: avisa quem enviou
+   * o convite, que decide se reenvia. Não gera token nem reabre nada.
+   *
+   * Um pedido por convite a cada janela: dentro dela responde igual, sem novo
+   * e-mail, e a tela mostra "Pedido enviado" do mesmo jeito. A rota é pública e
+   * cada pedido vira e-mail para o coordenador.
+   */
+  async requestRenewal(token: string): Promise<void> {
+    const invitation = await this.loadByToken(token);
+
+    this.assertRenewable(invitation);
+    // A pessoa pode ter criado conta por conta própria desde o convite: o aviso
+    // pediria ao coordenador um reenvio que o `resend` recusa.
+    await this.assertEmailAvailable(invitation.email);
+
+    const claimedAt = await this.claimRenewalRequest(invitation);
+
+    if (!claimedAt) {
+      return;
+    }
+
+    this.logger.log(`Pedido de novo convite — invitationId=${invitation.id}`);
+
+    void this.notifyRenewalRequest(invitation, claimedAt);
   }
 
   /**
@@ -232,6 +286,7 @@ export class InvitationsService {
       expiresAt: this.newExpiration(),
       declinedAt: null,
       declineReason: null,
+      renewalRequestedAt: null,
     });
 
     this.logger.log(`Convite reenviado — invitationId=${id}`);
@@ -354,6 +409,77 @@ export class InvitationsService {
     throw new ConflictException('Não foi possível recusar o convite. Tente novamente.');
   }
 
+  /**
+   * Grava o pedido só se o convite segue expirado e fora da janela do último
+   * pedido, e devolve o instante gravado. `null` quer dizer que o aviso já foi
+   * dado nesta janela. Se o estado mudou entre a leitura e este ponto, relê e
+   * responde com o verdadeiro.
+   */
+  private async claimRenewalRequest(invitation: InvitationWithContext): Promise<Date | null> {
+    const now = Date.now();
+    const claimedAt = new Date(now);
+    const claimed = await this.prisma.client.invitation.updateMany({
+      where: {
+        id: invitation.id,
+        tokenHash: invitation.tokenHash,
+        usedAt: null,
+        revokedAt: null,
+        declinedAt: null,
+        expiresAt: { lte: new Date(now) },
+        OR: [
+          { renewalRequestedAt: null },
+          { renewalRequestedAt: { lte: new Date(now - INVITATION.RENEWAL_REQUEST_WINDOW_MS) } },
+        ],
+      },
+      data: { renewalRequestedAt: claimedAt },
+    });
+
+    if (claimed.count === 1) {
+      return claimedAt;
+    }
+
+    const current = await this.findWithContext({ id: invitation.id });
+
+    if (!current) {
+      throw invitationNotFound();
+    }
+
+    this.assertRenewable(current);
+
+    return null;
+  }
+
+  /**
+   * Avisa o coordenador do pedido e, se o aviso não saiu, desfaz o pedido: com
+   * ele gravado, as tentativas seguintes da janela responderiam como enviadas e
+   * ninguém seria avisado. Desfaz só o instante que este pedido gravou, para não
+   * apagar um pedido posterior.
+   */
+  private async notifyRenewalRequest(invitation: InvitationWithContext, claimedAt: Date): Promise<void> {
+    const wasSent = await this.notifyInviter(invitation, 'pedido de novo convite', (to) =>
+      buildInvitationRenewalRequestEmail({
+        to,
+        inviterName: invitation.createdBy.name,
+        inviteeName: invitation.name,
+        inviteeEmail: invitation.email,
+        congregation: invitation.congregation.name,
+      }),
+    );
+
+    if (wasSent) {
+      return;
+    }
+
+    try {
+      await this.prisma.client.invitation.updateMany({
+        where: { id: invitation.id, renewalRequestedAt: claimedAt },
+        data: { renewalRequestedAt: null },
+      });
+    } catch (err: unknown) {
+      this.logger.error({ err, invitationId: invitation.id }, 'Falha ao desfazer o pedido de novo convite');
+    }
+  }
+
   private async loadByToken(token: string): Promise<InvitationWithContext> {
     const invitation = await this.findWithContext({ tokenHash: this.hashToken(token) });
 
@@ -447,6 +573,21 @@ export class InvitationsService {
     throw exceptionForState(state);
   }
 
+  /** Só o convite expirado aceita pedido de novo convite; os demais respondem com o próprio estado. */
+  private assertRenewable(invitation: InvitationWithContext): void {
+    const state = this.resolveState(invitation);
+
+    if (state === 'EXPIRED') {
+      return;
+    }
+
+    if (state === 'PENDING') {
+      throw invitationNotExpired();
+    }
+
+    throw exceptionForState(state);
+  }
+
   /**
    * Usado vence revogado, que vence recusado, que vence expirado: é a ordem do
    * que aconteceu de mais definitivo.
@@ -517,7 +658,16 @@ export class InvitationsService {
     }
   }
 
-  private async sendDeclinedEmail(invitation: InvitationWithContext, reason: InvitationDeclineReason): Promise<void> {
+  /**
+   * Avisa por e-mail quem enviou o convite. Roda fora do request e nunca falha
+   * a operação: o aceite, a recusa ou o pedido já foram gravados e valem mesmo
+   * sem o aviso, que na falha fica só no log. Devolve se o aviso saiu.
+   */
+  private async notifyInviter(
+    invitation: InvitationWithContext,
+    purpose: string,
+    buildMessage: (to: string) => EmailMessage,
+  ): Promise<boolean> {
     try {
       const inviter = await this.prisma.client.user.findUnique({
         where: { id: invitation.createdById },
@@ -525,24 +675,18 @@ export class InvitationsService {
       });
 
       if (!inviter) {
-        this.logger.warn(`Aviso de recusa sem destinatário — invitationId=${invitation.id}`);
-        return;
+        this.logger.warn(`Aviso de ${purpose} sem destinatário — invitationId=${invitation.id}`);
+        return false;
       }
 
-      await this.emailSender.send(
-        buildInvitationDeclinedEmail({
-          to: inviter.email,
-          inviterName: invitation.createdBy.name,
-          inviteeName: invitation.name,
-          inviteeEmail: invitation.email,
-          congregation: invitation.congregation.name,
-          reason,
-        }),
-      );
-      this.logger.log(`Aviso de recusa enviado — invitationId=${invitation.id}`);
+      await this.emailSender.send(buildMessage(inviter.email));
+      this.logger.log(`Aviso de ${purpose} enviado — invitationId=${invitation.id}`);
+
+      return true;
     } catch (err: unknown) {
-      // A recusa já foi gravada e vale mesmo sem o aviso; a falha fica só no log.
-      this.logger.error({ err, invitationId: invitation.id }, 'Falha ao enviar aviso de recusa de convite');
+      this.logger.error({ err, invitationId: invitation.id }, `Falha ao enviar aviso de ${purpose} de convite`);
+
+      return false;
     }
   }
 
