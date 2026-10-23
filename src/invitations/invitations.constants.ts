@@ -14,8 +14,11 @@ export const INVITATION = {
  * Papéis que um convite pode conceder. A coluna `role` aceita qualquer
  * `UserRole`, então a restrição vive aqui e é conferida em runtime na criação:
  * um convite de papel de circuito daria a quem o aceita poder sobre o circuito.
+ *
+ * Só o coordenador da congregação entra por convite; o assistente é promovido
+ * por ele depois de aceitar o seu.
  */
-export const INVITABLE_ROLES = ['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const;
+export const INVITABLE_ROLES = ['CONGREGATION_COORDINATOR'] as const;
 
 /**
  * Código de máquina que acompanha cada erro do convite. O front distingue os
