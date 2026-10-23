@@ -16,6 +16,7 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { toNormalizedEmail } from '../../common/validators/email.transform';
 import { PERSON_NAME_LENGTH } from '../../common/validators/name.constants';
 import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
 import { PHONE_DIGITS_MESSAGE, PHONE_DIGITS_REGEX, toPhoneDigits } from '../../common/validators/phone.constants';
@@ -29,10 +30,6 @@ import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
 
 function toUpperCase(value: unknown): unknown {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
-}
-
-function toLowerCase(value: unknown): unknown {
-  return typeof value === 'string' ? value.trim().toLowerCase() : value;
 }
 
 @ValidatorConstraint({ name: 'circuitNameLength', async: false })
@@ -65,7 +62,7 @@ export class CircuitSignupCoordinatorDto {
   @Length(PERSON_NAME_LENGTH.MIN, PERSON_NAME_LENGTH.MAX)
   name!: string;
 
-  @Transform(({ value }) => toLowerCase(value))
+  @Transform(({ value }) => toNormalizedEmail(value))
   @IsEmail()
   @Length(1, 255)
   email!: string;

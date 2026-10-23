@@ -1,9 +1,10 @@
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, Length, Matches } from 'class-validator';
+import { toNormalizedEmail } from '../../common/validators/email.transform';
 import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
 
 export class ConfirmCircuitSignupDto {
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @Transform(({ value }) => toNormalizedEmail(value))
   @IsEmail()
   @Length(1, 255)
   email!: string;
