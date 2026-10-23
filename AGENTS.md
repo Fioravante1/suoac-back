@@ -57,6 +57,7 @@ o que vale igual no backend e no frontend. **Não edite esses arquivos aqui** �
 | `commits.md` | sempre — Conventional Commits em português, organização por significado, sem trailer de IA |
 | `idioma-do-codigo.md` | `**/*.{ts,tsx}`, `**/*.{js,mjs,cjs}`, `prisma/schema.prisma` — identificadores em inglês, textos humanos em português |
 | `aninhamento-e-ternarios.md` | `**/*.{ts,tsx}` — early returns obrigatórios, proibido `if` ou ternário aninhado |
+| `lacos-e-iteracao.md` | `**/*.{ts,tsx}` — métodos de array/string e regex no lugar de `while` com contador |
 
 ---
 
