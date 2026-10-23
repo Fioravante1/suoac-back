@@ -158,11 +158,14 @@ erDiagram
     uuid circuit_id FK
     uuid congregation_id FK
     uuid created_by_id FK
+    string name
     string email
+    string phone nullable
     enum role
-    string token UK
+    string token_hash UK
     datetime expires_at
     datetime used_at
+    datetime revoked_at
     datetime created_at
   }
 
@@ -191,5 +194,5 @@ erDiagram
 - **EventPassengerDay** → quais dias o passageiro vai (pivot entre EventPassenger e EventDay).
 - **Payment** → registros individuais de pagamento (suporta parciais).
 - **CongregationEventStatus** → se a congregação finalizou sua lista para o evento.
-- **Invitation** → convites para novos usuários.
+- **Invitation** → convite de coordenador ou assistente de congregação. Só o SHA-256 do token é guardado; o estado (pendente, usado, revogado, expirado) deriva de `used_at`, `revoked_at` e `expires_at`.
 - **AuditLog** → registro de ações críticas no sistema. `user_id` é nullable com `ON DELETE SET NULL`; quando necessário, dados do ator são denormalizados em `details.actor`.

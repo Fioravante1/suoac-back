@@ -24,6 +24,7 @@ import { EventsModule } from './events/events.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { FinancialReportsModule } from './financial-reports/financial-reports.module';
 import { HealthModule } from './health/health.module';
+import { InvitationsModule } from './invitations/invitations.module';
 import { PassengersModule } from './passengers/passengers.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     FinancialReportsModule,
     UsersModule,
     AuthModule,
+    InvitationsModule,
     PassengersModule,
     PaymentsModule,
   ],

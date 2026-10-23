@@ -16,6 +16,13 @@ interface ErrorResponseBody {
    */
   field?: string;
   /**
+   * Código de máquina do erro, para o front tratar cada caso sem ler a
+   * mensagem — por exemplo os estados do convite (SUC-36), que respondem com
+   * status próprios e precisam de telas diferentes. Opcional pelo mesmo motivo
+   * de `field`.
+   */
+  code?: string;
+  /**
    * Todos os campos em conflito, quando houver mais de um. O autocadastro
    * reporta os conflitos de unicidade de uma vez, para o usuário corrigir tudo
    * num envio — cada envio consome uma ficha do limite por e-mail.
@@ -77,6 +84,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const res = response as Record<string, unknown>;
     const field = res['field'];
+    const code = res['code'];
     const fields = res['fields'];
 
     return {
@@ -89,6 +97,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         // contrato público, e `...res` deixaria qualquer campo que um service
         // colocasse na exceção vazar para a resposta sem ninguém decidir isso.
         ...(typeof field === 'string' && { field }),
+        ...(typeof code === 'string' && { code }),
         ...(Array.isArray(fields) && { fields: fields as { field: string; message: string }[] }),
       },
     };
