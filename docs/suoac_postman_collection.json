@@ -347,7 +347,7 @@
                 "{{invitationToken}}"
               ]
             },
-            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, phone, role, invitedBy, circuit, circuitCity, circuitState, congregation, congregationCode, congregationCoordinator, expiresAt }. 'phone' vem so com digitos e pre-preenche o campo que o convidado confirma; 'congregationCoordinator' e o coordenador a quem o assistente vai auxiliar (null para o convite de coordenador ou quando a congregacao ainda nao tem um). Nao devolve ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED. O 410 leva tambem 'invitation': { email, invitedBy, sentAt, expiresAt }, para a tela mostrar para quem o convite foi enviado, por quem e ate quando valeu."
+            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, phone, role, invitedBy, circuit, circuitCity, circuitState, congregation, congregationCode, expiresAt }. 'phone' vem so com digitos e pre-preenche o campo que o convidado confirma; Nao devolve ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED. O 410 leva tambem 'invitation': { email, invitedBy, sentAt, expiresAt }, para a tela mostrar para quem o convite foi enviado, por quem e ate quando valeu."
           },
           "response": []
         },

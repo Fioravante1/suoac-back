@@ -208,7 +208,6 @@ describe('InvitationsService', () => {
           'circuitState',
           'congregation',
           'congregationCode',
-          'congregationCoordinator',
           'email',
           'expiresAt',
           'invitedBy',
@@ -217,46 +216,6 @@ describe('InvitationsService', () => {
           'role',
         ].sort(),
       );
-    });
-
-    it('nao deve procurar coordenador para o convite de coordenador', async () => {
-      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
-
-      const result = await service.findByToken(TOKEN);
-
-      expect(result.congregationCoordinator).toBeNull();
-      expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
-    });
-
-    it('deve apresentar o coordenador da congregação ao assistente convidado', async () => {
-      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
-      prismaMock.user.findFirst.mockResolvedValue({ name: 'Paulo Henrique' } as never);
-
-      const result = await service.findByToken(TOKEN);
-
-      expect(result.congregationCoordinator).toBe('Paulo Henrique');
-    });
-
-    it('deve buscar o coordenador ativo da própria congregação do convite', async () => {
-      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
-      prismaMock.user.findFirst.mockResolvedValue(null);
-
-      await service.findByToken(TOKEN);
-
-      expect(prismaMock.user.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { congregationId: CONGREGATION_ID, role: 'CONGREGATION_COORDINATOR', isActive: true },
-        }),
-      );
-    });
-
-    it('deve devolver coordenador nulo quando a congregação ainda não tem um', async () => {
-      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
-      prismaMock.user.findFirst.mockResolvedValue(null);
-
-      const result = await service.findByToken(TOKEN);
-
-      expect(result.congregationCoordinator).toBeNull();
     });
 
     it('deve lançar 404 com código próprio quando o token não existe', async () => {
@@ -544,6 +503,20 @@ describe('InvitationsService', () => {
       const circuitRole = { ...input, role: 'CIRCUIT_COORDINATOR' as never };
 
       await expect(service.create(circuitRole, buildActor())).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve lançar 422 ao convidar um assistente da congregação', async () => {
+      const assistant = { ...input, role: 'CONGREGATION_ASSISTANT' as never };
+
+      await expect(service.create(assistant, buildActor())).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('nao deve gravar convite de assistente da congregação', async () => {
+      const assistant = { ...input, role: 'CONGREGATION_ASSISTANT' as never };
+
+      await captureError(service.create(assistant, buildActor()));
+
+      expect(prismaMock.invitation.create).not.toHaveBeenCalled();
     });
 
     it('nao deve gravar convite de papel de circuito', async () => {

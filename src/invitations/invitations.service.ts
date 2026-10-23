@@ -101,24 +101,8 @@ export class InvitationsService {
       circuitState: invitation.circuit.state,
       congregation: invitation.congregation.name,
       congregationCode: invitation.congregation.code,
-      congregationCoordinator: await this.findCongregationCoordinator(invitation),
       expiresAt: invitation.expiresAt,
     };
-  }
-
-  /** Só o assistente é apresentado a um coordenador; o coordenador convidado não auxilia ninguém. */
-  private async findCongregationCoordinator(invitation: InvitationRow): Promise<string | null> {
-    if (invitation.role !== 'CONGREGATION_ASSISTANT') {
-      return null;
-    }
-
-    const coordinator = await this.prisma.client.user.findFirst({
-      where: { congregationId: invitation.congregationId, role: 'CONGREGATION_COORDINATOR', isActive: true },
-      orderBy: { createdAt: 'asc' },
-      select: { name: true },
-    });
-
-    return coordinator?.name ?? null;
   }
 
   /**
