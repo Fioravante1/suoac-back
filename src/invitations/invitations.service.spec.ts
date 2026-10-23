@@ -151,7 +151,7 @@ describe('InvitationsService', () => {
 
     service = module.get(InvitationsService);
 
-    prismaMock.user.findFirst.mockResolvedValue(null);
+    mockUsers();
     prismaMock.$transaction.mockImplementation((arg: unknown) => {
       if (typeof arg === 'function') {
         return (arg as (tx: DeepMockProxy<PrismaClientType>) => Promise<unknown>)(prismaMock);
@@ -159,6 +159,18 @@ describe('InvitationsService', () => {
       return Promise.resolve([]);
     });
   });
+
+  /**
+   * `user.findUnique` atende a duas buscas do serviço: por e-mail (a pessoa já tem
+   * conta?) e por id (e-mail de quem criou o convite, para o aviso). Cada teste
+   * decide o que cada uma devolve.
+   */
+  function mockUsers(options: { existing?: { id: string } | null; inviter?: { email: string } | null } = {}): void {
+    const { existing = null, inviter = { email: 'joao@example.com' } } = options;
+
+    prismaMock.user.findUnique.mockImplementation(((args: { where: { email?: string; id?: string } }) =>
+      Promise.resolve(args.where.email === undefined ? inviter : existing)) as never);
+  }
 
   // ── findByToken ────────────────────────────────────────────────
   describe('findByToken', () => {
@@ -385,7 +397,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve avisar por e-mail quem enviou o convite, com o nome confirmado pelo convidado', async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      mockUsers();
       prismaMock.user.create.mockResolvedValue(buildUser({ name: 'Maria de Souza Lima' }) as never);
 
       await service.accept(TOKEN, dto);
@@ -398,7 +410,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve manter o aceite e devolver a sessão quando o envio do aviso falha', async () => {
-      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      mockUsers();
       emailSenderMock.send.mockRejectedValue(new Error('provedor fora'));
 
       const result = await service.accept(TOKEN, dto);
@@ -425,7 +437,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve lançar 409 com código próprio quando o e-mail já tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'existing' } as never);
+      mockUsers({ existing: { id: 'existing' } });
 
       const err = await captureError(service.accept(TOKEN, dto));
 
@@ -433,7 +445,7 @@ describe('InvitationsService', () => {
     });
 
     it('nao deve consumir o token quando o e-mail já tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'existing' } as never);
+      mockUsers({ existing: { id: 'existing' } });
 
       await captureError(service.accept(TOKEN, dto));
 
@@ -485,7 +497,7 @@ describe('InvitationsService', () => {
     beforeEach(() => {
       prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
       prismaMock.invitation.updateMany.mockResolvedValue({ count: 1 });
-      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      mockUsers();
     });
 
     it('deve gravar a data e o motivo só se o convite ainda estiver pendente e o token for o lido', async () => {
@@ -522,7 +534,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve manter a recusa e não enviar nada quando quem criou o convite não existe mais', async () => {
-      prismaMock.user.findUnique.mockResolvedValue(null);
+      mockUsers({ inviter: null });
 
       await expect(service.decline(TOKEN, dto)).resolves.toBeUndefined();
       await flushPendingWork();
@@ -601,7 +613,7 @@ describe('InvitationsService', () => {
     beforeEach(() => {
       prismaMock.invitation.findUnique.mockResolvedValue(expired());
       prismaMock.invitation.updateMany.mockResolvedValue({ count: 1 });
-      prismaMock.user.findUnique.mockResolvedValue({ email: 'joao@example.com' } as never);
+      mockUsers();
     });
 
     it('deve gravar o pedido só se o convite segue expirado, com o token lido e fora da janela', async () => {
@@ -690,7 +702,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve desfazer o pedido quando quem criou o convite não existe mais', async () => {
-      prismaMock.user.findUnique.mockResolvedValue(null);
+      mockUsers({ inviter: null });
 
       await service.requestRenewal(TOKEN);
       await flushPendingWork();
@@ -717,7 +729,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve lançar 409 de e-mail já cadastrado quando o convidado criou conta depois do convite', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'u9' } as never);
+      mockUsers({ existing: { id: 'u9' } });
 
       const err = await captureError(service.requestRenewal(TOKEN));
 
@@ -725,7 +737,7 @@ describe('InvitationsService', () => {
     });
 
     it('nao deve gravar o pedido nem avisar quando o convidado já tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'u9' } as never);
+      mockUsers({ existing: { id: 'u9' } });
 
       await captureError(service.requestRenewal(TOKEN));
       await flushPendingWork();
@@ -932,11 +944,24 @@ describe('InvitationsService', () => {
     });
 
     it('deve lançar 409 de e-mail já cadastrado quando o convidado já tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'existing' } as never);
+      mockUsers({ existing: { id: 'existing' } });
 
       const err = await captureError(service.create(input, buildActor()));
 
       expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.EMAIL_ALREADY_REGISTERED);
+    });
+
+    it('nao deve criar convite para quem já tem conta com o e-mail em outra caixa', async () => {
+      mockUsers({ existing: { id: 'existing' } });
+
+      const err = await captureError(service.create({ ...input, email: ' MARIA@Example.COM ' }, buildActor()));
+
+      expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.EMAIL_ALREADY_REGISTERED);
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'maria@example.com' },
+        select: { id: true },
+      });
+      expect(prismaMock.invitation.create).not.toHaveBeenCalled();
     });
   });
 
@@ -1005,7 +1030,7 @@ describe('InvitationsService', () => {
     });
 
     it('deve lançar 409 de e-mail já cadastrado quando o convidado criou conta depois do convite', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'existing' } as never);
+      mockUsers({ existing: { id: 'existing' } });
 
       const err = await captureError(service.resend(INVITATION_ID, buildActor()));
 
@@ -1013,7 +1038,7 @@ describe('InvitationsService', () => {
     });
 
     it('nao deve trocar o token quando o convidado já tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue({ id: 'existing' } as never);
+      mockUsers({ existing: { id: 'existing' } });
 
       await captureError(service.resend(INVITATION_ID, buildActor()));
 
