@@ -46,8 +46,8 @@ function buildInvitation(overrides: Record<string, unknown> = {}): Record<string
     usedAt: null,
     revokedAt: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
-    circuit: { name: 'SP-17' },
-    congregation: { name: 'Central' },
+    circuit: { name: 'SP-17', city: 'Campinas', state: 'SP' },
+    congregation: { name: 'Central', code: '31245' },
     createdBy: { name: 'João Silva' },
     ...overrides,
   };
@@ -96,6 +96,11 @@ function recordNotFound(): Prisma.PrismaClientKnownRequestError {
 /** Deixa o envio disparado sem `await` terminar antes da asserção. */
 async function flushPendingWork(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Corpo de uma exceção HTTP, como o filtro global o enxerga. */
+function errorBodyOf(err: unknown): Record<string, unknown> {
+  return (err as { getResponse: () => Record<string, unknown> }).getResponse();
 }
 
 /** Extrai o `code` do corpo de uma exceção HTTP. */
@@ -176,14 +181,82 @@ describe('InvitationsService', () => {
       );
     });
 
-    it('nao deve vazar telefone, ids nem hash do token', async () => {
+    it('deve devolver o que a tela mostra: celular, código da congregação e cidade do circuito', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
+
+      const result = await service.findByToken(TOKEN);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          phone: '11987654321',
+          congregationCode: '31245',
+          circuitCity: 'Campinas',
+          circuitState: 'SP',
+        }),
+      );
+    });
+
+    it('nao deve vazar ids nem hash do token', async () => {
       prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
 
       const result = await service.findByToken(TOKEN);
 
       expect(Object.keys(result).sort()).toEqual(
-        ['circuit', 'congregation', 'email', 'expiresAt', 'invitedBy', 'name', 'role'].sort(),
+        [
+          'circuit',
+          'circuitCity',
+          'circuitState',
+          'congregation',
+          'congregationCode',
+          'congregationCoordinator',
+          'email',
+          'expiresAt',
+          'invitedBy',
+          'name',
+          'phone',
+          'role',
+        ].sort(),
       );
+    });
+
+    it('nao deve procurar coordenador para o convite de coordenador', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
+
+      const result = await service.findByToken(TOKEN);
+
+      expect(result.congregationCoordinator).toBeNull();
+      expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('deve apresentar o coordenador da congregação ao assistente convidado', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
+      prismaMock.user.findFirst.mockResolvedValue({ name: 'Paulo Henrique' } as never);
+
+      const result = await service.findByToken(TOKEN);
+
+      expect(result.congregationCoordinator).toBe('Paulo Henrique');
+    });
+
+    it('deve buscar o coordenador ativo da própria congregação do convite', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
+      prismaMock.user.findFirst.mockResolvedValue(null);
+
+      await service.findByToken(TOKEN);
+
+      expect(prismaMock.user.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { congregationId: CONGREGATION_ID, role: 'CONGREGATION_COORDINATOR', isActive: true },
+        }),
+      );
+    });
+
+    it('deve devolver coordenador nulo quando a congregação ainda não tem um', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ role: 'CONGREGATION_ASSISTANT' }) as never);
+      prismaMock.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.findByToken(TOKEN);
+
+      expect(result.congregationCoordinator).toBeNull();
     });
 
     it('deve lançar 404 com código próprio quando o token não existe', async () => {
@@ -204,6 +277,28 @@ describe('InvitationsService', () => {
 
       expect(err).toBeInstanceOf(GoneException);
       expect(errorCodeOf(err)).toBe(INVITATION_ERROR_CODE.EXPIRED);
+    });
+
+    it('deve levar no 410 para quem foi enviado, por quem e quando valeu', async () => {
+      const expiresAt = new Date(Date.now() - 1000);
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ expiresAt }) as never);
+
+      const err = await captureError(service.findByToken(TOKEN));
+
+      expect(errorBodyOf(err)['invitation']).toEqual({
+        email: EMAIL,
+        invitedBy: 'João Silva',
+        sentAt: new Date('2026-01-01T00:00:00Z'),
+        expiresAt,
+      });
+    });
+
+    it('nao deve levar contexto nos demais estados', async () => {
+      prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation({ usedAt: new Date() }) as never);
+
+      const err = await captureError(service.findByToken(TOKEN));
+
+      expect(errorBodyOf(err)).not.toHaveProperty('invitation');
     });
 
     it('deve lançar 409 com código próprio quando o convite já foi utilizado', async () => {
@@ -237,7 +332,7 @@ describe('InvitationsService', () => {
 
   // ── accept ─────────────────────────────────────────────────────
   describe('accept', () => {
-    const dto: AcceptInvitationDto = { password: 'Senha123' };
+    const dto: AcceptInvitationDto = { name: 'Maria Souza', phone: '11987654321', password: 'Senha123' };
 
     beforeEach(() => {
       prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
@@ -259,6 +354,14 @@ describe('InvitationsService', () => {
           congregationId: CONGREGATION_ID,
           mustChangePassword: false,
         },
+      });
+    });
+
+    it('deve gravar o nome e o celular confirmados pelo convidado, não os do convite', async () => {
+      await service.accept(TOKEN, { ...dto, name: 'Maria de Souza Lima', phone: '11912345678' });
+
+      expect(prismaMock.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ name: 'Maria de Souza Lima', phone: '11912345678' }),
       });
     });
 
@@ -372,6 +475,20 @@ describe('InvitationsService', () => {
       expect(call?.data).toEqual(
         expect.objectContaining({ email: EMAIL, tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/) }),
       );
+    });
+
+    it('deve gravar o celular só com dígitos, sem a máscara', async () => {
+      await service.create({ ...input, phone: '(11) 98765-4321' }, buildActor());
+
+      const call = prismaMock.invitation.create.mock.calls[0]?.[0];
+      expect(call?.data).toEqual(expect.objectContaining({ phone: '11987654321' }));
+    });
+
+    it('deve gravar celular nulo quando não há dígitos', async () => {
+      await service.create({ ...input, phone: ' - ' }, buildActor());
+
+      const call = prismaMock.invitation.create.mock.calls[0]?.[0];
+      expect(call?.data).toEqual(expect.objectContaining({ phone: null }));
     });
 
     it('deve devolver um link cujo token confere com o hash gravado', async () => {

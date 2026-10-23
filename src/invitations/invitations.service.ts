@@ -19,7 +19,12 @@ import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { buildInvitationEmail } from './invitation-email.template';
-import { exceptionForState, invitationEmailAlreadyRegistered, invitationNotFound } from './invitation-errors';
+import {
+  exceptionForState,
+  invitationEmailAlreadyRegistered,
+  invitationExpired,
+  invitationNotFound,
+} from './invitation-errors';
 import { INVITABLE_ROLES, INVITATION } from './invitations.constants';
 import type { CreateInvitationInput } from './interfaces/create-invitation-input.interface';
 import type { InvitationContextResponse } from './interfaces/invitation-context-response.interface';
@@ -41,15 +46,15 @@ interface InvitationRow {
 }
 
 interface InvitationWithContext extends InvitationRow {
-  circuit: { name: string };
-  congregation: { name: string };
+  circuit: { name: string; city: string; state: string };
+  congregation: { name: string; code: string };
   createdBy: { name: string };
 }
 
 /** Nomes que o convite carrega para a tela de aceite e para o e-mail. */
 const CONTEXT_INCLUDE = {
-  circuit: { select: { name: true } },
-  congregation: { select: { name: true } },
+  circuit: { select: { name: true, city: true, state: true } },
+  congregation: { select: { name: true, code: true } },
   createdBy: { select: { name: true } },
 } as const;
 
@@ -88,17 +93,40 @@ export class InvitationsService {
     return {
       name: invitation.name,
       email: invitation.email,
+      phone: invitation.phone,
       role: invitation.role,
       invitedBy: invitation.createdBy.name,
       circuit: invitation.circuit.name,
+      circuitCity: invitation.circuit.city,
+      circuitState: invitation.circuit.state,
       congregation: invitation.congregation.name,
+      congregationCode: invitation.congregation.code,
+      congregationCoordinator: await this.findCongregationCoordinator(invitation),
       expiresAt: invitation.expiresAt,
     };
+  }
+
+  /** Só o assistente é apresentado a um coordenador; o coordenador convidado não auxilia ninguém. */
+  private async findCongregationCoordinator(invitation: InvitationRow): Promise<string | null> {
+    if (invitation.role !== 'CONGREGATION_ASSISTANT') {
+      return null;
+    }
+
+    const coordinator = await this.prisma.client.user.findFirst({
+      where: { congregationId: invitation.congregationId, role: 'CONGREGATION_COORDINATOR', isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { name: true },
+    });
+
+    return coordinator?.name ?? null;
   }
 
   /**
    * Cria o usuário com a senha definida, ligado à congregação e ao papel do
    * convite, consome o token e devolve a sessão.
+   *
+   * Nome e celular vêm do próprio convidado, que os confirmou na tela; e-mail,
+   * papel e congregação são os do convite.
    *
    * O usuário nasce com `mustChangePassword: false`: ele acabou de escolher a
    * senha, e mandá-lo ao fluxo de primeiro acesso o faria trocá-la logo em
@@ -111,7 +139,7 @@ export class InvitationsService {
     await this.assertEmailAvailable(invitation.email);
 
     const passwordHash = await this.hashingService.hash(dto.password);
-    const user = await this.consume(invitation, passwordHash);
+    const user = await this.consume(invitation, dto, passwordHash);
     const session = await this.authService.issueSession(user);
 
     this.logger.log(`Convite aceito — invitationId=${invitation.id} userId=${user.id}`);
@@ -160,7 +188,7 @@ export class InvitationsService {
       data: {
         name: input.name,
         email,
-        phone: input.phone ?? null,
+        phone: this.normalizePhone(input.phone),
         role: input.role,
         tokenHash: this.hashToken(token),
         expiresAt: this.newExpiration(),
@@ -228,7 +256,11 @@ export class InvitationsService {
    * clique não cria duas contas: a segunda chamada não encontra mais convite
    * pendente para consumir.
    */
-  private async consume(invitation: InvitationWithContext, passwordHash: string): Promise<SessionUserRow> {
+  private async consume(
+    invitation: InvitationWithContext,
+    profile: Pick<AcceptInvitationDto, 'name' | 'phone'>,
+    passwordHash: string,
+  ): Promise<SessionUserRow> {
     try {
       return await this.prisma.client.$transaction(async (tx) => {
         const claimed = await tx.invitation.updateMany({
@@ -239,16 +271,19 @@ export class InvitationsService {
         // Perdeu a corrida: o convite foi aceito, revogado ou expirou entre a
         // leitura e este ponto. Relê para responder com o estado verdadeiro.
         if (claimed.count !== 1) {
-          const current = await tx.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+          const current = await tx.invitation.findUniqueOrThrow({
+            where: { id: invitation.id },
+            include: CONTEXT_INCLUDE,
+          });
           this.assertPending(current);
           throw new ConflictException('Não foi possível aceitar o convite. Tente novamente.');
         }
 
         return tx.user.create({
           data: {
-            name: invitation.name,
+            name: profile.name,
             email: invitation.email,
-            phone: invitation.phone,
+            phone: profile.phone,
             passwordHash,
             role: invitation.role as SessionUserRow['role'],
             circuitId: invitation.circuitId,
@@ -315,7 +350,7 @@ export class InvitationsService {
   }
 
   private async failLostRace(id: string): Promise<never> {
-    const current = await this.prisma.client.invitation.findUnique({ where: { id } });
+    const current = await this.findWithContext({ id });
 
     if (!current) {
       throw invitationNotFound();
@@ -339,7 +374,7 @@ export class InvitationsService {
     throw new ForbiddenException('Apenas o circuito pode convidar coordenadores de congregação');
   }
 
-  private assertPending(invitation: InvitationRow): void {
+  private assertPending(invitation: InvitationWithContext): void {
     const state = this.resolveState(invitation);
 
     if (state === 'PENDING') {
@@ -347,6 +382,16 @@ export class InvitationsService {
     }
 
     this.logger.warn(`Convite não aceitável — invitationId=${invitation.id} state=${state}`);
+
+    if (state === 'EXPIRED') {
+      throw invitationExpired({
+        email: invitation.email,
+        invitedBy: invitation.createdBy.name,
+        sentAt: invitation.createdAt,
+        expiresAt: invitation.expiresAt,
+      });
+    }
+
     throw exceptionForState(state);
   }
 
@@ -433,6 +478,13 @@ export class InvitationsService {
 
   private generateToken(): string {
     return crypto.randomBytes(INVITATION.TOKEN_BYTES).toString('hex');
+  }
+
+  /** Só dígitos, como o `User.phone`; vazio vira `null`. A máscara é apresentação. */
+  private normalizePhone(phone: string | null | undefined): string | null {
+    const digits = phone?.replace(/\D/g, '') ?? '';
+
+    return digits === '' ? null : digits;
   }
 
   private normalizeEmail(email: string): string {

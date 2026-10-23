@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   HttpException,
   NotFoundException,
   UnprocessableEntityException,
@@ -79,6 +80,25 @@ describe('AllExceptionsFilter', () => {
       });
       const { reply } = catchException(filter, exception);
       expectResponse(reply, 409, { code: 'INVITATION_USED' });
+    });
+
+    it('deve repassar o contexto do convite expirado quando o service o informa', () => {
+      const invitation = { email: 'maria@example.com', invitedBy: 'João Silva' };
+      const exception = new GoneException({
+        statusCode: 410,
+        message: 'Este convite expirou.',
+        error: 'Gone',
+        code: 'INVITATION_EXPIRED',
+        invitation,
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 410, { code: 'INVITATION_EXPIRED', invitation });
+    });
+
+    it('nao deve repassar contexto do convite que não seja um objeto', () => {
+      const exception = new GoneException({ statusCode: 410, message: 'x', error: 'Gone', invitation: 'texto' });
+      const { reply } = catchException(filter, exception);
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ invitation: expect.anything() }));
     });
 
     it('nao deve repassar campos arbitrários do corpo da exceção', () => {

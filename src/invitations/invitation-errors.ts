@@ -1,10 +1,11 @@
 import { ConflictException, ForbiddenException, GoneException, NotFoundException } from '@nestjs/common';
 import { INVITATION_ERROR_CODE } from './invitations.constants';
-import type { InvitationState } from './interfaces/invitation-state.type';
+import type { ExpiredInvitationDetails } from './interfaces/expired-invitation-details.interface';
 
 /**
  * Exceções do convite. Cada uma leva `code` no corpo, repassado pelo
  * `AllExceptionsFilter`, para o front tratar cada estado sem ler a mensagem.
+ * O expirado leva também `invitation`, com o contexto que a tela mostra.
  */
 
 export function invitationNotFound(): NotFoundException {
@@ -16,12 +17,13 @@ export function invitationNotFound(): NotFoundException {
   });
 }
 
-export function invitationExpired(): GoneException {
+export function invitationExpired(details: ExpiredInvitationDetails): GoneException {
   return new GoneException({
     statusCode: 410,
     message: 'Este convite expirou. Peça um novo convite a quem convidou você.',
     error: 'Gone',
     code: INVITATION_ERROR_CODE.EXPIRED,
+    invitation: details,
   });
 }
 
@@ -52,14 +54,15 @@ export function invitationEmailAlreadyRegistered(): ConflictException {
   });
 }
 
-/** Exceção correspondente a um estado em que o convite não pode mais ser aceito. */
-export function exceptionForState(state: Exclude<InvitationState, 'PENDING'>): Error {
-  switch (state) {
-    case 'USED':
-      return invitationUsed();
-    case 'REVOKED':
-      return invitationRevoked();
-    case 'EXPIRED':
-      return invitationExpired();
+/**
+ * Exceção correspondente a um estado definitivo em que o convite não pode mais
+ * ser aceito. O expirado fica de fora porque carrega contexto: ver
+ * `invitationExpired`.
+ */
+export function exceptionForState(state: 'USED' | 'REVOKED'): Error {
+  if (state === 'USED') {
+    return invitationUsed();
   }
+
+  return invitationRevoked();
 }
