@@ -147,6 +147,8 @@ model User {
   /// dependente de formatação.
   phone              String?  @db.VarChar(20)
   passwordHash       String?  @map("password_hash") @db.VarChar(255)
+  /// Legado: a sessão passou para `Session` (SUC-77). Nada mais lê nem grava esta
+  /// coluna; ela fica até o deploy seguinte à migration, que a remove (contract).
   refreshTokenHash   String?  @map("refresh_token_hash") @db.VarChar(255)
   /// Versao da sessao. Toda redefinicao ou troca de senha incrementa, e o
   /// JwtAuthGuard recusa access tokens emitidos com versao anterior — e o que
@@ -175,10 +177,30 @@ model User {
   createdInvitations    Invitation[]              @relation("InvitationCreatedBy")
   passwordResetRequests PasswordResetRequest[]
   auditLogs             AuditLog[]
+  sessions              Session[]
 
   @@index([circuitId])
   @@index([congregationId])
   @@map("users")
+}
+
+/// Uma sessão por dispositivo (SUC-77). O refresh token carrega o `id` como `sid`,
+/// então renovar ou sair atua só na sessão de quem pediu; entrar em outro aparelho
+/// não derruba as demais. Redefinir ou trocar a senha apaga todas.
+model Session {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 do refresh token vigente. Rotaciona a cada renovação.
+  refreshTokenHash String   @map("refresh_token_hash") @db.VarChar(64)
+  /// "Manter conectado" (SUC-39): define a duração do refresh token.
+  extended         Boolean  @default(false)
+  expiresAt        DateTime @map("expires_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  lastUsedAt       DateTime @default(now()) @map("last_used_at")
+
+  @@index([userId, lastUsedAt])
+  @@map("sessions")
 }
 
 model Account {
