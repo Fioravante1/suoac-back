@@ -25,4 +25,18 @@ describe('LoginDto', () => {
 
     expect(errors.map((error) => error.property)).toContain('email');
   });
+
+  it.each([undefined, true, false])('deve aceitar rememberMe=%s', async (rememberMe) => {
+    const dto = plainToInstance(LoginDto, { email: 'fulano@exemplo.com', password: 'Senha123', rememberMe });
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('deve recusar rememberMe que não é booleano', async () => {
+    const errors = await validate(
+      plainToInstance(LoginDto, { email: 'fulano@exemplo.com', password: 'Senha123', rememberMe: 'sim' }),
+    );
+
+    expect(errors.map((error) => error.property)).toContain('rememberMe');
+  });
 });

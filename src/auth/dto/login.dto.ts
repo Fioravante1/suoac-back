@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Length, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { toNormalizedEmail } from '../../common/validators/email.transform';
 
 export class LoginDto {
@@ -11,4 +11,9 @@ export class LoginDto {
   @IsString()
   @Length(1, 100)
   password!: string;
+
+  /** "Manter conectado neste computador": emite a sessão estendida (30 dias por padrão). */
+  @IsOptional()
+  @IsBoolean()
+  rememberMe?: boolean;
 }
