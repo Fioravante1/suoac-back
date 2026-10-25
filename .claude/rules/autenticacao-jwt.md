@@ -46,6 +46,7 @@ paths:
 - `JWT_REFRESH_SECRET` — chave para assinar refresh tokens (fail-fast se ausente)
 - `JWT_EXPIRATION` — tempo de vida do access token em segundos (default: 900)
 - `JWT_REFRESH_EXPIRATION` — tempo de vida do refresh token em segundos (default: 604800)
+- `JWT_EXTENDED_REFRESH_EXPIRATION` — refresh token da sessão "manter conectado" (`rememberMe`), em segundos (default: 2592000, 30 dias)
 
 ### Regras
 - **Nunca use Passport** — o projeto usa guards nativos do NestJS com Fastify

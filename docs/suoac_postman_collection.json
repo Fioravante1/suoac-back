@@ -48,7 +48,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"coordenador@suoac.dev\",\n  \"password\": \"Senha@123\"\n}"
+              "raw": "{\n  \"email\": \"coordenador@suoac.dev\",\n  \"password\": \"Senha@123\",\n  \"rememberMe\": false\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
