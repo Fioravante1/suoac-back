@@ -143,6 +143,7 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
+    prismaMock.$transaction.mockImplementation((operations: unknown) => Promise.all(operations as Promise<unknown>[]));
     hashingMock = {
       hash: jest.fn().mockResolvedValue(FAKE_HASH),
       verify: jest.fn().mockResolvedValue(true),
@@ -383,7 +384,7 @@ describe('UsersService', () => {
       expect(hashingMock.hash).toHaveBeenCalledWith('NovaSenha@123');
       expect(prismaMock.user.update).toHaveBeenCalledWith({
         where: { id: USER_ID },
-        data: { passwordHash: FAKE_HASH, mustChangePassword: true, refreshTokenHash: null },
+        data: { passwordHash: FAKE_HASH, mustChangePassword: true, sessionVersion: { increment: 1 } },
       });
     });
 
@@ -397,10 +398,11 @@ describe('UsersService', () => {
 
       const updateData = (prismaMock.user.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
       expect(updateData.mustChangePassword).toBe(true);
-      expect(updateData.refreshTokenHash).toBeNull();
+      expect(updateData.sessionVersion).toEqual({ increment: 1 });
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
     });
 
-    it('nao deve alterar mustChangePassword nem refreshTokenHash quando update sem senha', async () => {
+    it('nao deve alterar mustChangePassword nem encerrar sessoes quando update sem senha', async () => {
       const existing = buildUserRaw();
       const updated = buildUserRaw({ name: 'Novo Nome' });
 
@@ -411,7 +413,8 @@ describe('UsersService', () => {
 
       const updateData = (prismaMock.user.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data;
       expect(updateData).not.toHaveProperty('mustChangePassword');
-      expect(updateData).not.toHaveProperty('refreshTokenHash');
+      expect(updateData).not.toHaveProperty('sessionVersion');
+      expect(prismaMock.session.deleteMany).not.toHaveBeenCalled();
     });
 
     it('deve validar congregacao ao atualizar congregationId', async () => {

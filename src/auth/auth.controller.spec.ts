@@ -119,12 +119,12 @@ describe('AuthController', () => {
 
   // ── logout ─────────────────────────────────────────────────────
   describe('logout', () => {
-    it('deve delegar ao service com userId do @CurrentUser', async () => {
+    it('deve delegar ao service com userId e sid do @CurrentUser', async () => {
       serviceMock.logout.mockResolvedValue(undefined);
 
-      await controller.logout(USER_ID);
+      await controller.logout(USER_ID, 'sessao-1');
 
-      expect(serviceMock.logout).toHaveBeenCalledWith(USER_ID);
+      expect(serviceMock.logout).toHaveBeenCalledWith(USER_ID, 'sessao-1');
     });
 
     it('deve retornar undefined (204 No Content)', async () => {

@@ -42,8 +42,8 @@ export class AuthController {
   @AllowWhilePasswordChange()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(@CurrentUser('sub') userId: string): Promise<void> {
-    return this.authService.logout(userId);
+  async logout(@CurrentUser('sub') userId: string, @CurrentUser('sid') sessionId?: string): Promise<void> {
+    return this.authService.logout(userId, sessionId);
   }
 
   @AllowWhilePasswordChange()

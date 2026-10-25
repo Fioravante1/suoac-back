@@ -5,7 +5,7 @@ import { checkCircuitOwnership } from '../common/authorization/circuit-ownership
 import { HashingService } from '../common/hashing/hashing.service';
 import { normalizeEmail } from '../common/validators/email.transform';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
-import type { User } from '../generated/prisma/client';
+import type { Prisma, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -121,7 +121,7 @@ export class UsersService {
     const passwordHash = dto.password ? await this.hashing.hash(dto.password) : undefined;
     const isPasswordReset = passwordHash !== undefined;
 
-    const updated = await this.prisma.client.user.update({
+    const updateUser = this.prisma.client.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
@@ -130,10 +130,12 @@ export class UsersService {
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.congregationId !== undefined && { congregationId: dto.congregationId }),
         // Reset de senha por admin → força troca no próximo acesso e invalida sessões ativas
-        // (limpa o refreshTokenHash para o usuário não renovar tokens com a flag desatualizada).
-        ...(isPasswordReset && { mustChangePassword: true, refreshTokenHash: null }),
+        // (apaga as sessões abaixo para o usuário não renovar tokens com a flag desatualizada).
+        ...(isPasswordReset && { mustChangePassword: true, sessionVersion: { increment: 1 } }),
       },
     });
+
+    const updated = isPasswordReset ? await this.updateAndRevokeSessions(updateUser, id) : await updateUser;
 
     this.logger.log(`Usuario atualizado — id=${id}`);
 
@@ -145,6 +147,16 @@ export class UsersService {
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
 
     return this.toUserResponse(updated);
+  }
+
+  /** Grava o usuário e apaga todas as sessões dele na mesma transação. */
+  private async updateAndRevokeSessions<T>(update: Prisma.PrismaPromise<T>, userId: string): Promise<T> {
+    const [updated] = await this.prisma.client.$transaction([
+      update,
+      this.prisma.client.session.deleteMany({ where: { userId } }),
+    ]);
+
+    return updated;
   }
 
   async remove(id: string, caller: JwtPayload): Promise<void> {
