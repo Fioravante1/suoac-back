@@ -99,6 +99,7 @@ describe('AuthService', () => {
           JWT_REFRESH_SECRET: 'test-jwt-refresh-secret',
           JWT_EXPIRATION: 900,
           JWT_REFRESH_EXPIRATION: 604800,
+          JWT_EXTENDED_REFRESH_EXPIRATION: 2592000,
         };
         return values[key];
       }),
@@ -327,6 +328,99 @@ describe('AuthService', () => {
         { sub: USER_ID },
         { secret: 'test-jwt-refresh-secret', expiresIn: 604800 },
       );
+    });
+  });
+
+  // ── sessão estendida (manter conectado) ───────────────────────
+  describe('sessão estendida', () => {
+    function mockLogin(): void {
+      const user = buildUserForAuth();
+      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
+      hashingMock.verify.mockResolvedValue(true);
+      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
+      prismaMock.user.update.mockResolvedValue(user as never);
+    }
+
+    it('deve emitir sessão padrão quando rememberMe não é enviado', async () => {
+      mockLogin();
+
+      const result = await service.login({ email: 'joao@example.com', password: 'Senh@123!' });
+
+      expect(result.extendedSession).toBe(false);
+      expect(result.refreshExpiresIn).toBe(604800);
+    });
+
+    it('deve emitir refresh token de 30 dias marcado como estendido com rememberMe', async () => {
+      mockLogin();
+
+      const result = await service.login({ email: 'joao@example.com', password: 'Senh@123!', rememberMe: true });
+
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        { sub: USER_ID, extended: true },
+        { secret: 'test-jwt-refresh-secret', expiresIn: 2592000 },
+      );
+      expect(result.extendedSession).toBe(true);
+      expect(result.refreshExpiresIn).toBe(2592000);
+    });
+
+    it('deve manter a sessão estendida ao renovar os tokens', async () => {
+      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
+      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, extended: true });
+      prismaMock.user.findUnique.mockResolvedValue(user as never);
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+      prismaMock.user.update.mockResolvedValue(user as never);
+
+      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
+
+      expect(result.extendedSession).toBe(true);
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        { sub: USER_ID, extended: true },
+        { secret: 'test-jwt-refresh-secret', expiresIn: 2592000 },
+      );
+    });
+
+    it('deve marcar o access token como estendido para a troca de senha reemitir no mesmo modo', async () => {
+      mockLogin();
+
+      await service.login({ email: 'joao@example.com', password: 'Senh@123!', rememberMe: true });
+
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ sub: USER_ID, extended: true }),
+        expect.objectContaining({ secret: 'test-jwt-secret' }),
+      );
+    });
+
+    it('deve manter o modo estendido ao trocar a senha', async () => {
+      const user = buildUserForAuth({ mustChangePassword: true });
+      prismaMock.user.findUnique.mockResolvedValue(user as never);
+      hashingMock.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+      hashingMock.hash.mockResolvedValue('novo-hash');
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+      prismaMock.user.update.mockResolvedValue(user as never);
+
+      const result = await service.changePassword(
+        USER_ID,
+        { currentPassword: '80275@Suoac', newPassword: 'NovaSenha@123' },
+        true,
+      );
+
+      expect(result.extendedSession).toBe(true);
+      expect(result.refreshExpiresIn).toBe(2592000);
+    });
+
+    it('deve manter a sessão padrão ao renovar um refresh token sem a marca', async () => {
+      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
+      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
+      prismaMock.user.findUnique.mockResolvedValue(user as never);
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+      prismaMock.user.update.mockResolvedValue(user as never);
+
+      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
+
+      expect(result.extendedSession).toBe(false);
+      expect(result.refreshExpiresIn).toBe(604800);
     });
   });
 

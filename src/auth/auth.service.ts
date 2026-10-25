@@ -27,6 +27,7 @@ export class AuthService {
   private readonly jwtRefreshSecret: string;
   private readonly jwtExpiration: number;
   private readonly jwtRefreshExpiration: number;
+  private readonly jwtExtendedRefreshExpiration: number;
 
   constructor(
     private readonly usersService: UsersService,
@@ -49,7 +50,19 @@ export class AuthService {
     this.jwtSecret = jwtSecret;
     this.jwtRefreshSecret = jwtRefreshSecret;
     this.jwtExpiration = parseInt(this.configService.get<string>('JWT_EXPIRATION') ?? '900', 10);
-    this.jwtRefreshExpiration = parseInt(this.configService.get<string>('JWT_REFRESH_EXPIRATION') ?? '604800', 10);
+    this.jwtRefreshExpiration = this.readSeconds('JWT_REFRESH_EXPIRATION', '604800');
+    this.jwtExtendedRefreshExpiration = this.readSeconds('JWT_EXTENDED_REFRESH_EXPIRATION', '2592000');
+  }
+
+  /** Lê uma duração em segundos e falha na subida se o valor não for um inteiro positivo. */
+  private readSeconds(key: string, fallback: string): number {
+    const seconds = parseInt(this.configService.get<string>(key) ?? fallback, 10);
+
+    if (!Number.isInteger(seconds) || seconds <= 0) {
+      throw new Error(`${key} must be a positive integer (seconds)`);
+    }
+
+    return seconds;
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
@@ -70,7 +83,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais invalidas');
     }
 
-    const session = await this.issueSession(user);
+    const session = await this.issueSession(user, { extended: dto.rememberMe ?? false });
 
     this.logger.log(`Login bem-sucedido — userId=${user.id}`);
 
@@ -78,10 +91,10 @@ export class AuthService {
   }
 
   async refreshTokens(dto: RefreshTokenDto): Promise<AuthResponse> {
-    let payload: { sub: string };
+    let payload: { sub: string; extended?: boolean };
 
     try {
-      payload = await this.jwtService.verifyAsync<{ sub: string }>(dto.refreshToken, {
+      payload = await this.jwtService.verifyAsync<{ sub: string; extended?: boolean }>(dto.refreshToken, {
         secret: this.jwtRefreshSecret,
       });
     } catch {
@@ -103,7 +116,9 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token invalido');
     }
 
-    const session = await this.issueSession(user);
+    // A renovação preserva o modo da sessão: a marca viaja no próprio refresh token,
+    // então a sessão estendida se renova como estendida e a padrão, como padrão.
+    const session = await this.issueSession(user, { extended: payload.extended === true });
 
     this.logger.log(`Tokens renovados — userId=${user.id}`);
 
@@ -119,7 +134,7 @@ export class AuthService {
     this.logger.log(`Logout — userId=${userId}`);
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<AuthResponse> {
+  async changePassword(userId: string, dto: ChangePasswordDto, extended = false): Promise<AuthResponse> {
     const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
 
     if (!user || !user.isActive || !user.passwordHash) {
@@ -158,7 +173,7 @@ export class AuthService {
 
     // O token nasce com a versão já incrementada, para a sessão que trocou a
     // senha continuar válida enquanto as demais caem no próximo request.
-    const session = await this.issueSession(updatedUser);
+    const session = await this.issueSession(updatedUser, { extended });
 
     this.logger.log(`Senha alterada — userId=${userId}`);
 
@@ -178,9 +193,14 @@ export class AuthService {
    * É o caminho único de nascimento de sessão — login, renovação, troca de senha
    * e autocadastro de circuito (SUC-37) passam por aqui, em vez de cada um
    * repetir a sequência de gerar, gravar e mapear.
+   *
+   * `extended` marca a sessão de "manter conectado" (SUC-39). A marca fica no
+   * refresh token, nunca no `User`: assim ela vale só para o dispositivo que a
+   * pediu e não vaza para as outras sessões do mesmo usuário.
    */
-  async issueSession(user: SessionUser): Promise<AuthResponse> {
-    const tokens = await this.generateTokens(user);
+  async issueSession(user: SessionUser, options: { extended?: boolean } = {}): Promise<AuthResponse> {
+    const extended = options.extended ?? false;
+    const tokens = await this.generateTokens(user, extended);
 
     await this.prisma.client.user.update({
       where: { id: user.id },
@@ -189,19 +209,24 @@ export class AuthService {
 
     return {
       ...tokens,
+      extendedSession: extended,
+      refreshExpiresIn: this.refreshTtl(extended),
       user: this.toUserResponse(user),
     };
   }
 
-  private async generateTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-    circuitId: string;
-    congregationId: string | null;
-    mustChangePassword: boolean;
-    sessionVersion: number;
-  }): Promise<{ accessToken: string; refreshToken: string }> {
+  private async generateTokens(
+    user: {
+      id: string;
+      email: string;
+      role: string;
+      circuitId: string;
+      congregationId: string | null;
+      mustChangePassword: boolean;
+      sessionVersion: number;
+    },
+    extended: boolean,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -210,6 +235,7 @@ export class AuthService {
       congregationId: user.congregationId,
       mustChangePassword: user.mustChangePassword,
       sessionVersion: user.sessionVersion,
+      ...(extended && { extended }),
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -217,16 +243,18 @@ export class AuthService {
         secret: this.jwtSecret,
         expiresIn: this.jwtExpiration,
       }),
-      this.jwtService.signAsync(
-        { sub: user.id },
-        {
-          secret: this.jwtRefreshSecret,
-          expiresIn: this.jwtRefreshExpiration,
-        },
-      ),
+      this.jwtService.signAsync(extended ? { sub: user.id, extended: true } : { sub: user.id }, {
+        secret: this.jwtRefreshSecret,
+        expiresIn: this.refreshTtl(extended),
+      }),
     ]);
 
     return { accessToken, refreshToken };
+  }
+
+  /** Única fonte do tempo de vida do refresh: o `exp` do token e o `maxAge` do cookie saem daqui. */
+  private refreshTtl(extended: boolean): number {
+    return extended ? this.jwtExtendedRefreshExpiration : this.jwtRefreshExpiration;
   }
 
   private hashRefreshToken(token: string): string {

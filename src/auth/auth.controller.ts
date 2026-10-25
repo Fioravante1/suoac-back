@@ -49,8 +49,12 @@ export class AuthController {
   @AllowWhilePasswordChange()
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
-  async changePassword(@CurrentUser('sub') userId: string, @Body() dto: ChangePasswordDto): Promise<AuthResponse> {
-    return this.authService.changePassword(userId, dto);
+  async changePassword(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser('extended') extended?: boolean,
+  ): Promise<AuthResponse> {
+    return this.authService.changePassword(userId, dto, extended === true);
   }
 
   /**
