@@ -18,6 +18,7 @@ const CONGREGATION_ID = 'b1b2b3b4-0000-0000-0000-000000000001';
 const FAKE_HASH = '$argon2id$v=19$m=65536,t=3,p=1$fakesalt$fakehash';
 const FAKE_ACCESS_TOKEN = 'fake-access-token';
 const FAKE_REFRESH_TOKEN = 'fake-refresh-token';
+const SESSION_ID = 's1s2s3s4-0000-0000-0000-000000000001';
 
 // ── Helpers ──────────────────────────────────────────────────────
 function buildUserForAuth(
@@ -61,6 +62,31 @@ function buildUserForAuth(
   };
 }
 
+function buildSession(
+  overrides: Partial<{
+    id: string;
+    refreshTokenHash: string;
+    extended: boolean;
+    expiresAt: Date;
+    isActive: boolean;
+  }> = {},
+): Record<string, unknown> {
+  return {
+    id: overrides.id ?? SESSION_ID,
+    userId: USER_ID,
+    refreshTokenHash: overrides.refreshTokenHash ?? hashOf(FAKE_REFRESH_TOKEN),
+    extended: overrides.extended ?? false,
+    expiresAt: overrides.expiresAt ?? new Date(Date.now() + 60_000),
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    lastUsedAt: new Date('2026-01-01T00:00:00Z'),
+    user: buildUserForAuth({ isActive: overrides.isActive }),
+  };
+}
+
+function hashOf(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 // ── Test Suite ───────────────────────────────────────────────────
 describe('AuthService', () => {
   let service: AuthService;
@@ -91,6 +117,11 @@ describe('AuthService', () => {
     };
 
     prismaMock = mockDeep<PrismaClientType>();
+    // Padrões da tabela de sessões: sem excedente a podar, escrita aceita e transação que resolve as operações.
+    prismaMock.session.findMany.mockResolvedValue([]);
+    prismaMock.session.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.session.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.$transaction.mockImplementation((operations: unknown) => Promise.all(operations as Promise<unknown>[]));
 
     const configMock = {
       get: jest.fn((key: string) => {
@@ -124,12 +155,14 @@ describe('AuthService', () => {
   describe('login', () => {
     const loginDto = { email: 'joao@example.com', password: 'Senh@123!' };
 
-    it('deve retornar tokens e user sem passwordHash em login bem-sucedido', async () => {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
+    function arrangeLogin(): void {
+      usersServiceMock.findByEmailForAuth.mockResolvedValue(buildUserForAuth());
       hashingMock.verify.mockResolvedValue(true);
       jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
+    }
+
+    it('deve retornar tokens e user sem passwordHash em login bem-sucedido', async () => {
+      arrangeLogin();
 
       const result = await service.login(loginDto);
 
@@ -172,34 +205,61 @@ describe('AuthService', () => {
     });
 
     it('deve chamar HashingService.verify com hash e senha', async () => {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
-      hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
+      arrangeLogin();
 
       await service.login(loginDto);
 
       expect(hashingMock.verify).toHaveBeenCalledWith(FAKE_HASH, 'Senh@123!');
     });
 
-    it('deve salvar hash SHA-256 do refresh token no banco', async () => {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
-      hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
+    it('deve abrir uma sessao nova com o hash SHA-256 do refresh token', async () => {
+      arrangeLogin();
 
       await service.login(loginDto);
 
-      expect(prismaMock.user.update).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        data: { refreshTokenHash: expect.any(String) as string },
+      expect(prismaMock.session.create).toHaveBeenCalledWith({
+        data: {
+          id: expect.any(String) as string,
+          userId: USER_ID,
+          refreshTokenHash: hashOf(FAKE_REFRESH_TOKEN),
+          extended: false,
+          expiresAt: expect.any(Date) as Date,
+        },
       });
+    });
 
-      const updateCall = prismaMock.user.update.mock.calls[0]![0];
-      const savedHash = (updateCall as { data: { refreshTokenHash: string } }).data.refreshTokenHash;
-      expect(savedHash).toHaveLength(64); // SHA-256 hex
+    it('deve nao mexer nas sessoes dos outros dispositivos ao entrar', async () => {
+      arrangeLogin();
+
+      await service.login(loginDto);
+
+      // Só vencidas saem; nenhuma delas é filtrada por dispositivo.
+      expect(prismaMock.session.deleteMany).not.toHaveBeenCalledWith({ where: { userId: USER_ID } });
+    });
+
+    it('deve apagar as sessoes vencidas do usuario ao entrar', async () => {
+      arrangeLogin();
+
+      await service.login(loginDto);
+
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
+        where: { userId: USER_ID, expiresAt: { lte: expect.any(Date) as Date } },
+      });
+    });
+
+    it('deve apagar as sessoes menos usadas quando passa de 10 dispositivos', async () => {
+      arrangeLogin();
+      prismaMock.session.findMany.mockResolvedValue([{ id: 'velha-1' }, { id: 'velha-2' }] as never);
+
+      await service.login(loginDto);
+
+      expect(prismaMock.session.findMany).toHaveBeenCalledWith({
+        where: { userId: USER_ID },
+        orderBy: { lastUsedAt: 'desc' },
+        skip: 10,
+        select: { id: true },
+      });
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['velha-1', 'velha-2'] } } });
     });
   });
 
@@ -207,14 +267,14 @@ describe('AuthService', () => {
   describe('refreshTokens', () => {
     const refreshDto = { refreshToken: FAKE_REFRESH_TOKEN };
 
-    it('deve retornar novos tokens em refresh bem-sucedido', async () => {
-      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
-      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
-
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(user as never);
+    function arrangeRefresh(session: Record<string, unknown> = buildSession()): void {
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, sid: SESSION_ID });
+      prismaMock.session.findFirst.mockResolvedValue(session as never);
       jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
-      prismaMock.user.update.mockResolvedValue(user as never);
+    }
+
+    it('deve retornar novos tokens em refresh bem-sucedido', async () => {
+      arrangeRefresh();
 
       const result = await service.refreshTokens(refreshDto);
 
@@ -229,75 +289,116 @@ describe('AuthService', () => {
       await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('deve lancar UnauthorizedException quando usuario nao existe', async () => {
+    it('deve recusar refresh emitido antes das sessoes por dispositivo (sem sid)', async () => {
       jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
+      expect(prismaMock.session.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('deve procurar a sessao pelo sid e pelo dono do token', async () => {
+      arrangeRefresh();
+
+      await service.refreshTokens(refreshDto);
+
+      expect(prismaMock.session.findFirst).toHaveBeenCalledWith({
+        where: { id: SESSION_ID, userId: USER_ID },
+        include: { user: true },
+      });
+    });
+
+    it('deve lancar UnauthorizedException quando a sessao nao existe mais', async () => {
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, sid: SESSION_ID });
+      prismaMock.session.findFirst.mockResolvedValue(null);
 
       await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
     });
 
     it('deve lancar UnauthorizedException quando usuario esta inativo', async () => {
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(buildUserForAuth({ isActive: false }) as never);
+      arrangeRefresh(buildSession({ isActive: false }));
 
       await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('deve lancar UnauthorizedException quando hash nao bate (token reutilizado)', async () => {
-      const user = buildUserForAuth({ refreshTokenHash: 'hash-diferente' });
-
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(user as never);
+    it('deve lancar UnauthorizedException quando a sessao venceu', async () => {
+      arrangeRefresh(buildSession({ expiresAt: new Date(Date.now() - 1000) }));
 
       await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
     });
 
-    it('deve atualizar refreshTokenHash no banco (rotation)', async () => {
-      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
-      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
+    it('deve recusar sem apagar a sessao quando o hash nao bate (duas abas renovando juntas)', async () => {
+      arrangeRefresh(buildSession({ refreshTokenHash: 'hash-diferente' }));
 
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(user as never);
-      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
-      prismaMock.user.update.mockResolvedValue(user as never);
+      await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
+      expect(prismaMock.session.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('deve dar a cada refresh token um jti proprio, para a rotacao sempre mudar o hash', async () => {
+      arrangeRefresh();
+      await service.refreshTokens(refreshDto);
+      arrangeRefresh();
+      await service.refreshTokens(refreshDto);
+
+      const jtis = jwtServiceMock.signAsync.mock.calls
+        .map(([payload]) => (payload as { jti?: string }).jti)
+        .filter((jti) => jti !== undefined);
+      expect(new Set(jtis).size).toBe(2);
+    });
+
+    it('deve rotacionar o hash da sessao, so se ninguem a rotacionou antes', async () => {
+      arrangeRefresh();
 
       await service.refreshTokens(refreshDto);
 
-      expect(prismaMock.user.update).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        data: { refreshTokenHash: expect.any(String) as string },
+      expect(prismaMock.session.updateMany).toHaveBeenCalledWith({
+        where: { id: SESSION_ID, refreshTokenHash: hashOf(FAKE_REFRESH_TOKEN) },
+        data: {
+          refreshTokenHash: hashOf('new-refresh-token'),
+          expiresAt: expect.any(Date) as Date,
+          lastUsedAt: expect.any(Date) as Date,
+        },
       });
+    });
+
+    it('deve recusar quando dois refresh simultaneos disputam o mesmo token', async () => {
+      arrangeRefresh();
+      prismaMock.session.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.refreshTokens(refreshDto)).rejects.toThrow(UnauthorizedException);
     });
   });
 
   // ── logout ─────────────────────────────────────────────────────
   describe('logout', () => {
-    it('deve limpar refreshTokenHash do usuario', async () => {
-      prismaMock.user.updateMany.mockResolvedValue({ count: 1 });
+    it('deve apagar so a sessao do dispositivo de quem saiu', async () => {
+      await service.logout(USER_ID, SESSION_ID);
 
-      await service.logout(USER_ID);
-
-      expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
-        where: { id: USER_ID },
-        data: { refreshTokenHash: null },
-      });
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { id: SESSION_ID, userId: USER_ID } });
     });
 
-    it('deve nao lancar erro quando usuario nao existe (idempotente)', async () => {
-      prismaMock.user.updateMany.mockResolvedValue({ count: 0 });
+    it('deve nao apagar sessao nenhuma com access token anterior as sessoes por dispositivo (sem sid)', async () => {
+      await expect(service.logout(USER_ID)).resolves.toBeUndefined();
 
-      await expect(service.logout('id-inexistente')).resolves.toBeUndefined();
+      expect(prismaMock.session.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('deve ser idempotente quando a sessao ja nao existe', async () => {
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.logout(USER_ID, 'sessao-inexistente')).resolves.toBeUndefined();
     });
   });
 
   // ── generateTokens ────────────────────────────────────────────
   describe('generateTokens (via login)', () => {
-    it('deve gerar access token com payload completo', async () => {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
+    function arrangeLogin(): void {
+      usersServiceMock.findByEmailForAuth.mockResolvedValue(buildUserForAuth());
       hashingMock.verify.mockResolvedValue(true);
       jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
+    }
+
+    it('deve gerar access token com payload completo, incluindo o sid da sessao', async () => {
+      arrangeLogin();
 
       await service.login({ email: 'joao@example.com', password: 'Senh@123!' });
 
@@ -310,35 +411,42 @@ describe('AuthService', () => {
           congregationId: CONGREGATION_ID,
           mustChangePassword: false,
           sessionVersion: 0,
+          sid: expect.any(String) as string,
         },
         { secret: 'test-jwt-secret', expiresIn: 900 },
       );
     });
 
-    it('deve gerar refresh token apenas com sub', async () => {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
-      hashingMock.verify.mockResolvedValue(true);
-      jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
+    it('deve gerar refresh token com sub, sid e um jti proprio', async () => {
+      arrangeLogin();
 
       await service.login({ email: 'joao@example.com', password: 'Senh@123!' });
 
       expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
-        { sub: USER_ID },
+        { sub: USER_ID, sid: expect.any(String) as string, jti: expect.any(String) as string },
         { secret: 'test-jwt-refresh-secret', expiresIn: 604800 },
       );
+    });
+
+    it('deve usar o mesmo sid no access token, no refresh token e na linha da sessao', async () => {
+      arrangeLogin();
+
+      await service.login({ email: 'joao@example.com', password: 'Senh@123!' });
+
+      const [accessPayload] = jwtServiceMock.signAsync.mock.calls[0]!;
+      const [refreshPayload] = jwtServiceMock.signAsync.mock.calls[1]!;
+      const created = prismaMock.session.create.mock.calls[0]![0] as { data: { id: string } };
+      expect((accessPayload as { sid: string }).sid).toBe(created.data.id);
+      expect((refreshPayload as { sid: string }).sid).toBe(created.data.id);
     });
   });
 
   // ── sessão estendida (manter conectado) ───────────────────────
   describe('sessão estendida', () => {
     function mockLogin(): void {
-      const user = buildUserForAuth();
-      usersServiceMock.findByEmailForAuth.mockResolvedValue(user);
+      usersServiceMock.findByEmailForAuth.mockResolvedValue(buildUserForAuth());
       hashingMock.verify.mockResolvedValue(true);
       jwtServiceMock.signAsync.mockResolvedValueOnce(FAKE_ACCESS_TOKEN).mockResolvedValueOnce(FAKE_REFRESH_TOKEN);
-      prismaMock.user.update.mockResolvedValue(user as never);
     }
 
     it('deve emitir sessão padrão quando rememberMe não é enviado', async () => {
@@ -350,34 +458,20 @@ describe('AuthService', () => {
       expect(result.refreshExpiresIn).toBe(604800);
     });
 
-    it('deve emitir refresh token de 30 dias marcado como estendido com rememberMe', async () => {
+    it('deve emitir refresh token de 30 dias e gravar a sessao como estendida com rememberMe', async () => {
       mockLogin();
 
       const result = await service.login({ email: 'joao@example.com', password: 'Senh@123!', rememberMe: true });
 
       expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
-        { sub: USER_ID, extended: true },
+        { sub: USER_ID, sid: expect.any(String) as string, jti: expect.any(String) as string },
         { secret: 'test-jwt-refresh-secret', expiresIn: 2592000 },
       );
+      expect(prismaMock.session.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ extended: true }) as object,
+      });
       expect(result.extendedSession).toBe(true);
       expect(result.refreshExpiresIn).toBe(2592000);
-    });
-
-    it('deve manter a sessão estendida ao renovar os tokens', async () => {
-      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
-      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, extended: true });
-      prismaMock.user.findUnique.mockResolvedValue(user as never);
-      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
-      prismaMock.user.update.mockResolvedValue(user as never);
-
-      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
-
-      expect(result.extendedSession).toBe(true);
-      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
-        { sub: USER_ID, extended: true },
-        { secret: 'test-jwt-refresh-secret', expiresIn: 2592000 },
-      );
     });
 
     it('deve marcar o access token como estendido para a troca de senha reemitir no mesmo modo', async () => {
@@ -389,6 +483,31 @@ describe('AuthService', () => {
         expect.objectContaining({ sub: USER_ID, extended: true }),
         expect.objectContaining({ secret: 'test-jwt-secret' }),
       );
+    });
+
+    it('deve manter a sessão estendida, lida da linha da sessao, ao renovar os tokens', async () => {
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, sid: SESSION_ID });
+      prismaMock.session.findFirst.mockResolvedValue(buildSession({ extended: true }) as never);
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+
+      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
+
+      expect(result.extendedSession).toBe(true);
+      expect(jwtServiceMock.signAsync).toHaveBeenCalledWith(
+        { sub: USER_ID, sid: SESSION_ID, jti: expect.any(String) as string },
+        { secret: 'test-jwt-refresh-secret', expiresIn: 2592000 },
+      );
+    });
+
+    it('deve manter a sessão padrão ao renovar uma sessao que nao e estendida', async () => {
+      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID, sid: SESSION_ID });
+      prismaMock.session.findFirst.mockResolvedValue(buildSession() as never);
+      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
+
+      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
+
+      expect(result.extendedSession).toBe(false);
+      expect(result.refreshExpiresIn).toBe(604800);
     });
 
     it('deve manter o modo estendido ao trocar a senha', async () => {
@@ -407,20 +526,6 @@ describe('AuthService', () => {
 
       expect(result.extendedSession).toBe(true);
       expect(result.refreshExpiresIn).toBe(2592000);
-    });
-
-    it('deve manter a sessão padrão ao renovar um refresh token sem a marca', async () => {
-      const tokenHash = crypto.createHash('sha256').update(FAKE_REFRESH_TOKEN).digest('hex');
-      const user = buildUserForAuth({ refreshTokenHash: tokenHash });
-      jwtServiceMock.verifyAsync.mockResolvedValue({ sub: USER_ID });
-      prismaMock.user.findUnique.mockResolvedValue(user as never);
-      jwtServiceMock.signAsync.mockResolvedValueOnce('new-access-token').mockResolvedValueOnce('new-refresh-token');
-      prismaMock.user.update.mockResolvedValue(user as never);
-
-      const result = await service.refreshTokens({ refreshToken: FAKE_REFRESH_TOKEN });
-
-      expect(result.extendedSession).toBe(false);
-      expect(result.refreshExpiresIn).toBe(604800);
     });
   });
 
@@ -463,7 +568,7 @@ describe('AuthService', () => {
 
       await service.changePassword(USER_ID, dto);
 
-      expect(prismaMock.user.update).toHaveBeenNthCalledWith(1, {
+      expect(prismaMock.user.update).toHaveBeenCalledWith({
         where: { id: USER_ID },
         data: {
           passwordHash: 'novo-hash',
@@ -473,14 +578,15 @@ describe('AuthService', () => {
       });
     });
 
-    it('deve persistir o hash do refresh token da sessao nova', async () => {
+    it('deve encerrar todas as sessoes do usuario na mesma transacao e abrir uma nova', async () => {
       arrangeSuccess();
 
       await service.changePassword(USER_ID, dto);
 
-      expect(prismaMock.user.update).toHaveBeenNthCalledWith(2, {
-        where: { id: USER_ID },
-        data: { refreshTokenHash: expect.any(String) as string },
+      expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
+      expect(prismaMock.session.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: USER_ID, refreshTokenHash: hashOf('new-refresh-token') }) as object,
       });
     });
 
@@ -492,8 +598,7 @@ describe('AuthService', () => {
       // Calcular `versao + 1` em memória faria duas trocas concorrentes lerem o
       // mesmo valor e gravarem o mesmo incremento, e a segunda não revogaria a
       // sessão da primeira.
-      expect(prismaMock.user.update).toHaveBeenNthCalledWith(
-        1,
+      expect(prismaMock.user.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ sessionVersion: { increment: 1 } }) }),
       );
     });

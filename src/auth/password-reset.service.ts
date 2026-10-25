@@ -166,10 +166,10 @@ export class PasswordResetService {
         data: {
           passwordHash,
           mustChangePassword: false,
-          refreshTokenHash: null,
           sessionVersion: { increment: 1 },
         },
       }),
+      this.prisma.client.session.deleteMany({ where: { userId } }),
       this.prisma.client.passwordResetRequest.update({
         where: { id: request.id },
         data: { usedAt: new Date() },

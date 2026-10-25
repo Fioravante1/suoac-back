@@ -19,6 +19,11 @@ export interface JwtPayload {
    */
   sessionVersion?: number;
   /**
+   * Id da sessão (linha de `sessions`) que emitiu o token. É por ele que o logout
+   * encerra só o dispositivo de quem saiu. Ausente em tokens anteriores ao SUC-77.
+   */
+  sid?: string;
+  /**
    * Sessão de "manter conectado". Espelha a marca do refresh token para que
    * `change-password`, que só vê o access token, reemita a sessão no mesmo modo.
    * Ausência é tratada como `false`.

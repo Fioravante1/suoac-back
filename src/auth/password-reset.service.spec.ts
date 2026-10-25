@@ -75,6 +75,7 @@ describe('PasswordResetService', () => {
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
+    prismaMock.$transaction.mockImplementation((operations: unknown) => Promise.all(operations as Promise<unknown>[]));
     hashingMock = { hash: jest.fn().mockResolvedValue('novo-hash') };
     emailSenderMock = { send: jest.fn().mockResolvedValue(undefined) };
     auditLogMock = { log: jest.fn().mockResolvedValue(undefined) };
@@ -318,7 +319,7 @@ describe('PasswordResetService', () => {
       prismaMock.user.findUnique.mockResolvedValue({ isActive: true } as never);
     });
 
-    it('deve gravar o hash novo, limpar o refresh token e incrementar a versao de sessao', async () => {
+    it('deve gravar o hash novo, encerrar todas as sessoes e incrementar a versao de sessao', async () => {
       prismaMock.passwordResetRequest.findUnique.mockResolvedValue(buildRequestRow());
 
       await service.resetPassword(dto);
@@ -328,10 +329,10 @@ describe('PasswordResetService', () => {
         data: {
           passwordHash: 'novo-hash',
           mustChangePassword: false,
-          refreshTokenHash: null,
           sessionVersion: { increment: 1 },
         },
       });
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
     });
 
     it('deve marcar o token como utilizado', async () => {
