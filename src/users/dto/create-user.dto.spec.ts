@@ -10,7 +10,7 @@ function buildRaw(overrides: Record<string, unknown> = {}): Record<string, unkno
   return {
     name: 'João Silva',
     email: 'joao@example.com',
-    password: 'Senha123',
+    password: 'Senha-Segura123',
     role: 'CONGREGATION_COORDINATOR',
     congregationId: CONGREGATION_ID,
     ...overrides,

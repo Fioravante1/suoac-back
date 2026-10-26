@@ -35,7 +35,7 @@ describe('InvitationsController', () => {
     const session = { accessToken: 'access', refreshToken: 'refresh' } as AuthResponse;
     serviceMock.accept.mockResolvedValue(session);
 
-    const dto = { name: 'Maria Souza', phone: '11987654321', password: 'Senha123' };
+    const dto = { name: 'Maria Souza', phone: '11987654321', password: 'Senha-Segura123' };
 
     const result = await controller.accept(TOKEN, dto);
 

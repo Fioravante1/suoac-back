@@ -16,7 +16,7 @@ import { InvitationsController } from '../src/invitations/invitations.controller
 import { InvitationsService } from '../src/invitations/invitations.service';
 
 const TOKEN = 'a'.repeat(64);
-const VALID_BODY = { name: 'Maria Souza', phone: '11987654321', password: 'Senha123' };
+const VALID_BODY = { name: 'Maria Souza', phone: '11987654321', password: 'Senha-Segura123' };
 const EXPIRED_DETAILS = {
   email: 'maria@example.com',
   invitedBy: 'João Silva',
