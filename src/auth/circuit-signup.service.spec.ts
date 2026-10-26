@@ -42,7 +42,7 @@ function buildDto(overrides: Partial<CreateCircuitSignupDto> = {}): CreateCircui
       name: 'João Silva',
       email: EMAIL,
       phone: '11987654321',
-      password: 'Senha123',
+      password: 'Senha-Segura123',
       ...overrides.coordinator,
     },
     circuit: {
@@ -198,13 +198,13 @@ describe('CircuitSignupService', () => {
     it('deve guardar a senha ja hasheada, nunca em claro', async () => {
       await service.requestSignup(buildDto());
 
-      expect(hashingMock.hash).toHaveBeenCalledWith('Senha123');
+      expect(hashingMock.hash).toHaveBeenCalledWith('Senha-Segura123');
 
       const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
       const payload = createCall?.data.payload as { coordinator: { passwordHash: string } };
 
       expect(payload.coordinator.passwordHash).toBe(PASSWORD_HASH);
-      expect(JSON.stringify(createCall?.data.payload)).not.toContain('Senha123');
+      expect(JSON.stringify(createCall?.data.payload)).not.toContain('Senha-Segura123');
     });
 
     it('deve guardar o rascunho no formato canonico sem code', async () => {

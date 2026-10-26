@@ -10,7 +10,7 @@ function buildRaw(overrides: Record<string, unknown> = {}): Record<string, unkno
       name: 'João Silva',
       email: 'joao@example.com',
       phone: '11987654321',
-      password: 'Senha123',
+      password: 'Senha-Segura123',
     },
     circuit: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
     congregations: [{ code: 'SP17-CENTRAL', name: 'Central' }],

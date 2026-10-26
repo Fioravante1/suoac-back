@@ -14,7 +14,7 @@ function buildPayload(circuit: Record<string, unknown>): Record<string, unknown>
       name: 'João Silva',
       email: 'JOAO@EXAMPLE.COM',
       phone: '(11) 98765-4321',
-      password: 'Senha123',
+      password: 'Senha-Segura123',
     },
     circuit,
     congregations: [{ code: 'sp17-central', name: 'Central' }],

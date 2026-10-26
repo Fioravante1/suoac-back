@@ -5,7 +5,7 @@ import { AcceptInvitationDto } from './accept-invitation.dto';
 
 // ── Helpers ──────────────────────────────────────────────────────
 function buildRaw(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { name: 'Maria Souza', phone: '11987654321', password: 'Senha123', ...overrides };
+  return { name: 'Maria Souza', phone: '11987654321', password: 'Senha-Segura123', ...overrides };
 }
 
 /** Mensagens de erro por campo, para a asserção ficar legível. */

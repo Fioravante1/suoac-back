@@ -333,7 +333,7 @@ describe('InvitationsService', () => {
 
   // ── accept ─────────────────────────────────────────────────────
   describe('accept', () => {
-    const dto: AcceptInvitationDto = { name: 'Maria Souza', phone: '11987654321', password: 'Senha123' };
+    const dto: AcceptInvitationDto = { name: 'Maria Souza', phone: '11987654321', password: 'Senha-Segura123' };
 
     beforeEach(() => {
       prismaMock.invitation.findUnique.mockResolvedValue(buildInvitation() as never);
