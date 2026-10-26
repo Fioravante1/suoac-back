@@ -48,7 +48,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"coordenador@suoac.dev\",\n  \"password\": \"Senha@123\"\n}"
+              "raw": "{\n  \"email\": \"coordenador@suoac.dev\",\n  \"password\": \"Senha@123\",\n  \"rememberMe\": false\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
@@ -321,6 +321,120 @@
               ]
             },
             "description": "Autocadastro de circuito, passo 2 de 2: valida o codigo e consolida o cadastro.\n\nCria circuito, congregacoes e usuario coordenador numa transacao so, e responde 201 com { accessToken, refreshToken, user } — sessao autenticada, para a tela de sucesso entrar no painel sem passar pelo login.\n\n400 codigo invalido; 409 cadastro ja confirmado (duplo clique cai aqui, e significa que deu certo antes); 410 codigo expirado, rascunho expirado ou tentativas esgotadas — nos tres casos o caminho e recomecar o cadastro, nao redigitar.\n\nSao toleradas 5 tentativas erradas por rascunho: seis digitos sao apenas 10^6 combinacoes, e o limite por e-mail cobre o envio, nao o chute.\n\nEm desenvolvimento nada e enviado por e-mail: o codigo sai no log da aplicacao.\n\nAo consolidar, o payload do rascunho e descartado (os dados ja estao em users/circuits/congregations); o hash do codigo e preservado, e e por ele que o duplo clique recebe 409 em vez de 400."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Invitations",
+      "item": [
+        {
+          "name": "Get Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}"
+              ]
+            },
+            "description": "Consulta publica do convite, para a tela de aceite mostrar quem convidou, o circuito e a congregacao antes de pedir qualquer dado.\n\n200 com { name, email, phone, role, invitedBy, circuit, circuitCity, circuitState, congregation, congregationCode, expiresAt }. 'phone' vem so com digitos e pre-preenche o campo que o convidado confirma; Nao devolve ids nem o hash do token.\n\nEstados em que o convite nao pode ser aceito, todos com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 403 INVITATION_REVOKED, 409 INVITATION_DECLINED. O 410 leva tambem 'invitation': { email, invitedBy, sentAt, expiresAt }, para a tela mostrar para quem o convite foi enviado, por quem e ate quando valeu."
+          },
+          "response": []
+        },
+        {
+          "name": "Accept Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/acceptances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "acceptances"
+              ]
+            },
+            "description": "Aceita o convite: cria o usuario com o nome e o celular confirmados pelo convidado e a senha definida, liga a congregacao e ao papel do convite, consome o token e responde 201 com { accessToken, refreshToken, user } — sessao autenticada, sem passar pelo login.\n\nO usuario NAO cai na troca de senha obrigatoria (mustChangePassword=false): acabou de escolher a senha.\n\nO corpo exige 'name' (nome e sobrenome), 'phone' (DDD + 8 ou 9 digitos; a mascara e removida) e 'password', mesmo quando o convidado nao altera nada: o envio e a confirmacao dos dados. E-mail, papel e congregacao vem do convite, e qualquer outro campo responde 400.\n\nErros, com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED (com 'invitation'), 409 INVITATION_USED, 403 INVITATION_REVOKED e 409 INVITATION_EMAIL_ALREADY_REGISTERED (o e-mail do convite ja tem conta; o caminho e entrar com a senha).\n\nO token do convite e o valor em claro do link recebido; so o SHA-256 fica no banco. Criar, reenviar e revogar convites ainda nao tem endpoint (Fatia 6).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Maria Souza\",\n  \"phone\": \"(11) 98765-4321\",\n  \"password\": \"Senha123\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Decline Invitation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/declines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "declines"
+              ]
+            },
+            "description": "Recusa o convite (rota publica). O convidado escolhe um motivo fechado: NOT_THE_PERSON (Nao sou a pessoa indicada), CANNOT_ASSUME_NOW (Nao posso assumir este privilegio agora) ou RECEIVED_BY_MISTAKE (Recebi por engano). Qualquer outro valor ou campo extra responde 400.\n\n204 sem corpo: grava a data e o motivo, o convite passa a DECLINED e quem o enviou recebe um e-mail com o motivo. O circuito pode reenviar o convite, que volta a pendente com token novo.\n\nEstados em que nao pode ser recusado, todos com 'code' no corpo e sem alterar nada: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED, 409 INVITATION_USED, 409 INVITATION_DECLINED, 403 INVITATION_REVOKED. Aceite e recusa simultaneos tem um unico vencedor.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"NOT_THE_PERSON\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Request Invitation Renewal",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/invitations/{{invitationToken}}/renewal-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "invitations",
+                "{{invitationToken}}",
+                "renewal-requests"
+              ]
+            },
+            "description": "Pedido de novo convite feito por quem abriu o link depois de expirado (rota publica, sem corpo).\n\n204 sem corpo: avisa por e-mail quem enviou o convite, que decide se reenvia. Nao gera token novo nem reabre o convite. Um pedido por convite a cada 24 horas: repetido dentro da janela responde 204 igual, sem novo e-mail.\n\nSo vale para convite expirado. Os demais respondem com 'code' no corpo e sem alterar nada: 409 INVITATION_NOT_EXPIRED (ainda valido), 409 INVITATION_USED, 409 INVITATION_DECLINED, 403 INVITATION_REVOKED, 404 INVITATION_NOT_FOUND. O reenvio pelo circuito limpa o pedido."
           },
           "response": []
         }

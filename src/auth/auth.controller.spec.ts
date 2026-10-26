@@ -31,6 +31,8 @@ function buildAuthResponse(): AuthResponse {
   return {
     accessToken: 'fake-access-token',
     refreshToken: 'fake-refresh-token',
+    extendedSession: false,
+    refreshExpiresIn: 604800,
     user: buildUserResponse(),
   };
 }
@@ -117,12 +119,12 @@ describe('AuthController', () => {
 
   // ── logout ─────────────────────────────────────────────────────
   describe('logout', () => {
-    it('deve delegar ao service com userId do @CurrentUser', async () => {
+    it('deve delegar ao service com userId e sid do @CurrentUser', async () => {
       serviceMock.logout.mockResolvedValue(undefined);
 
-      await controller.logout(USER_ID);
+      await controller.logout(USER_ID, 'sessao-1');
 
-      expect(serviceMock.logout).toHaveBeenCalledWith(USER_ID);
+      expect(serviceMock.logout).toHaveBeenCalledWith(USER_ID, 'sessao-1');
     });
 
     it('deve retornar undefined (204 No Content)', async () => {
@@ -151,7 +153,15 @@ describe('AuthController', () => {
       const result = await controller.changePassword(USER_ID, dto);
 
       expect(result).toEqual(expected);
-      expect(serviceMock.changePassword).toHaveBeenCalledWith(USER_ID, dto);
+      expect(serviceMock.changePassword).toHaveBeenCalledWith(USER_ID, dto, false);
+    });
+
+    it('deve repassar o modo estendido da sessão ao service', async () => {
+      serviceMock.changePassword.mockResolvedValue(buildAuthResponse());
+
+      await controller.changePassword(USER_ID, dto, true);
+
+      expect(serviceMock.changePassword).toHaveBeenCalledWith(USER_ID, dto, true);
     });
 
     it('deve propagar UnauthorizedException do service', async () => {

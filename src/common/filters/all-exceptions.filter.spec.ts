@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  GoneException,
   HttpException,
   NotFoundException,
   UnprocessableEntityException,
@@ -66,6 +67,49 @@ describe('AllExceptionsFilter', () => {
       const exception = new ConflictException('Email já existe');
       const { reply } = catchException(filter, exception);
       expectResponse(reply, 409, { statusCode: 409, message: 'Email já existe', error: 'Conflict' });
+    });
+
+    it('deve repassar o código de erro quando o service o informa', () => {
+      // Os estados do convite (SUC-36) respondem com status próprios, e o front
+      // os distingue por este código, não pelo texto da mensagem.
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'Este convite já foi utilizado.',
+        error: 'Conflict',
+        code: 'INVITATION_USED',
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 409, { code: 'INVITATION_USED' });
+    });
+
+    it('deve repassar o contexto do convite expirado quando o service o informa', () => {
+      const invitation = { email: 'maria@example.com', invitedBy: 'João Silva' };
+      const exception = new GoneException({
+        statusCode: 410,
+        message: 'Este convite expirou.',
+        error: 'Gone',
+        code: 'INVITATION_EXPIRED',
+        invitation,
+      });
+      const { reply } = catchException(filter, exception);
+      expectResponse(reply, 410, { code: 'INVITATION_EXPIRED', invitation });
+    });
+
+    it('nao deve repassar contexto do convite que não seja um objeto', () => {
+      const exception = new GoneException({ statusCode: 410, message: 'x', error: 'Gone', invitation: 'texto' });
+      const { reply } = catchException(filter, exception);
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ invitation: expect.anything() }));
+    });
+
+    it('nao deve repassar campos arbitrários do corpo da exceção', () => {
+      const exception = new ConflictException({
+        statusCode: 409,
+        message: 'x',
+        error: 'Conflict',
+        internal: 'segredo',
+      });
+      const { reply } = catchException(filter, exception);
+      expect(reply.send).toHaveBeenCalledWith(expect.not.objectContaining({ internal: 'segredo' }));
     });
 
     it('deve repassar o campo que causou o erro quando o service o informa', () => {

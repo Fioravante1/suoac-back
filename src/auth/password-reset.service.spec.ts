@@ -75,6 +75,7 @@ describe('PasswordResetService', () => {
 
   beforeEach(async () => {
     prismaMock = mockDeep<PrismaClientType>();
+    prismaMock.$transaction.mockImplementation((operations: unknown) => Promise.all(operations as Promise<unknown>[]));
     hashingMock = { hash: jest.fn().mockResolvedValue('novo-hash') };
     emailSenderMock = { send: jest.fn().mockResolvedValue(undefined) };
     auditLogMock = { log: jest.fn().mockResolvedValue(undefined) };
@@ -110,7 +111,7 @@ describe('PasswordResetService', () => {
   // ── requestReset ───────────────────────────────────────────────
   describe('requestReset', () => {
     it('deve gerar o token e enviar o e-mail quando a conta existe', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -122,7 +123,7 @@ describe('PasswordResetService', () => {
     });
 
     it('nao deve invalidar os links anteriores, para terceiros nao poderem matar o link da vitima', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -133,7 +134,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve contar e inserir na mesma transacao, para o limite nao ser passavel em paralelo', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -145,7 +146,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve preservar as solicitacoes anteriores, que sao o historico do limite por e-mail', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -156,7 +157,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve enviar um link apontando para a rota de redefinicao do frontend', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -166,7 +167,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve persistir apenas o hash do token, nunca o valor em claro', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -182,7 +183,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve registrar a tentativa sem token nem envio quando o e-mail nao tem conta', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(null);
+      prismaMock.user.findUnique.mockResolvedValue(null);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -192,7 +193,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve registrar a tentativa sem envio quando a conta esta inativa', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser({ isActive: false }) as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser({ isActive: false }) as never);
 
       await service.requestReset({ email: EMAIL });
       await flushPendingWork();
@@ -202,7 +203,7 @@ describe('PasswordResetService', () => {
     });
 
     it('deve normalizar o e-mail antes de contar as tentativas', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(null);
+      prismaMock.user.findUnique.mockResolvedValue(null);
 
       await service.requestReset({ email: '  JOAO@Example.COM ' });
 
@@ -211,14 +212,12 @@ describe('PasswordResetService', () => {
       });
     });
 
-    it('deve encontrar a conta ignorando a caixa do e-mail digitado', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+    it('deve buscar a conta por igualdade, com o e-mail digitado normalizado para minúsculas', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
 
-      await service.requestReset({ email: 'JOAO@Example.COM' });
+      await service.requestReset({ email: '  JOAO@Example.COM ' });
 
-      expect(prismaMock.user.findFirst).toHaveBeenCalledWith({
-        where: { email: { equals: EMAIL, mode: 'insensitive' } },
-      });
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: EMAIL } });
     });
 
     it('deve lancar 429 quando o limite por e-mail foi atingido', async () => {
@@ -247,11 +246,11 @@ describe('PasswordResetService', () => {
       await expect(service.requestReset({ email: EMAIL })).rejects.toThrow(HttpException);
 
       expect(prismaMock.passwordResetRequest.create).not.toHaveBeenCalled();
-      expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
+      expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
     });
 
     it('deve contar tentativas de e-mail inexistente no mesmo balde, para o 429 nao delatar contas', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(null);
+      prismaMock.user.findUnique.mockResolvedValue(null);
 
       await service.requestReset({ email: EMAIL });
 
@@ -259,7 +258,7 @@ describe('PasswordResetService', () => {
     });
 
     it('nao deve propagar falha de envio do provedor', async () => {
-      prismaMock.user.findFirst.mockResolvedValue(buildUser() as never);
+      prismaMock.user.findUnique.mockResolvedValue(buildUser() as never);
       emailSenderMock.send.mockRejectedValue(new Error('provedor fora do ar'));
 
       await expect(service.requestReset({ email: EMAIL })).resolves.toBeUndefined();
@@ -320,7 +319,7 @@ describe('PasswordResetService', () => {
       prismaMock.user.findUnique.mockResolvedValue({ isActive: true } as never);
     });
 
-    it('deve gravar o hash novo, limpar o refresh token e incrementar a versao de sessao', async () => {
+    it('deve gravar o hash novo, encerrar todas as sessoes e incrementar a versao de sessao', async () => {
       prismaMock.passwordResetRequest.findUnique.mockResolvedValue(buildRequestRow());
 
       await service.resetPassword(dto);
@@ -330,10 +329,10 @@ describe('PasswordResetService', () => {
         data: {
           passwordHash: 'novo-hash',
           mustChangePassword: false,
-          refreshTokenHash: null,
           sessionVersion: { increment: 1 },
         },
       });
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { userId: USER_ID } });
     });
 
     it('deve marcar o token como utilizado', async () => {

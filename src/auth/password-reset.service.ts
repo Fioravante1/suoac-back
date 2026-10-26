@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { EmailSender } from '../common/email/email-sender';
+import { normalizeEmail } from '../common/validators/email.transform';
 import { HashingService } from '../common/hashing/hashing.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PasswordResetVerificationDto } from './dto/password-reset-verification.dto';
@@ -70,7 +71,7 @@ export class PasswordResetService {
    * por normalizar `User.email` e indexar a busca — card próprio.
    */
   async requestReset(dto: RequestPasswordResetDto): Promise<void> {
-    const email = this.normalizeEmail(dto.email);
+    const email = normalizeEmail(dto.email);
 
     // Contagem e inserção na mesma transação, serializadas por e-mail com um
     // advisory lock. Checar e depois inserir em chamadas separadas deixava o
@@ -83,12 +84,10 @@ export class PasswordResetService {
 
       await this.assertWithinRateLimit(tx, email);
 
-      // Busca sem distinguir maiúsculas: `User.email` é único e sensível a caixa,
-      // e quem cadastrou "Fulano@..." e digita "fulano@..." ficaria sem conseguir
-      // recuperar a senha — exatamente a falha que este fluxo existe para corrigir.
-      const user = await tx.user.findFirst({
-        where: { email: { equals: email, mode: 'insensitive' } },
-      });
+      // `email` já está normalizado (minúsculas), como o banco exige, então a busca
+      // por igualdade usa o índice `users_email_key`: o caminho de conta existente e o
+      // de conta inexistente custam o mesmo, e não sobra diferença de tempo para medir.
+      const user = await tx.user.findUnique({ where: { email } });
 
       if (!user || !user.isActive) {
         await tx.passwordResetRequest.create({ data: { email } });
@@ -167,10 +166,10 @@ export class PasswordResetService {
         data: {
           passwordHash,
           mustChangePassword: false,
-          refreshTokenHash: null,
           sessionVersion: { increment: 1 },
         },
       }),
+      this.prisma.client.session.deleteMany({ where: { userId } }),
       this.prisma.client.passwordResetRequest.update({
         where: { id: request.id },
         data: { usedAt: new Date() },
@@ -272,10 +271,6 @@ export class PasswordResetService {
       // cliente: dizer "não consegui enviar" revelaria que a conta existe.
       this.logger.error({ err, userId }, 'Falha ao enviar e-mail de recuperação');
     }
-  }
-
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
   }
 
   private hashToken(token: string): string {

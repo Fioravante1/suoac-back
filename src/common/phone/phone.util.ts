@@ -1,3 +1,5 @@
+import { onlyDigits } from '../validators/phone.constants';
+
 /**
  * Aplica máscara a um número de telefone brasileiro, retornando sempre no
  * formato `11 97753-0630` (celular, 11 dígitos) ou `11 2555-7709`
@@ -12,7 +14,7 @@ export function formatPhone(phone: string | null | undefined): string | null {
     return null;
   }
 
-  const digits = phone.replace(/\D/g, '');
+  const digits = onlyDigits(phone);
 
   if (digits.length === 11) {
     return `${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;

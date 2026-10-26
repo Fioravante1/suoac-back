@@ -3,8 +3,9 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
 import { HashingService } from '../common/hashing/hashing.service';
+import { normalizeEmail } from '../common/validators/email.transform';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
-import type { User } from '../generated/prisma/client';
+import type { Prisma, User } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateUserDto } from './dto/create-user.dto';
 import type { UpdateUserDto } from './dto/update-user.dto';
@@ -23,14 +24,15 @@ export class UsersService {
   async create(circuitId: string, dto: CreateUserDto, caller: JwtPayload): Promise<UserResponse> {
     await this.ensureCircuitExists(circuitId);
     await this.ensureCongregationBelongsToCircuit(dto.congregationId, circuitId);
-    await this.ensureEmailUnique(dto.email);
+    const email = normalizeEmail(dto.email);
+    await this.ensureEmailUnique(email);
 
     const passwordHash = await this.hashing.hash(dto.password);
 
     const user = await this.prisma.client.user.create({
       data: {
         name: dto.name,
-        email: dto.email,
+        email,
         passwordHash,
         role: dto.role,
         circuitId,
@@ -106,8 +108,10 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, caller: JwtPayload): Promise<UserResponse> {
     const existing = await this.findOneRaw(id, caller);
 
-    if (dto.email !== undefined) {
-      await this.ensureEmailUnique(dto.email, id);
+    const email = dto.email === undefined ? undefined : normalizeEmail(dto.email);
+
+    if (email !== undefined) {
+      await this.ensureEmailUnique(email, id);
     }
 
     if (dto.congregationId !== undefined) {
@@ -117,19 +121,21 @@ export class UsersService {
     const passwordHash = dto.password ? await this.hashing.hash(dto.password) : undefined;
     const isPasswordReset = passwordHash !== undefined;
 
-    const updated = await this.prisma.client.user.update({
+    const updateUser = this.prisma.client.user.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.email !== undefined && { email: dto.email }),
+        ...(email !== undefined && { email }),
         ...(passwordHash !== undefined && { passwordHash }),
         ...(dto.role !== undefined && { role: dto.role }),
         ...(dto.congregationId !== undefined && { congregationId: dto.congregationId }),
         // Reset de senha por admin → força troca no próximo acesso e invalida sessões ativas
-        // (limpa o refreshTokenHash para o usuário não renovar tokens com a flag desatualizada).
-        ...(isPasswordReset && { mustChangePassword: true, refreshTokenHash: null }),
+        // (apaga as sessões abaixo para o usuário não renovar tokens com a flag desatualizada).
+        ...(isPasswordReset && { mustChangePassword: true, sessionVersion: { increment: 1 } }),
       },
     });
+
+    const updated = isPasswordReset ? await this.updateAndRevokeSessions(updateUser, id) : await updateUser;
 
     this.logger.log(`Usuario atualizado — id=${id}`);
 
@@ -141,6 +147,16 @@ export class UsersService {
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
 
     return this.toUserResponse(updated);
+  }
+
+  /** Grava o usuário e apaga todas as sessões dele na mesma transação. */
+  private async updateAndRevokeSessions<T>(update: Prisma.PrismaPromise<T>, userId: string): Promise<T> {
+    const [updated] = await this.prisma.client.$transaction([
+      update,
+      this.prisma.client.session.deleteMany({ where: { userId } }),
+    ]);
+
+    return updated;
   }
 
   async remove(id: string, caller: JwtPayload): Promise<void> {
@@ -176,7 +192,7 @@ export class UsersService {
     updatedAt: Date;
   } | null> {
     const user = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (!user) {
@@ -201,7 +217,7 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<UserResponse | null> {
     const user = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (!user) {
@@ -244,7 +260,7 @@ export class UsersService {
 
   private async ensureEmailUnique(email: string, excludeId?: string): Promise<void> {
     const existing = await this.prisma.client.user.findUnique({
-      where: { email },
+      where: { email: normalizeEmail(email) },
     });
 
     if (existing && existing.id !== excludeId) {

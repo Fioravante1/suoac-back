@@ -20,6 +20,9 @@ import type { SessionUser } from './interfaces/session-user.interface';
 const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=65536,t=3,p=1$UUeNV1VU3Ys5g15MkztWiw$EA9uTWeToONrxVCW6rzSJt6DW2YOFy2C52jXe8A/k5M';
 
+/** Teto de dispositivos simultâneos por usuário: ao passar, as sessões menos usadas caem (SUC-77). */
+const MAX_SESSIONS_PER_USER = 10;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -27,6 +30,7 @@ export class AuthService {
   private readonly jwtRefreshSecret: string;
   private readonly jwtExpiration: number;
   private readonly jwtRefreshExpiration: number;
+  private readonly jwtExtendedRefreshExpiration: number;
 
   constructor(
     private readonly usersService: UsersService,
@@ -49,7 +53,19 @@ export class AuthService {
     this.jwtSecret = jwtSecret;
     this.jwtRefreshSecret = jwtRefreshSecret;
     this.jwtExpiration = parseInt(this.configService.get<string>('JWT_EXPIRATION') ?? '900', 10);
-    this.jwtRefreshExpiration = parseInt(this.configService.get<string>('JWT_REFRESH_EXPIRATION') ?? '604800', 10);
+    this.jwtRefreshExpiration = this.readSeconds('JWT_REFRESH_EXPIRATION', '604800');
+    this.jwtExtendedRefreshExpiration = this.readSeconds('JWT_EXTENDED_REFRESH_EXPIRATION', '2592000');
+  }
+
+  /** Lê uma duração em segundos e falha na subida se o valor não for um inteiro positivo. */
+  private readSeconds(key: string, fallback: string): number {
+    const seconds = parseInt(this.configService.get<string>(key) ?? fallback, 10);
+
+    if (!Number.isInteger(seconds) || seconds <= 0) {
+      throw new Error(`${key} must be a positive integer (seconds)`);
+    }
+
+    return seconds;
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
@@ -70,7 +86,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais invalidas');
     }
 
-    const session = await this.issueSession(user);
+    const session = await this.issueSession(user, { extended: dto.rememberMe ?? false });
 
     this.logger.log(`Login bem-sucedido — userId=${user.id}`);
 
@@ -78,48 +94,58 @@ export class AuthService {
   }
 
   async refreshTokens(dto: RefreshTokenDto): Promise<AuthResponse> {
-    let payload: { sub: string };
+    let payload: { sub: string; sid?: string };
 
     try {
-      payload = await this.jwtService.verifyAsync<{ sub: string }>(dto.refreshToken, {
+      payload = await this.jwtService.verifyAsync<{ sub: string; sid?: string }>(dto.refreshToken, {
         secret: this.jwtRefreshSecret,
       });
     } catch {
       throw new UnauthorizedException('Refresh token invalido');
     }
 
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: payload.sub },
+    // Refresh emitido antes das sessões por dispositivo (SUC-77) não traz `sid`:
+    // não há linha para ele, e a pessoa entra de novo uma vez.
+    if (!payload.sid) {
+      throw new UnauthorizedException('Refresh token invalido');
+    }
+
+    const session = await this.prisma.client.session.findFirst({
+      where: { id: payload.sid, userId: payload.sub },
+      include: { user: true },
     });
 
-    if (!user || !user.isActive || !user.refreshTokenHash) {
+    if (!session || !session.user.isActive || session.expiresAt <= new Date()) {
       throw new UnauthorizedException('Refresh token invalido');
     }
 
-    const tokenHash = this.hashRefreshToken(dto.refreshToken);
-
-    if (tokenHash !== user.refreshTokenHash) {
-      this.logger.warn(`Refresh token reutilizado ou invalido — userId=${user.id}`);
+    if (this.hashRefreshToken(dto.refreshToken) !== session.refreshTokenHash) {
+      // Só recusa, sem apagar a sessão: duas abas que renovam juntas apresentam o
+      // mesmo token, e a perdedora não pode derrubar a sessão que a vencedora acabou de rotacionar.
+      this.logger.warn(`Refresh token reutilizado ou invalido — userId=${session.userId} sessionId=${session.id}`);
       throw new UnauthorizedException('Refresh token invalido');
     }
 
-    const session = await this.issueSession(user);
+    // A renovação preserva o modo da sessão, guardado na própria linha.
+    const issued = await this.rotateSession(session.user, session);
 
-    this.logger.log(`Tokens renovados — userId=${user.id}`);
+    this.logger.log(`Tokens renovados — userId=${session.userId} sessionId=${session.id}`);
 
-    return session;
+    return issued;
   }
 
-  async logout(userId: string): Promise<void> {
-    await this.prisma.client.user.updateMany({
-      where: { id: userId },
-      data: { refreshTokenHash: null },
-    });
+  /** Encerra só a sessão de quem saiu; as dos outros dispositivos seguem abertas. */
+  async logout(userId: string, sessionId?: string): Promise<void> {
+    // Access token emitido antes das sessões por dispositivo não traz `sid`, e a
+    // sessão dele nem existe na tabela: não há o que apagar.
+    if (sessionId) {
+      await this.prisma.client.session.deleteMany({ where: { id: sessionId, userId } });
+    }
 
     this.logger.log(`Logout — userId=${userId}`);
   }
 
-  async changePassword(userId: string, dto: ChangePasswordDto): Promise<AuthResponse> {
+  async changePassword(userId: string, dto: ChangePasswordDto, extended = false): Promise<AuthResponse> {
     const user = await this.prisma.client.user.findUnique({ where: { id: userId } });
 
     if (!user || !user.isActive || !user.passwordHash) {
@@ -147,18 +173,24 @@ export class AuthService {
     // `user.sessionVersion + 1` em memória faria duas trocas concorrentes lerem
     // o mesmo valor e gravarem o mesmo incremento, e a segunda troca não
     // revogaria a sessão da primeira.
-    const updatedUser = await this.prisma.client.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash: newPasswordHash,
-        mustChangePassword: false,
-        sessionVersion: { increment: 1 },
-      },
-    });
+    //
+    // Todas as sessões são apagadas, a de quem trocou a senha inclusive: ela é
+    // reaberta logo abaixo, com tokens novos e no mesmo modo (`extended`).
+    const [updatedUser] = await this.prisma.client.$transaction([
+      this.prisma.client.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: newPasswordHash,
+          mustChangePassword: false,
+          sessionVersion: { increment: 1 },
+        },
+      }),
+      this.prisma.client.session.deleteMany({ where: { userId } }),
+    ]);
 
     // O token nasce com a versão já incrementada, para a sessão que trocou a
     // senha continuar válida enquanto as demais caem no próximo request.
-    const session = await this.issueSession(updatedUser);
+    const session = await this.issueSession(updatedUser, { extended });
 
     this.logger.log(`Senha alterada — userId=${userId}`);
 
@@ -173,35 +205,107 @@ export class AuthService {
   }
 
   /**
-   * Abre uma sessão: emite o par de tokens e grava o hash do refresh.
+   * Abre uma sessão nova: uma linha em `sessions` e o par de tokens.
    *
-   * É o caminho único de nascimento de sessão — login, renovação, troca de senha
-   * e autocadastro de circuito (SUC-37) passam por aqui, em vez de cada um
-   * repetir a sequência de gerar, gravar e mapear.
+   * É o caminho de nascimento de sessão — login, troca de senha, convite e
+   * autocadastro de circuito (SUC-37) passam por aqui. A renovação usa
+   * `rotateSession`, que mantém a linha.
+   *
+   * `extended` marca a sessão de "manter conectado" (SUC-39) e define a duração
+   * do refresh token. Fica na linha da sessão, nunca no `User`: vale só para o
+   * dispositivo que a pediu e não vaza para as outras sessões do mesmo usuário.
    */
-  async issueSession(user: SessionUser): Promise<AuthResponse> {
-    const tokens = await this.generateTokens(user);
+  async issueSession(user: SessionUser, options: { extended?: boolean } = {}): Promise<AuthResponse> {
+    const extended = options.extended ?? false;
+    const sessionId = crypto.randomUUID();
+    const tokens = await this.generateTokens(user, sessionId, extended);
 
-    await this.prisma.client.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash: this.hashRefreshToken(tokens.refreshToken) },
+    await this.prisma.client.session.create({
+      data: {
+        id: sessionId,
+        userId: user.id,
+        refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+        extended,
+        expiresAt: this.sessionExpiry(extended),
+      },
     });
 
+    await this.pruneSessions(user.id);
+
+    return this.toAuthResponse(user, tokens, extended);
+  }
+
+  /** Troca os tokens da sessão existente. Dois refresh simultâneos com o mesmo token: só um vence. */
+  private async rotateSession(
+    user: SessionUser,
+    session: { id: string; refreshTokenHash: string; extended: boolean },
+  ): Promise<AuthResponse> {
+    const tokens = await this.generateTokens(user, session.id, session.extended);
+
+    const { count } = await this.prisma.client.session.updateMany({
+      where: { id: session.id, refreshTokenHash: session.refreshTokenHash },
+      data: {
+        refreshTokenHash: this.hashRefreshToken(tokens.refreshToken),
+        expiresAt: this.sessionExpiry(session.extended),
+        lastUsedAt: new Date(),
+      },
+    });
+
+    if (count === 0) {
+      throw new UnauthorizedException('Refresh token invalido');
+    }
+
+    return this.toAuthResponse(user, tokens, session.extended);
+  }
+
+  /** Apaga as sessões vencidas e, passando do teto, as menos usadas. */
+  private async pruneSessions(userId: string): Promise<void> {
+    await this.prisma.client.session.deleteMany({ where: { userId, expiresAt: { lte: new Date() } } });
+
+    const surplus = await this.prisma.client.session.findMany({
+      where: { userId },
+      orderBy: { lastUsedAt: 'desc' },
+      skip: MAX_SESSIONS_PER_USER,
+      select: { id: true },
+    });
+
+    if (surplus.length === 0) {
+      return;
+    }
+
+    await this.prisma.client.session.deleteMany({ where: { id: { in: surplus.map(({ id }) => id) } } });
+  }
+
+  private sessionExpiry(extended: boolean): Date {
+    return new Date(Date.now() + this.refreshTtl(extended) * 1000);
+  }
+
+  private toAuthResponse(
+    user: SessionUser,
+    tokens: { accessToken: string; refreshToken: string },
+    extended: boolean,
+  ): AuthResponse {
     return {
       ...tokens,
+      extendedSession: extended,
+      refreshExpiresIn: this.refreshTtl(extended),
       user: this.toUserResponse(user),
     };
   }
 
-  private async generateTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-    circuitId: string;
-    congregationId: string | null;
-    mustChangePassword: boolean;
-    sessionVersion: number;
-  }): Promise<{ accessToken: string; refreshToken: string }> {
+  private async generateTokens(
+    user: {
+      id: string;
+      email: string;
+      role: string;
+      circuitId: string;
+      congregationId: string | null;
+      mustChangePassword: boolean;
+      sessionVersion: number;
+    },
+    sessionId: string,
+    extended: boolean,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -210,6 +314,8 @@ export class AuthService {
       congregationId: user.congregationId,
       mustChangePassword: user.mustChangePassword,
       sessionVersion: user.sessionVersion,
+      sid: sessionId,
+      ...(extended && { extended }),
     };
 
     const [accessToken, refreshToken] = await Promise.all([
@@ -218,15 +324,22 @@ export class AuthService {
         expiresIn: this.jwtExpiration,
       }),
       this.jwtService.signAsync(
-        { sub: user.id },
+        // `jti` aleatório: sem ele, dois tokens da mesma sessão assinados no mesmo segundo
+        // seriam idênticos, e a rotação não mudaria o hash.
+        { sub: user.id, sid: sessionId, jti: crypto.randomUUID() },
         {
           secret: this.jwtRefreshSecret,
-          expiresIn: this.jwtRefreshExpiration,
+          expiresIn: this.refreshTtl(extended),
         },
       ),
     ]);
 
     return { accessToken, refreshToken };
+  }
+
+  /** Única fonte do tempo de vida do refresh: o `exp` do token e o `maxAge` do cookie saem daqui. */
+  private refreshTtl(extended: boolean): number {
+    return extended ? this.jwtExtendedRefreshExpiration : this.jwtRefreshExpiration;
   }
 
   private hashRefreshToken(token: string): string {

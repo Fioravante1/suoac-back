@@ -11,13 +11,14 @@ paths:
 ### Stack
 - **Modulo**: `@nestjs/jwt` com guard customizado (`CanActivate`) — sem Passport
 - **Tokens**: Access token (15min) + Refresh token (7d) com rotation
-- **Hash do refresh token**: SHA-256 armazenado no campo `User.refreshTokenHash`
+- **Sessão por dispositivo**: cada login cria uma linha em `Session` (hash SHA-256 do refresh em `Session.refreshTokenHash`, `extended`, `expiresAt`). O `sid` dela viaja no access e no refresh token. `User.refreshTokenHash` é legado e sai no deploy seguinte à migration
 
 ### Fluxo
 1. `POST /auth/login` — valida email/senha, retorna `{ accessToken, refreshToken, user }`
 2. Requests autenticados enviam `Authorization: Bearer <accessToken>`
-3. `POST /auth/refresh` — valida refresh token, gera novos tokens (rotation), invalida o anterior
-4. `POST /auth/logout` — limpa `refreshTokenHash` do usuario (requer autenticacao)
+3. `POST /auth/refresh` — acha a `Session` pelo `sid`, valida o hash e rotaciona os tokens só dessa sessão; token reutilizado derruba só ela
+4. `POST /auth/logout` — apaga só a `Session` do `sid` do access token (requer autenticacao)
+5. Redefinir ou trocar a senha apaga todas as `Session` do usuario e incrementa `sessionVersion`. Login limpa as vencidas e mantém no máximo 10 por usuario (as menos usadas caem)
 
 ### Guards Globais (ordem de execução)
 1. **`JwtAuthGuard`** — Verifica Bearer token em TODAS as rotas.
@@ -46,6 +47,7 @@ paths:
 - `JWT_REFRESH_SECRET` — chave para assinar refresh tokens (fail-fast se ausente)
 - `JWT_EXPIRATION` — tempo de vida do access token em segundos (default: 900)
 - `JWT_REFRESH_EXPIRATION` — tempo de vida do refresh token em segundos (default: 604800)
+- `JWT_EXTENDED_REFRESH_EXPIRATION` — refresh token da sessão "manter conectado" (`rememberMe`), em segundos (default: 2592000, 30 dias)
 
 ### Regras
 - **Nunca use Passport** — o projeto usa guards nativos do NestJS com Fastify

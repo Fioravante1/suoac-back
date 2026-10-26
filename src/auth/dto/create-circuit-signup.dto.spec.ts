@@ -119,6 +119,28 @@ describe('CreateCircuitSignupDto', () => {
       expect(await failedFields(raw)).toContain('coordinator.phone');
     });
 
+    it('deve aceitar o nome do coordenador sem sobrenome: a exigência de sobrenome é só do convite', async () => {
+      const raw = buildRaw({ coordinator: { ...(buildRaw().coordinator as object), name: 'Maria' } });
+
+      expect(await failedFields(raw)).not.toContain('coordinator.name');
+    });
+
+    it('deve apenas aparar o nome do coordenador, sem colapsar os espaços do meio', () => {
+      const raw = buildRaw({ coordinator: { ...(buildRaw().coordinator as object), name: '  Maria   Souza  ' } });
+
+      expect(plainToInstance(CreateCircuitSignupDto, raw).coordinator.name).toBe('Maria   Souza');
+    });
+
+    it.each([
+      ['vazio', '   '],
+      ['curto', 'A'],
+      ['longo', 'x'.repeat(151)],
+    ])('deve recusar o nome do coordenador %s', async (_case, name) => {
+      const raw = buildRaw({ coordinator: { ...(buildRaw().coordinator as object), name } });
+
+      expect(await failedFields(raw)).toContain('coordinator.name');
+    });
+
     it('deve recusar senha sem maiúscula, minúscula e número', async () => {
       const raw = buildRaw();
       (raw.coordinator as Record<string, unknown>).password = 'senhasenha';

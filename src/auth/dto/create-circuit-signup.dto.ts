@@ -16,7 +16,11 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { toNormalizedEmail } from '../../common/validators/email.transform';
+import { PERSON_NAME_LENGTH } from '../../common/validators/name.constants';
 import { PASSWORD_COMPLEXITY_MESSAGE, PASSWORD_COMPLEXITY_REGEX } from '../../common/validators/password.constants';
+import { PHONE_DIGITS_MESSAGE, PHONE_DIGITS_REGEX, toPhoneDigits } from '../../common/validators/phone.constants';
+import { toTrimmed } from '../../common/validators/text.transform';
 import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
 
 /**
@@ -24,16 +28,8 @@ import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
  * nenhuma delas existe fora deste payload: são as três etapas da mesma tela.
  */
 
-function toTrimmed(value: unknown): unknown {
-  return typeof value === 'string' ? value.trim() : value;
-}
-
 function toUpperCase(value: unknown): unknown {
   return typeof value === 'string' ? value.trim().toUpperCase() : value;
-}
-
-function toLowerCase(value: unknown): unknown {
-  return typeof value === 'string' ? value.trim().toLowerCase() : value;
 }
 
 @ValidatorConstraint({ name: 'circuitNameLength', async: false })
@@ -63,10 +59,10 @@ export class CircuitSignupCoordinatorDto {
   @Transform(({ value }) => toTrimmed(value))
   @IsString()
   @IsNotEmpty()
-  @Length(2, 150)
+  @Length(PERSON_NAME_LENGTH.MIN, PERSON_NAME_LENGTH.MAX)
   name!: string;
 
-  @Transform(({ value }) => toLowerCase(value))
+  @Transform(({ value }) => toNormalizedEmail(value))
   @IsEmail()
   @Length(1, 255)
   email!: string;
@@ -76,9 +72,9 @@ export class CircuitSignupCoordinatorDto {
    * apresentação: o que chega aqui é normalizado antes de ser validado, para que
    * o mesmo celular digitado com ou sem máscara caia no mesmo valor.
    */
-  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '') : value))
+  @Transform(({ value }) => toPhoneDigits(value))
   @IsString()
-  @Matches(/^\d{10,11}$/, { message: 'O celular deve ter DDD e 8 ou 9 dígitos' })
+  @Matches(PHONE_DIGITS_REGEX, { message: PHONE_DIGITS_MESSAGE })
   phone!: string;
 
   @IsString()
