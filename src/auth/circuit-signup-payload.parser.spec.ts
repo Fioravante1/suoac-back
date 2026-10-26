@@ -100,4 +100,34 @@ describe('parseCircuitSignupPayload', () => {
 
     expect(() => parseCircuitSignupPayload(raw)).toThrow(/payload\.circuit\.state/);
   });
+
+  describe('aceite dos termos', () => {
+    it('deve reconstruir o aceite quando o rascunho o traz', () => {
+      const raw = { ...buildRawPayload(), terms: { version: '2026-10-25', acceptedAt: '2026-10-25T12:00:00.000Z' } };
+
+      expect(parseCircuitSignupPayload(raw).terms).toEqual({
+        version: '2026-10-25',
+        acceptedAt: '2026-10-25T12:00:00.000Z',
+      });
+    });
+
+    it('deve aceitar rascunho sem o aceite, de antes do campo existir', () => {
+      expect(parseCircuitSignupPayload(buildRawPayload()).terms).toBeUndefined();
+    });
+
+    it.each([
+      ['version', { version: '9999-99-99', acceptedAt: '2026-10-25T12:00:00.000Z' }],
+      ['acceptedAt', { version: '2026-10-25', acceptedAt: 'ontem' }],
+    ])('deve lancar quando %s do aceite é inválido', (field, terms) => {
+      expect(() => parseCircuitSignupPayload({ ...buildRawPayload(), terms })).toThrow(
+        new RegExp(`payload\\.terms\\.${field}`),
+      );
+    });
+
+    it('deve lancar quando o aceite vem incompleto', () => {
+      const raw = { ...buildRawPayload(), terms: { version: '2026-10-25' } };
+
+      expect(() => parseCircuitSignupPayload(raw)).toThrow(/payload\.terms\.acceptedAt/);
+    });
+  });
 });

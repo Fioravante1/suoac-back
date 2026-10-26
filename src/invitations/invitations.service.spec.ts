@@ -358,6 +358,27 @@ describe('InvitationsService', () => {
       });
     });
 
+    it('deve gravar o aceite dos termos quando o convidado envia a versão', async () => {
+      const before = Date.now();
+
+      await service.accept(TOKEN, { ...dto, termsVersion: '2026-10-25' });
+
+      const { data } = prismaMock.user.create.mock.calls[0]?.[0] ?? { data: {} };
+      const { termsAcceptedAt, termsVersion } = data as { termsAcceptedAt: Date; termsVersion: string };
+
+      expect(termsVersion).toBe('2026-10-25');
+      expect(termsAcceptedAt.getTime()).toBeGreaterThanOrEqual(before);
+    });
+
+    it('deve criar o usuário sem aceite quando o cliente não envia a versão', async () => {
+      await service.accept(TOKEN, dto);
+
+      const { data } = prismaMock.user.create.mock.calls[0]?.[0] ?? { data: {} };
+
+      expect((data as { termsVersion?: string }).termsVersion).toBeUndefined();
+      expect((data as { termsAcceptedAt?: Date }).termsAcceptedAt).toBeUndefined();
+    });
+
     it('deve gravar o nome e o celular confirmados pelo convidado, não os do convite', async () => {
       await service.accept(TOKEN, { ...dto, name: 'Maria de Souza Lima', phone: '11912345678' });
 

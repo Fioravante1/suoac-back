@@ -276,7 +276,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"coordinator\": {\n    \"name\": \"João Silva\",\n    \"email\": \"joao.silva@suoac.dev\",\n    \"phone\": \"(11) 98765-4321\",\n    \"password\": \"Senha-Segura123\"\n  },\n  \"circuit\": {\n    \"name\": \"SP-17\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\"\n  },\n  \"congregations\": [\n    {\n      \"code\": \"SP17-CENTRAL\",\n      \"name\": \"Central\"\n    },\n    {\n      \"code\": \"SP17-JARDIM\",\n      \"name\": \"Jardim\"\n    }\n  ]\n}"
+              "raw": "{\n  \"coordinator\": {\n    \"name\": \"João Silva\",\n    \"email\": \"joao.silva@suoac.dev\",\n    \"phone\": \"(11) 98765-4321\",\n    \"password\": \"Senha-Segura123\"\n  },\n  \"circuit\": {\n    \"name\": \"SP-17\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\"\n  },\n  \"congregations\": [\n    {\n      \"code\": \"SP17-CENTRAL\",\n      \"name\": \"Central\"\n    },\n    {\n      \"code\": \"SP17-JARDIM\",\n      \"name\": \"Jardim\"\n    }\n  ],\n  \"termsVersion\": \"2026-10-25\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/circuit-signups",
@@ -378,7 +378,7 @@
             "description": "Aceita o convite: cria o usuario com o nome e o celular confirmados pelo convidado e a senha definida, liga a congregacao e ao papel do convite, consome o token e responde 201 com { accessToken, refreshToken, user } — sessao autenticada, sem passar pelo login.\n\nO usuario NAO cai na troca de senha obrigatoria (mustChangePassword=false): acabou de escolher a senha.\n\nO corpo exige 'name' (nome e sobrenome), 'phone' (DDD + 8 ou 9 digitos; a mascara e removida) e 'password', mesmo quando o convidado nao altera nada: o envio e a confirmacao dos dados. E-mail, papel e congregacao vem do convite, e qualquer outro campo responde 400.\n\nErros, com 'code' no corpo: 404 INVITATION_NOT_FOUND, 410 INVITATION_EXPIRED (com 'invitation'), 409 INVITATION_USED, 403 INVITATION_REVOKED e 409 INVITATION_EMAIL_ALREADY_REGISTERED (o e-mail do convite ja tem conta; o caminho e entrar com a senha).\n\nO token do convite e o valor em claro do link recebido; so o SHA-256 fica no banco. Criar, reenviar e revogar convites ainda nao tem endpoint (Fatia 6).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria Souza\",\n  \"phone\": \"(11) 98765-4321\",\n  \"password\": \"Senha-Segura123\"\n}"
+              "raw": "{\n  \"name\": \"Maria Souza\",\n  \"phone\": \"(11) 98765-4321\",\n  \"password\": \"Senha-Segura123\",\n  \"termsVersion\": \"2026-10-25\"\n}"
             }
           },
           "response": []
