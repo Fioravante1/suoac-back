@@ -1,3 +1,4 @@
+import { isTermsVersion } from '../common/validators/terms.constants';
 import type { CircuitSignupPayload } from './interfaces/circuit-signup-payload.interface';
 
 /**
@@ -20,6 +21,7 @@ export function parseCircuitSignupPayload(value: unknown): CircuitSignupPayload 
   }
 
   return {
+    terms: parseTerms(root.terms),
     coordinator: {
       name: asString(coordinator.name, 'payload.coordinator.name'),
       email: asString(coordinator.email, 'payload.coordinator.email'),
@@ -42,6 +44,27 @@ export function parseCircuitSignupPayload(value: unknown): CircuitSignupPayload 
       };
     }),
   };
+}
+
+function parseTerms(value: unknown): CircuitSignupPayload['terms'] {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const terms = asRecord(value, 'payload.terms');
+
+  const version = asString(terms.version, 'payload.terms.version');
+  const acceptedAt = asString(terms.acceptedAt, 'payload.terms.acceptedAt');
+
+  if (!isTermsVersion(version)) {
+    throw new Error('Rascunho de autocadastro inválido: payload.terms.version');
+  }
+
+  if (Number.isNaN(new Date(acceptedAt).getTime())) {
+    throw new Error('Rascunho de autocadastro inválido: payload.terms.acceptedAt');
+  }
+
+  return { version, acceptedAt };
 }
 
 function asRecord(value: unknown, path: string): Record<string, unknown> {

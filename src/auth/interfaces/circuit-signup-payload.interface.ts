@@ -25,4 +25,12 @@ export type CircuitSignupPayload = {
     code: string;
     name: string;
   }[];
+  /**
+   * Aceite dos termos feito na solicitação (SUC-85). Ausente em rascunhos de
+   * clientes que ainda não enviam a versão e em rascunhos anteriores ao campo.
+   */
+  terms?: {
+    version: string;
+    acceptedAt: string;
+  };
 };
