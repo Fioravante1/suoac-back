@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEmail,
+  IsISO8601,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -26,6 +27,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from '../../common/validators/password.constants';
 import { PHONE_DIGITS_MESSAGE, PHONE_DIGITS_REGEX, toPhoneDigits } from '../../common/validators/phone.constants';
+import { TERMS_VERSION_MESSAGE, TERMS_VERSION_REGEX } from '../../common/validators/terms.constants';
 import { toTrimmed } from '../../common/validators/text.transform';
 import { CIRCUIT_SIGNUP } from '../circuit-signup.constants';
 
@@ -166,4 +168,15 @@ export class CreateCircuitSignupDto {
   @ValidateNested({ each: true })
   @Type(() => CircuitSignupCongregationDto)
   congregations!: CircuitSignupCongregationDto[];
+
+  /**
+   * Versão dos termos que o coordenador aceitou na etapa 2. Opcional até o front
+   * passar a enviá-la (SUC-86); presente, o aceite é gravado no usuário criado na
+   * confirmação, com o momento do envio, não o da confirmação por código.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(TERMS_VERSION_REGEX, { message: TERMS_VERSION_MESSAGE })
+  @IsISO8601({ strict: true }, { message: TERMS_VERSION_MESSAGE })
+  termsVersion?: string;
 }

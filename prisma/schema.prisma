@@ -158,6 +158,11 @@ model User {
   role               UserRole
   isActive           Boolean  @default(true) @map("is_active")
   mustChangePassword Boolean  @default(false) @map("must_change_password")
+  /// Aceite dos termos de uso e da política de privacidade (SUC-85): o momento e a
+  /// versão (data da página `/termos`, `AAAA-MM-DD`). Nulos para quem já existia
+  /// antes do registro e para quem foi criado sem aceite; ninguém é forçado a aceitar.
+  termsAcceptedAt    DateTime? @map("terms_accepted_at")
+  termsVersion       String?   @map("terms_version") @db.VarChar(10)
 
   circuitId String  @map("circuit_id") @db.Uuid
   circuit   Circuit @relation(fields: [circuitId], references: [id], onDelete: Cascade)

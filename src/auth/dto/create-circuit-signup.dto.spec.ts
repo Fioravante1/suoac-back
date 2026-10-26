@@ -227,4 +227,27 @@ describe('CreateCircuitSignupDto', () => {
       expect(errors).not.toHaveLength(0);
     });
   });
+
+  describe('versão dos termos', () => {
+    async function topLevelFailures(raw: Record<string, unknown>): Promise<string[]> {
+      const errors = await validate(plainToInstance(CreateCircuitSignupDto, raw));
+
+      return errors.map((error) => error.property);
+    }
+
+    it('deve aceitar o payload sem a versão, enquanto o campo é opcional', async () => {
+      expect(await topLevelFailures(buildRaw())).not.toContain('termsVersion');
+    });
+
+    it('deve aceitar a versão no formato AAAA-MM-DD', async () => {
+      expect(await topLevelFailures(buildRaw({ termsVersion: '2026-10-25' }))).not.toContain('termsVersion');
+    });
+
+    it.each(['25/10/2026', '9999-99-99', '2026-02-30', '2026-10', '2026-10-25T00:00:00Z', '', 20261025])(
+      'deve recusar a versão %j',
+      async (termsVersion) => {
+        expect(await topLevelFailures(buildRaw({ termsVersion }))).toContain('termsVersion');
+      },
+    );
+  });
 });

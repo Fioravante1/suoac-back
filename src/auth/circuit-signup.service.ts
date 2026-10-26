@@ -285,6 +285,8 @@ export class CircuitSignupService {
             role: 'CIRCUIT_COORDINATOR',
             circuitId: circuit.id,
             congregationId: congregation.id,
+            termsAcceptedAt: payload.terms === undefined ? undefined : new Date(payload.terms.acceptedAt),
+            termsVersion: payload.terms?.version,
           },
         });
       });
@@ -595,6 +597,10 @@ export class CircuitSignupService {
 
   private buildPayload(dto: CreateCircuitSignupDto, passwordHash: string, circuitName: string): CircuitSignupPayload {
     return {
+      terms:
+        dto.termsVersion === undefined
+          ? undefined
+          : { version: dto.termsVersion, acceptedAt: new Date().toISOString() },
       coordinator: {
         name: dto.coordinator.name,
         email: dto.coordinator.email,

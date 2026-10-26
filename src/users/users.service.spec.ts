@@ -87,6 +87,8 @@ function buildUserRaw(
   isActive: boolean;
   mustChangePassword: boolean;
   sessionVersion: number;
+  termsAcceptedAt: Date | null;
+  termsVersion: string | null;
   circuitId: string;
   congregationId: string | null;
   createdAt: Date;
@@ -103,6 +105,8 @@ function buildUserRaw(
     isActive: overrides.isActive ?? true,
     mustChangePassword: overrides.mustChangePassword ?? false,
     sessionVersion: overrides.sessionVersion ?? 0,
+    termsAcceptedAt: null,
+    termsVersion: null,
     circuitId: overrides.circuitId ?? CIRCUIT_ID,
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),

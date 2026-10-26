@@ -61,6 +61,29 @@ describe('AcceptInvitationDto', () => {
     });
   });
 
+  describe('versão dos termos', () => {
+    it('deve aceitar o payload sem a versão, enquanto o campo é opcional', async () => {
+      expect(await messagesByField(buildRaw())).not.toHaveProperty('termsVersion');
+    });
+
+    it('deve aceitar a versão no formato AAAA-MM-DD', async () => {
+      expect(await messagesByField(buildRaw({ termsVersion: '2026-10-25' }))).not.toHaveProperty('termsVersion');
+    });
+
+    it.each(['25/10/2026', '9999-99-99', '2026-02-30', '2026-10', '2026-10-25T00:00:00Z', '', 'v1'])(
+      'deve recusar a versão %j, com a mensagem do formato',
+      async (termsVersion) => {
+        expect((await messagesByField(buildRaw({ termsVersion }))).termsVersion).toContain(
+          'A versão dos termos deve estar no formato AAAA-MM-DD',
+        );
+      },
+    );
+
+    it('deve recusar a versão que não é texto', async () => {
+      expect(await messagesByField(buildRaw({ termsVersion: 20261025 }))).toHaveProperty('termsVersion');
+    });
+  });
+
   it('não deve ter erros no payload válido', async () => {
     expect(await messagesByField(buildRaw())).toEqual({});
   });

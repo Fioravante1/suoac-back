@@ -326,7 +326,7 @@ export class InvitationsService {
    */
   private async consume(
     invitation: InvitationWithContext,
-    profile: Pick<AcceptInvitationDto, 'name' | 'phone'>,
+    profile: Pick<AcceptInvitationDto, 'name' | 'phone' | 'termsVersion'>,
     passwordHash: string,
   ): Promise<SessionUserRow> {
     try {
@@ -364,6 +364,8 @@ export class InvitationsService {
             circuitId: invitation.circuitId,
             congregationId: invitation.congregationId,
             mustChangePassword: false,
+            termsAcceptedAt: profile.termsVersion === undefined ? undefined : new Date(),
+            termsVersion: profile.termsVersion,
           },
         });
       });

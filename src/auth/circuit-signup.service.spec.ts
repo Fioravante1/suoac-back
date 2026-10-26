@@ -55,6 +55,7 @@ function buildDto(overrides: Partial<CreateCircuitSignupDto> = {}): CreateCircui
       { code: 'SP17-CENTRAL', name: 'Central' },
       { code: 'SP17-JARDIM', name: 'Jardim' },
     ],
+    termsVersion: overrides.termsVersion,
   };
 }
 
@@ -215,6 +216,27 @@ describe('CircuitSignupService', () => {
 
       expect(payload.circuit).toEqual({ name: 'SP-17', city: 'São Paulo', state: 'SP' });
       expect(payload.circuit).not.toHaveProperty('code');
+    });
+
+    it('deve guardar o aceite dos termos no rascunho, com o momento da solicitacao', async () => {
+      const before = Date.now();
+
+      await service.requestSignup(buildDto({ termsVersion: '2026-10-25' }));
+
+      const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
+      const payload = createCall?.data.payload as { terms: { version: string; acceptedAt: string } };
+
+      expect(payload.terms.version).toBe('2026-10-25');
+      expect(new Date(payload.terms.acceptedAt).getTime()).toBeGreaterThanOrEqual(before);
+    });
+
+    it('nao deve inventar aceite quando o cliente nao envia a versao', async () => {
+      await service.requestSignup(buildDto());
+
+      const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
+      const payload = createCall?.data.payload as Record<string, unknown>;
+
+      expect(payload.terms).toBeUndefined();
     });
 
     it('deve converter o code legado no name canonico do rascunho', async () => {
@@ -431,6 +453,30 @@ describe('CircuitSignupService', () => {
       expect(prismaMock.user.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ role: 'CIRCUIT_COORDINATOR' }) }),
       );
+    });
+
+    it('deve gravar no coordenador o aceite feito na solicitacao, nao a hora da confirmacao', async () => {
+      const acceptedAt = '2026-10-25T12:00:00.000Z';
+      prismaMock.circuitSignupRequest.findFirst.mockResolvedValue(
+        buildSignupRow({ payload: { ...buildPayload(), terms: { version: '2026-10-25', acceptedAt } } }) as never,
+      );
+
+      await service.confirmSignup(confirmDto());
+
+      expect(prismaMock.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ termsVersion: '2026-10-25', termsAcceptedAt: new Date(acceptedAt) }),
+        }),
+      );
+    });
+
+    it('deve criar o coordenador sem aceite quando o rascunho nao traz a versao', async () => {
+      await service.confirmSignup(confirmDto());
+
+      const { data } = prismaMock.user.create.mock.calls[0]?.[0] ?? { data: {} };
+
+      expect((data as { termsVersion?: string }).termsVersion).toBeUndefined();
+      expect((data as { termsAcceptedAt?: Date }).termsAcceptedAt).toBeUndefined();
     });
 
     it('deve reaproveitar a senha hasheada do rascunho, sem hashear de novo', async () => {
