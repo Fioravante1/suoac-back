@@ -11,10 +11,6 @@ import type { CircuitResponse } from './interfaces/circuit-response.interface';
 // ── Helpers ──────────────────────────────────────────────────────
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 
-interface CircuitRecord extends CircuitResponse {
-  code: string | null;
-}
-
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
   return {
     sub: 'u1u2u3u4-0000-0000-0000-000000000001',
@@ -36,12 +32,9 @@ function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse
   };
 }
 
-function buildCircuitRecord(overrides: Partial<CircuitRecord> = {}): CircuitRecord {
-  return {
-    ...buildCircuit(overrides),
-    code: overrides.code === undefined ? 'SP-01' : overrides.code,
-    name: overrides.name ?? 'Circuito SP-01',
-  };
+/** Linha como o Prisma a tipa: `code` segue no model até o passo 2 do SUC-60, sempre nulo nas gravações novas. */
+function buildCircuitRecord(overrides: Partial<CircuitResponse> = {}): CircuitResponse & { code: null } {
+  return { ...buildCircuit(overrides), code: null };
 }
 
 // ── Test Suite ───────────────────────────────────────────────────
@@ -81,15 +74,6 @@ describe('CircuitsService', () => {
         where: { id: CIRCUIT_ID },
         select: expect.any(Object),
       });
-    });
-
-    it('deve usar name quando o registro ainda nao tem code legado', async () => {
-      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuitRecord({ code: null, name: 'SP-019 A' }));
-
-      const result = await service.findOwn(buildUser());
-
-      expect(result.name).toBe('SP-019 A');
-      expect(result).not.toHaveProperty('code');
     });
 
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
@@ -135,7 +119,7 @@ describe('CircuitsService', () => {
   describe('update', () => {
     it('deve atualizar apenas os campos enviados', async () => {
       const existing = buildCircuitRecord();
-      const updated = buildCircuitRecord({ code: 'SP-02', name: 'SP-02' });
+      const updated = buildCircuitRecord({ name: 'SP-02' });
       const user = buildUser();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
@@ -146,7 +130,7 @@ describe('CircuitsService', () => {
       expect(result.name).toBe('SP-02');
       expect(prismaMock.circuit.update).toHaveBeenCalledWith({
         where: { id: existing.id },
-        data: { name: 'SP-02', code: 'SP-02' },
+        data: { name: 'SP-02' },
         select: expect.any(Object),
       });
       expect(auditLogService.log).toHaveBeenCalledWith(

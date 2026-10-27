@@ -38,15 +38,6 @@ describe('CreateCircuitSignupDto', () => {
       expect(dto.circuit.name).toBe('SP-17');
     });
 
-    it('deve normalizar o alias legado quando ele vier no payload', () => {
-      const dto = plainToInstance(
-        CreateCircuitSignupDto,
-        buildRaw({ circuit: { code: ' sp-17 ', name: 'Circuito São Paulo 17', city: 'Y', state: 'sp' } }),
-      );
-
-      expect(dto.circuit.code).toBe('SP-17');
-    });
-
     it('deve passar a UF para maiúsculas', () => {
       const dto = plainToInstance(
         CreateCircuitSignupDto,
@@ -177,28 +168,16 @@ describe('CreateCircuitSignupDto', () => {
       expect(await validate(dto)).toHaveLength(0);
     });
 
-    it('deve aceitar o nome descritivo longo enviado junto do alias legado', async () => {
+    it('deve recusar o alias legado circuit.code, como faz o ValidationPipe global', async () => {
       const dto = plainToInstance(
         CreateCircuitSignupDto,
-        buildRaw({
-          circuit: {
-            code: 'SP-17',
-            name: 'Circuito Metropolitano de São Paulo Dezessete',
-            city: 'São Paulo',
-            state: 'SP',
-          },
-        }),
+        buildRaw({ circuit: { code: 'SP-17', name: 'SP-17', city: 'Y', state: 'SP' } }),
       );
 
-      expect(await validate(dto)).toHaveLength(0);
-    });
+      const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
+      const circuitErrors = errors.find((error) => error.property === 'circuit')?.children ?? [];
 
-    it('deve recusar o alias legado com caracteres fora do padrão', async () => {
-      expect(
-        await failedFields(
-          buildRaw({ circuit: { code: 'SP 17!', name: 'Circuito São Paulo 17', city: 'Y', state: 'SP' } }),
-        ),
-      ).toContain('circuit.code');
+      expect(circuitErrors.map((child) => child.property)).toContain('code');
     });
 
     it('deve exigir o circuito no campo canonico', async () => {

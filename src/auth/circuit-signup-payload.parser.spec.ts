@@ -9,7 +9,7 @@ function buildRawPayload(): Record<string, unknown> {
       phone: '11987654321',
       passwordHash: '$argon2id$v=19$m=65536,t=3,p=1$fake$hash',
     },
-    circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' },
+    circuit: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
     congregations: [
       { code: 'SP17-CENTRAL', name: 'Central' },
       { code: 'SP17-JARDIM', name: 'Jardim' },
@@ -27,16 +27,21 @@ describe('parseCircuitSignupPayload', () => {
     expect(result.congregations).toHaveLength(2);
   });
 
-  it('deve reconstruir o formato canonico sem code', () => {
+  it('deve aceitar o identificador com sufixo', () => {
     const raw = buildRawPayload();
     (raw.circuit as Record<string, unknown>).name = 'SP-019 A';
-    delete (raw.circuit as Record<string, unknown>).code;
 
     expect(parseCircuitSignupPayload(raw).circuit.name).toBe('SP-019 A');
   });
 
-  it('deve preferir o code de um rascunho legado ao nome descritivo', () => {
-    expect(parseCircuitSignupPayload(buildRawPayload()).circuit.name).toBe('SP-17');
+  it('deve ignorar um code legado, sem usá-lo no lugar do name', () => {
+    const raw = buildRawPayload();
+    (raw.circuit as Record<string, unknown>).code = 'OUTRO-1';
+
+    const result = parseCircuitSignupPayload(raw);
+
+    expect(result.circuit.name).toBe('SP-17');
+    expect(result.circuit).not.toHaveProperty('code');
   });
 
   it('deve preservar a ordem das congregacoes', () => {
@@ -89,9 +94,9 @@ describe('parseCircuitSignupPayload', () => {
 
   it('deve lancar quando um campo vem como string vazia', () => {
     const raw = buildRawPayload();
-    (raw.circuit as Record<string, unknown>).code = '';
+    (raw.circuit as Record<string, unknown>).name = '';
 
-    expect(() => parseCircuitSignupPayload(raw)).toThrow(/payload\.circuit\.code/);
+    expect(() => parseCircuitSignupPayload(raw)).toThrow(/payload\.circuit\.name/);
   });
 
   it('deve lancar quando um campo vem com o tipo errado', () => {
