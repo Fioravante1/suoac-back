@@ -81,11 +81,13 @@ enum ExpenseCategory {
 
 model Circuit {
   id    String  @id @default(uuid()) @db.Uuid
-  /// Coluna transitória de compatibilidade com o contrato anterior ao SUC-28.
+  /// Coluna morta, mantida só até o passo 2 do contract SUC-60.
   ///
-  /// A API pública usa `name` como identificador do circuito. Durante o rollout,
-  /// `code = name` preserva a unicidade entre versões; o SUC-60 remove a coluna
-  /// em deploy posterior, conforme a regra de expand-and-contract.
+  /// A API pública usa `name` como identificador do circuito, e nada mais lê nem
+  /// grava esta coluna: o backfill `name = code` já rodou e as novas gravações a
+  /// deixam nula. Ela fica apenas para que a versão anterior da aplicação, ainda
+  /// no ar durante o deploy, continue achando a coluna que seu client espera. O
+  /// passo 2 remove coluna e índice num deploy posterior.
   code  String? @unique @db.VarChar(20)
   name  String  @unique @db.VarChar(100)
   city  String  @db.VarChar(100)
@@ -524,8 +526,7 @@ model PasswordResetRequest {
 /// transação e a linha é marcada como usada.
 ///
 /// O rascunho **não é um circuito incompleto**: nenhum identificador fica
-/// reservado, e a unicidade de `Circuit.name` (também gravado na coluna
-/// transitória `Circuit.code`) e `Congregation.code` só é imposta na
+/// reservado, e a unicidade de `Circuit.name` e `Congregation.code` só é imposta na
 /// consolidação. Abandonar o fluxo deixa uma linha que expira e é purgada.
 ///
 /// Toda tentativa gera uma linha, inclusive a recusada por e-mail ou código já
