@@ -6,13 +6,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateCircuitDto } from './dto/update-circuit.dto';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
 
-interface CircuitRecord extends CircuitResponse {
-  code: string | null;
-}
-
 const CIRCUIT_SELECT = {
   id: true,
-  code: true,
   name: true,
   city: true,
   state: true,
@@ -68,9 +63,7 @@ export class CircuitsService {
     const record = await this.prisma.client.circuit.update({
       where: { id },
       data: {
-        // Dupla escrita temporária enquanto versões antigas ainda usam `code`
-        // para proteger a unicidade. O campo não faz parte da resposta pública.
-        ...(name !== undefined && { name, code: name }),
+        ...(name !== undefined && { name }),
         ...(dto.city !== undefined && { city: dto.city }),
         ...(dto.state !== undefined && { state: dto.state.toUpperCase() }),
       },
@@ -121,10 +114,10 @@ export class CircuitsService {
     };
   }
 
-  private toResponse(circuit: CircuitRecord): CircuitResponse {
+  private toResponse(circuit: CircuitResponse): CircuitResponse {
     return {
       id: circuit.id,
-      name: circuit.code ?? circuit.name,
+      name: circuit.name,
       city: circuit.city,
       state: circuit.state,
       createdAt: circuit.createdAt,

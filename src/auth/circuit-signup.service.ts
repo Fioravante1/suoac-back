@@ -89,7 +89,7 @@ export class CircuitSignupService {
    */
   async requestSignup(dto: CreateCircuitSignupDto): Promise<void> {
     const email = dto.coordinator.email;
-    const circuitName = this.resolveCircuitName(dto);
+    const circuitName = dto.circuit.name;
 
     // Duplicata dentro do próprio payload não depende do banco: o usuário
     // repetiu um código na lista de congregações.
@@ -255,9 +255,6 @@ export class CircuitSignupService {
 
         const circuit = await tx.circuit.create({
           data: {
-            // Dupla escrita transitória: a versão anterior ainda protege a
-            // unicidade pelo campo `code`. O contract SUC-60 remove a coluna.
-            code: payload.circuit.name,
             name: payload.circuit.name,
             city: payload.circuit.city,
             state: payload.circuit.state,
@@ -321,9 +318,7 @@ export class CircuitSignupService {
       return { field: 'coordinator.email', message: 'Este e-mail ja esta cadastrado' };
     }
 
-    // Durante a dupla escrita, a colisão pode vir de qualquer uma das duas
-    // constraints. Para o contrato público ambas representam o mesmo campo.
-    if (model === 'Circuit' && (fields.includes('code') || fields.includes('name'))) {
+    if (model === 'Circuit' && fields.includes('name')) {
       return { field: 'circuit.name', message: 'Este circuito ja esta em uso' };
     }
 
@@ -531,14 +526,12 @@ export class CircuitSignupService {
     }
 
     const existingCircuit = await tx.circuit.findFirst({
-      where: {
-        OR: [{ name: { equals: circuitName, mode: 'insensitive' } }, { code: circuitName }],
-      },
+      where: { name: { equals: circuitName, mode: 'insensitive' } },
       select: { id: true },
     });
 
     if (existingCircuit) {
-      conflicts.push({ field: this.circuitConflictField(dto), message: 'Este circuito ja esta em uso' });
+      conflicts.push({ field: 'circuit.name', message: 'Este circuito ja esta em uso' });
     }
 
     const codes = dto.congregations.map((congregation) => congregation.code);
@@ -617,14 +610,6 @@ export class CircuitSignupService {
         name: congregation.name,
       })),
     };
-  }
-
-  private resolveCircuitName(dto: CreateCircuitSignupDto): string {
-    return dto.circuit.code ?? dto.circuit.name;
-  }
-
-  private circuitConflictField(dto: CreateCircuitSignupDto): 'circuit.code' | 'circuit.name' {
-    return dto.circuit.code === undefined ? 'circuit.name' : 'circuit.code';
   }
 
   private async deliver(to: string, name: string, code: string, circuitName: string): Promise<void> {

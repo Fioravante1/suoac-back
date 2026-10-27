@@ -66,22 +66,13 @@ describe('Contrato HTTP do autocadastro de circuito (e2e)', () => {
     );
   });
 
-  it('aceita temporariamente o payload legado e deixa code prevalecer', async () => {
+  it('recusa o alias legado circuit.code como campo desconhecido', async () => {
     await request(app.getHttpServer())
       .post('/auth/circuit-signups')
-      .send(
-        buildPayload({
-          code: ' sp-17 ',
-          name: 'Circuito Metropolitano de São Paulo Dezessete',
-          city: 'São Paulo',
-          state: 'SP',
-        }),
-      )
-      .expect(202);
+      .send(buildPayload({ code: 'SP-17', name: 'SP-17', city: 'São Paulo', state: 'SP' }))
+      .expect(400);
 
-    expect(requestSignup).toHaveBeenCalledWith(
-      expect.objectContaining({ circuit: expect.objectContaining({ code: 'SP-17' }) }),
-    );
+    expect(requestSignup).not.toHaveBeenCalled();
   });
 
   it('recusa um identificador atual acima de 20 caracteres', async () => {

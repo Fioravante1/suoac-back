@@ -239,18 +239,6 @@ describe('CircuitSignupService', () => {
       expect(payload.terms).toBeUndefined();
     });
 
-    it('deve converter o code legado no name canonico do rascunho', async () => {
-      await service.requestSignup(
-        buildDto({ circuit: { code: 'SP-18', name: 'Circuito São Paulo 18', city: 'São Paulo', state: 'SP' } }),
-      );
-
-      const createCall = prismaMock.circuitSignupRequest.create.mock.calls[0]?.[0];
-      const payload = createCall?.data.payload as { circuit: Record<string, unknown> };
-
-      expect(payload.circuit.name).toBe('SP-18');
-      expect(payload.circuit).not.toHaveProperty('code');
-    });
-
     it('nao deve gravar o codigo em claro, apenas o hash', async () => {
       await service.requestSignup(buildDto());
       await flushPendingWork();
@@ -286,18 +274,6 @@ describe('CircuitSignupService', () => {
 
       await expect(service.requestSignup(buildDto())).rejects.toMatchObject({
         response: { field: 'circuit.name' },
-      });
-    });
-
-    it('deve manter o campo legado para um cliente que ainda envia code', async () => {
-      prismaMock.circuit.findFirst.mockResolvedValue({ id: CIRCUIT_ID } as never);
-
-      await expect(
-        service.requestSignup(
-          buildDto({ circuit: { code: 'SP-17', name: 'Circuito São Paulo 17', city: 'São Paulo', state: 'SP' } }),
-        ),
-      ).rejects.toMatchObject({
-        response: { field: 'circuit.code' },
       });
     });
 
@@ -426,11 +402,11 @@ describe('CircuitSignupService', () => {
       expect(prismaMock.user.create).toHaveBeenCalledTimes(1);
     });
 
-    it('deve fazer dupla escrita interna do identificador durante a transicao', async () => {
+    it('deve gravar o identificador só em name', async () => {
       await service.confirmSignup(confirmDto());
 
       expect(prismaMock.circuit.create).toHaveBeenCalledWith({
-        data: { code: 'SP-17', name: 'SP-17', city: 'São Paulo', state: 'SP' },
+        data: { name: 'SP-17', city: 'São Paulo', state: 'SP' },
       });
     });
 
@@ -671,7 +647,7 @@ describe('CircuitSignupService', () => {
 
     it('deve recusar rascunho corrompido em vez de criar cadastro pela metade', async () => {
       prismaMock.circuitSignupRequest.findFirst.mockResolvedValue(
-        buildSignupRow({ payload: { circuit: { code: 'SP-17' } } }) as never,
+        buildSignupRow({ payload: { circuit: { name: 'SP-17' } } }) as never,
       );
 
       await expect(service.confirmSignup(confirmDto())).rejects.toThrow(/Rascunho de autocadastro invalido/);
