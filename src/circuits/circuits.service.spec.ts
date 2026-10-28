@@ -32,11 +32,6 @@ function buildCircuit(overrides: Partial<CircuitResponse> = {}): CircuitResponse
   };
 }
 
-/** Linha como o Prisma a tipa: `code` segue no model até o passo 2 do SUC-60, sempre nulo nas gravações novas. */
-function buildCircuitRecord(overrides: Partial<CircuitResponse> = {}): CircuitResponse & { code: null } {
-  return { ...buildCircuit(overrides), code: null };
-}
-
 // ── Test Suite ───────────────────────────────────────────────────
 describe('CircuitsService', () => {
   let service: CircuitsService;
@@ -65,7 +60,7 @@ describe('CircuitsService', () => {
   describe('findOwn', () => {
     it('deve retornar o circuito do usuário', async () => {
       const expected = buildCircuit();
-      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuitRecord());
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
 
       const result = await service.findOwn(buildUser());
 
@@ -88,7 +83,7 @@ describe('CircuitsService', () => {
     it('deve retornar o circuito quando ele existe e pertence ao circuito do usuário', async () => {
       const expected = buildCircuit();
 
-      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuitRecord());
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
 
       const result = await service.findOne(expected.id, buildUser());
 
@@ -106,7 +101,7 @@ describe('CircuitsService', () => {
     });
 
     it('deve lançar ForbiddenException quando circuitId do usuário não coincide', async () => {
-      const circuit = buildCircuitRecord();
+      const circuit = buildCircuit();
       prismaMock.circuit.findUnique.mockResolvedValue(circuit);
 
       await expect(service.findOne(circuit.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
@@ -118,8 +113,8 @@ describe('CircuitsService', () => {
   // ── update ────────────────────────────────────────────────────
   describe('update', () => {
     it('deve atualizar apenas os campos enviados', async () => {
-      const existing = buildCircuitRecord();
-      const updated = buildCircuitRecord({ name: 'SP-02' });
+      const existing = buildCircuit();
+      const updated = buildCircuit({ name: 'SP-02' });
       const user = buildUser();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
@@ -149,7 +144,7 @@ describe('CircuitsService', () => {
     });
 
     it('deve aceitar body vazio sem alterar campos', async () => {
-      const existing = buildCircuitRecord();
+      const existing = buildCircuit();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(existing);
@@ -165,8 +160,8 @@ describe('CircuitsService', () => {
     });
 
     it('deve converter state para uppercase na atualização', async () => {
-      const existing = buildCircuitRecord();
-      const updated = buildCircuitRecord({ state: 'RJ' });
+      const existing = buildCircuit();
+      const updated = buildCircuit({ state: 'RJ' });
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
       prismaMock.circuit.update.mockResolvedValue(updated);
@@ -184,7 +179,7 @@ describe('CircuitsService', () => {
   // ── remove ────────────────────────────────────────────────────
   describe('remove', () => {
     it('deve deletar o circuito quando ele existe', async () => {
-      const existing = buildCircuitRecord();
+      const existing = buildCircuit();
       const user = buildUser();
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
@@ -205,7 +200,7 @@ describe('CircuitsService', () => {
     });
 
     it('deve gravar audit log ANTES do delete', async () => {
-      const existing = buildCircuitRecord();
+      const existing = buildCircuit();
       const callOrder: string[] = [];
 
       prismaMock.circuit.findUnique.mockResolvedValue(existing);
