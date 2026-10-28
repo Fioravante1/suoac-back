@@ -79,10 +79,6 @@ enum ExpenseCategory {
 // MULTI-TENANCY ROOT
 // ============================================================
 
-// A coluna física `circuits.code` (e o índice `circuits_code_key`) ainda existe no banco,
-// de propósito: o campo saiu do schema antes, para que nenhum client em produção a
-// referencie, e uma migration posterior a remove (contract SUC-60). Enquanto isso, o
-// schema diverge do banco só por essa coluna.
 model Circuit {
   id    String  @id @default(uuid()) @db.Uuid
   name  String  @unique @db.VarChar(100)
