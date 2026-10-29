@@ -10,13 +10,14 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
+import type { Prisma } from '../generated/prisma/client';
 import { EventStatus, EventType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import type { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
 import { notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
-import type { EventResponse } from './interfaces/event-response.interface';
+import type { EventResponse, EventWithDaysResponse } from './interfaces/event-response.interface';
 
 const WEEKDAYS_PT = [
   'Domingo',
@@ -71,6 +72,9 @@ const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
   },
 };
 
+/** Os dias do evento na ordem em que acontecem: detalhe, listagem e evento atual usam a mesma. */
+const EVENT_DAYS_IN_ORDER = { eventDays: { orderBy: { dayNumber: 'asc' } } } satisfies Prisma.EventInclude;
+
 /** Ordem dos passos da regra do evento atual: o primeiro status com candidato vence. */
 const CURRENT_EVENT_STATUS_PRIORITY: readonly EventStatus[] = [EventStatus.OPEN, EventStatus.CLOSED, EventStatus.DRAFT];
 
@@ -113,6 +117,36 @@ function compareCurrentEventCandidates(a: CurrentEventCandidate, b: CurrentEvent
   return b.createdAt.getTime() - a.createdAt.getTime();
 }
 
+interface EventRecord {
+  id: string;
+  title: string;
+  type: string;
+  ticketPrice: unknown;
+  status: string;
+  registrationDeadline: Date;
+  paymentDeadline: Date;
+  venue: string;
+  address: string;
+  city: string;
+  state: string;
+  observations: string | null;
+  circuitId: string;
+  createdById: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface EventDayRecord {
+  id: string;
+  dayNumber: number;
+  date: Date;
+  label: string;
+  departureTime: string;
+  returnTime: string;
+  status: string;
+  eventId: string;
+}
+
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
@@ -122,7 +156,7 @@ export class EventsService {
     private readonly auditLogService: AuditLogService,
   ) {}
 
-  async create(circuitId: string, user: JwtPayload, dto: CreateEventDto): Promise<EventResponse> {
+  async create(circuitId: string, user: JwtPayload, dto: CreateEventDto): Promise<EventWithDaysResponse> {
     await this.ensureCircuitExists(circuitId);
 
     const startDate = new Date(`${dto.date}T00:00:00Z`);
@@ -156,7 +190,7 @@ export class EventsService {
           create: days,
         },
       },
-      include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+      include: EVENT_DAYS_IN_ORDER,
     });
 
     this.logger.log(`Evento criado — id=${event.id}, title="${event.title}", circuitId=${circuitId}`);
@@ -166,7 +200,7 @@ export class EventsService {
         newValues: event as unknown as Record<string, unknown>,
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: event.id }, 'Falha ao gravar audit log'));
-    return this.toResponse(event, true);
+    return this.toResponseWithDays(event);
   }
 
   async findByCircuit(
@@ -175,7 +209,7 @@ export class EventsService {
     limit: number,
     user: JwtPayload,
     status?: EventStatus,
-  ): Promise<PaginatedResponse<EventResponse>> {
+  ): Promise<PaginatedResponse<EventWithDaysResponse>> {
     await this.ensureCircuitExists(circuitId);
 
     this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${user.role}`);
@@ -189,7 +223,8 @@ export class EventsService {
     const [data, total] = await Promise.all([
       this.prisma.client.event.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        include: EVENT_DAYS_IN_ORDER,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -197,7 +232,7 @@ export class EventsService {
     ]);
 
     return {
-      data: data.map((e) => this.toResponse(e)),
+      data: data.map((e) => this.toResponseWithDays(e)),
       meta: {
         total,
         page,
@@ -221,7 +256,11 @@ export class EventsService {
    *
    * @param now Momento de referencia (injetavel para testes).
    */
-  async findCurrent(circuitId: string, user: JwtPayload, now: Date = new Date()): Promise<EventResponse | null> {
+  async findCurrent(
+    circuitId: string,
+    user: JwtPayload,
+    now: Date = new Date(),
+  ): Promise<EventWithDaysResponse | null> {
     await this.ensureCircuitExists(circuitId);
 
     const todayStart = startOfTodayInEventTimezone(now);
@@ -236,7 +275,7 @@ export class EventsService {
           ...(canSeeDrafts ? [{ status: EventStatus.DRAFT }] : []),
         ],
       },
-      include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+      include: EVENT_DAYS_IN_ORDER,
     });
 
     const [current] = [...candidates].sort(compareCurrentEventCandidates);
@@ -246,13 +285,13 @@ export class EventsService {
         `eventId=${current?.id ?? 'nenhum'}`,
     );
 
-    return current ? this.toResponse(current, true) : null;
+    return current ? this.toResponseWithDays(current) : null;
   }
 
-  async findOne(id: string, user: JwtPayload): Promise<EventResponse> {
+  async findOne(id: string, user: JwtPayload): Promise<EventWithDaysResponse> {
     const event = await this.prisma.client.event.findUnique({
       where: { id },
-      include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+      include: EVENT_DAYS_IN_ORDER,
     });
 
     if (!event) {
@@ -267,7 +306,7 @@ export class EventsService {
       throw new NotFoundException('Evento não encontrado');
     }
 
-    return this.toResponse(event, true);
+    return this.toResponseWithDays(event);
   }
 
   async update(id: string, dto: UpdateEventDto, user: JwtPayload): Promise<EventResponse> {
@@ -485,38 +524,8 @@ export class EventsService {
     return days;
   }
 
-  private toResponse(
-    event: {
-      id: string;
-      title: string;
-      type: string;
-      ticketPrice: unknown;
-      status: string;
-      registrationDeadline: Date;
-      paymentDeadline: Date;
-      venue: string;
-      address: string;
-      city: string;
-      state: string;
-      observations: string | null;
-      circuitId: string;
-      createdById: string;
-      createdAt: Date;
-      updatedAt: Date;
-      eventDays?: Array<{
-        id: string;
-        dayNumber: number;
-        date: Date;
-        label: string;
-        departureTime: string;
-        returnTime: string;
-        status: string;
-        eventId: string;
-      }>;
-    },
-    includeDays = false,
-  ): EventResponse {
-    const response: EventResponse = {
+  private toResponse(event: EventRecord): EventResponse {
+    return {
       id: event.id,
       title: event.title,
       type: event.type,
@@ -534,24 +543,17 @@ export class EventsService {
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     };
-
-    if (includeDays && event.eventDays) {
-      response.days = event.eventDays.map((d) => this.toDayResponse(d));
-    }
-
-    return response;
   }
 
-  private toDayResponse(day: {
-    id: string;
-    dayNumber: number;
-    date: Date;
-    label: string;
-    departureTime: string;
-    returnTime: string;
-    status: string;
-    eventId: string;
-  }): EventDayResponse {
+  /** Recebe os dias ja na ordem de `EVENT_DAYS_IN_ORDER`. */
+  private toResponseWithDays(event: EventRecord & { eventDays: EventDayRecord[] }): EventWithDaysResponse {
+    return {
+      ...this.toResponse(event),
+      days: event.eventDays.map((day) => this.toDayResponse(day)),
+    };
+  }
+
+  private toDayResponse(day: EventDayRecord): EventDayResponse {
     return {
       id: day.id,
       dayNumber: day.dayNumber,

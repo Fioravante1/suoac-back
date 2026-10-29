@@ -4,7 +4,7 @@ import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
-import type { EventResponse } from './interfaces/event-response.interface';
+import type { EventResponse, EventWithDaysResponse } from './interfaces/event-response.interface';
 
 // ── Helpers ──────────────────────────────────────────────────────
 const circuitId = 'a1b2c3d4-0000-0000-0000-000000000001';
@@ -31,6 +31,10 @@ function buildEvent(overrides: Partial<EventResponse> = {}): EventResponse {
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
   };
+}
+
+function buildEventWithDays(overrides: Partial<EventResponse> = {}): EventWithDaysResponse {
+  return { ...buildEvent(overrides), days: [] };
 }
 
 function buildUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
@@ -86,7 +90,7 @@ describe('EventsController', () => {
     };
 
     it('deve delegar a criação ao service e retornar o resultado', async () => {
-      const expected = buildEvent();
+      const expected = buildEventWithDays();
       serviceMock.create.mockResolvedValue(expected);
 
       const result = await controller.create(circuitId, buildUser(), dto);
@@ -114,7 +118,7 @@ describe('EventsController', () => {
   describe('findByCircuit', () => {
     it('deve delegar a listagem ao service com paginação padrão', async () => {
       const expected = {
-        data: [buildEvent()],
+        data: [buildEventWithDays()],
         meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);
@@ -146,7 +150,7 @@ describe('EventsController', () => {
     }
 
     it('deve devolver o evento atual com o status padrão', async () => {
-      const expected = buildEvent({ status: 'OPEN' });
+      const expected = buildEventWithDays({ status: 'OPEN' });
       const reply = buildReply();
       serviceMock.findCurrent.mockResolvedValue(expected);
 
@@ -178,7 +182,7 @@ describe('EventsController', () => {
   // ── findOne ───────────────────────────────────────────────────
   describe('findOne', () => {
     it('deve delegar a busca ao service e retornar o resultado', async () => {
-      const expected = buildEvent();
+      const expected = buildEventWithDays();
       serviceMock.findOne.mockResolvedValue(expected);
 
       const result = await controller.findOne(eventId, buildUser());

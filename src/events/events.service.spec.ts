@@ -171,7 +171,7 @@ describe('EventsService', () => {
       expect(result.title).toBe('Assembleia SP 2026');
       expect(result.ticketPrice).toBe('25.00');
       expect(result.days).toHaveLength(1);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -223,9 +223,9 @@ describe('EventsService', () => {
       const result = await service.create(circuitId, buildUser(), dto);
 
       expect(result.days).toHaveLength(3);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
-      expect(result.days![1]!.label).toBe('Dia 2 - Sábado');
-      expect(result.days![2]!.label).toBe('Dia 3 - Domingo');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[1]!.label).toBe('Dia 2 - Sábado');
+      expect(result.days[2]!.label).toBe('Dia 3 - Domingo');
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -313,7 +313,7 @@ describe('EventsService', () => {
   // ── findByCircuit ─────────────────────────────────────────────
   describe('findByCircuit', () => {
     it('deve retornar lista paginada de eventos', async () => {
-      const events = [buildPrismaEvent(), buildPrismaEvent({ id: 'e2' })];
+      const events = [buildPrismaEventWithDays(), buildPrismaEventWithDays({ id: 'e2' })];
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.event.findMany.mockResolvedValue(events as never);
@@ -323,12 +323,69 @@ describe('EventsService', () => {
 
       expect(result.data).toHaveLength(2);
       expect(result.meta).toEqual({ total: 2, page: 1, limit: 20, totalPages: 1 });
-      expect(result.data[0]).not.toHaveProperty('days');
+    });
+
+    it('deve devolver cada evento com os próprios dias', async () => {
+      const convention = buildPrismaEventWithDays({ id: 'e1' }, [
+        buildEventDay({ id: 'd1', dayNumber: 1, eventId: 'e1' }),
+        buildEventDay({ id: 'd2', dayNumber: 2, eventId: 'e1' }),
+      ]);
+      const assembly = buildPrismaEventWithDays({ id: 'e2' }, [
+        buildEventDay({ id: 'd3', dayNumber: 1, eventId: 'e2' }),
+      ]);
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([convention, assembly] as never);
+      prismaMock.event.count.mockResolvedValue(2);
+
+      const result = await service.findByCircuit(circuitId, 1, 20, buildUser());
+
+      expect(result.data.map((event) => event.days.map((day) => day.id))).toEqual([['d1', 'd2'], ['d3']]);
+    });
+
+    it('deve pedir os dias na ordem de dayNumber, a mesma do detalhe', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([] as never);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findByCircuit(circuitId, 1, 20, buildUser());
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+        }),
+      );
+    });
+
+    it('deve desempatar pelo id os eventos criados no mesmo instante, para a paginação não repetir nem pular', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([] as never);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findByCircuit(circuitId, 2, 20, buildUser());
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 20,
+          take: 20,
+        }),
+      );
+    });
+
+    it('deve devolver days vazio para evento sem dias', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({}, [])] as never);
+      prismaMock.event.count.mockResolvedValue(1);
+
+      const result = await service.findByCircuit(circuitId, 1, 20, buildUser());
+
+      expect(result.data[0]?.days).toEqual([]);
     });
 
     it('deve calcular totalPages corretamente', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
-      prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent()] as never);
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays()] as never);
       prismaMock.event.count.mockResolvedValue(45);
 
       const result = await service.findByCircuit(circuitId, 1, 20, buildUser());
@@ -338,7 +395,7 @@ describe('EventsService', () => {
 
     it('deve filtrar por status quando informado', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
-      prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent({ status: 'OPEN' })] as never);
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'OPEN' })] as never);
       prismaMock.event.count.mockResolvedValue(1);
 
       const result = await service.findByCircuit(circuitId, 1, 20, buildUser(), 'OPEN');
@@ -358,7 +415,7 @@ describe('EventsService', () => {
       const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
-      prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent({ status: 'DRAFT' })] as never);
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'DRAFT' })] as never);
       prismaMock.event.count.mockResolvedValue(1);
 
       await service.findByCircuit(circuitId, 1, 20, congregationUser, 'DRAFT');
@@ -545,7 +602,7 @@ describe('EventsService', () => {
 
       expect(result.id).toBe(eventId);
       expect(result.days).toHaveLength(1);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {
