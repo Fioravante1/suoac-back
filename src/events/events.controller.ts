@@ -10,8 +10,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import type { FastifyReply } from 'fastify';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -46,6 +48,25 @@ export class EventsController {
     @CurrentUser() user: JwtPayload,
   ): Promise<PaginatedResponse<EventResponse>> {
     return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, user, query.status);
+  }
+
+  @Get('circuits/:circuitId/events/current')
+  @ApiOkResponse({ description: 'Evento atual do circuito, com os dias, pela regra do evento padrão.' })
+  @ApiNoContentResponse({ description: 'O circuito não tem evento atual.' })
+  async findCurrent(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @CurrentUser() user: JwtPayload,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<EventResponse | undefined> {
+    const event = await this.eventsService.findCurrent(circuitId, user);
+
+    // Circuito sem evento atual não é erro: 204 sem corpo, em vez de 200 com `null`.
+    if (!event) {
+      reply.status(HttpStatus.NO_CONTENT);
+      return undefined;
+    }
+
+    return event;
   }
 
   @Get('events/:id')

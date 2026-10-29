@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import type { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
+import { notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
 import type { EventResponse } from './interfaces/event-response.interface';
 
 const WEEKDAYS_PT = [
@@ -69,6 +70,48 @@ const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
     paymentDeadline: 'CIRCUIT_COORDINATOR',
   },
 };
+
+/** Ordem dos passos da regra do evento atual: o primeiro status com candidato vence. */
+const CURRENT_EVENT_STATUS_PRIORITY: readonly EventStatus[] = [EventStatus.OPEN, EventStatus.CLOSED, EventStatus.DRAFT];
+
+interface CurrentEventCandidate {
+  status: EventStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  eventDays: Array<{ date: Date }>;
+}
+
+/** Evento sem dias vai para o fim da fila do seu passo. */
+function firstDayTime(event: CurrentEventCandidate): number {
+  if (event.eventDays.length === 0) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return Math.min(...event.eventDays.map((day) => day.date.getTime()));
+}
+
+/**
+ * Ordena os candidatos pelos passos da regra: status na ordem de
+ * `CURRENT_EVENT_STATUS_PRIORITY`; dentro de `OPEN` e `CLOSED`, o de primeiro dia
+ * mais cedo; dentro de `DRAFT`, o atualizado por ultimo. O empate final pelo
+ * criado por ultimo so existe para a resposta ser deterministica.
+ */
+function compareCurrentEventCandidates(a: CurrentEventCandidate, b: CurrentEventCandidate): number {
+  const byStatus = CURRENT_EVENT_STATUS_PRIORITY.indexOf(a.status) - CURRENT_EVENT_STATUS_PRIORITY.indexOf(b.status);
+
+  if (byStatus !== 0) {
+    return byStatus;
+  }
+
+  const byStep =
+    a.status === EventStatus.DRAFT ? b.updatedAt.getTime() - a.updatedAt.getTime() : firstDayTime(a) - firstDayTime(b);
+
+  if (byStep !== 0) {
+    return byStep;
+  }
+
+  return b.createdAt.getTime() - a.createdAt.getTime();
+}
 
 @Injectable()
 export class EventsService {
@@ -162,6 +205,48 @@ export class EventsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Evento atual do circuito, pela regra do evento padrao do painel:
+   *
+   * 1. `OPEN`, o de primeiro dia mais cedo;
+   * 2. `CLOSED` que ainda nao terminou (mesma condicao do `EventLifecycleService`),
+   *    o de primeiro dia mais cedo;
+   * 3. `DRAFT` atualizado por ultimo, so para os papeis do circuito;
+   * 4. nenhum: `null`.
+   *
+   * `FINISHED` e `CANCELLED` nunca sao o evento atual: so ficam selecionados por
+   * escolha explicita do usuario, que o front guarda.
+   *
+   * @param now Momento de referencia (injetavel para testes).
+   */
+  async findCurrent(circuitId: string, user: JwtPayload, now: Date = new Date()): Promise<EventResponse | null> {
+    await this.ensureCircuitExists(circuitId);
+
+    const todayStart = startOfTodayInEventTimezone(now);
+    const canSeeDrafts = isCircuitRole(user.role);
+
+    const candidates = await this.prisma.client.event.findMany({
+      where: {
+        circuitId,
+        OR: [
+          { status: EventStatus.OPEN },
+          { status: EventStatus.CLOSED, ...notEndedEventWhere(todayStart) },
+          ...(canSeeDrafts ? [{ status: EventStatus.DRAFT }] : []),
+        ],
+      },
+      include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+    });
+
+    const [current] = [...candidates].sort(compareCurrentEventCandidates);
+
+    this.logger.debug(
+      `Evento atual — circuitId=${circuitId}, role=${user.role}, candidatos=${candidates.length}, ` +
+        `eventId=${current?.id ?? 'nenhum'}`,
+    );
+
+    return current ? this.toResponse(current, true) : null;
   }
 
   async findOne(id: string, user: JwtPayload): Promise<EventResponse> {

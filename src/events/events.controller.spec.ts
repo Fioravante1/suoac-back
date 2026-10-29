@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { FastifyReply } from 'fastify';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
@@ -51,6 +52,7 @@ describe('EventsController', () => {
     serviceMock = {
       create: jest.fn(),
       findByCircuit: jest.fn(),
+      findCurrent: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       transitionStatus: jest.fn(),
@@ -134,6 +136,42 @@ describe('EventsController', () => {
 
       expect(result).toEqual(expected);
       expect(serviceMock.findByCircuit).toHaveBeenCalledWith(circuitId, 2, 10, buildUser(), undefined);
+    });
+  });
+
+  // ── findCurrent ───────────────────────────────────────────────
+  describe('findCurrent', () => {
+    function buildReply(): FastifyReply {
+      return { status: jest.fn() } as unknown as FastifyReply;
+    }
+
+    it('deve devolver o evento atual com o status padrão', async () => {
+      const expected = buildEvent({ status: 'OPEN' });
+      const reply = buildReply();
+      serviceMock.findCurrent.mockResolvedValue(expected);
+
+      const result = await controller.findCurrent(circuitId, buildUser(), reply);
+
+      expect(result).toEqual(expected);
+      expect(reply.status).not.toHaveBeenCalled();
+    });
+
+    it('deve responder 204 sem corpo quando o circuito não tem evento atual', async () => {
+      const reply = buildReply();
+      serviceMock.findCurrent.mockResolvedValue(null);
+
+      const result = await controller.findCurrent(circuitId, buildUser(), reply);
+
+      expect(result).toBeUndefined();
+      expect(reply.status).toHaveBeenCalledWith(204);
+    });
+
+    it('deve repassar o usuário completo ao service', async () => {
+      serviceMock.findCurrent.mockResolvedValue(null);
+
+      await controller.findCurrent(circuitId, buildUser(), buildReply());
+
+      expect(serviceMock.findCurrent).toHaveBeenCalledWith(circuitId, buildUser());
     });
   });
 
