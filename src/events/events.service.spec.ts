@@ -393,6 +393,149 @@ describe('EventsService', () => {
     });
   });
 
+  // ── findCurrent ───────────────────────────────────────────────
+  describe('findCurrent', () => {
+    const now = new Date('2026-08-27T12:00:00Z');
+
+    function dayOn(date: string, overrides: Partial<PrismaEventDay> = {}): PrismaEventDay {
+      return buildEventDay({ date: new Date(`${date}T00:00:00Z`), ...overrides });
+    }
+
+    function currentEventQuery(): { where: { OR: Array<{ status: string }> } } {
+      return prismaMock.event.findMany.mock.calls[0]?.[0] as never;
+    }
+
+    beforeEach(() => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+    });
+
+    it('deve devolver o OPEN de primeiro dia mais cedo quando há mais de um', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        buildPrismaEventWithDays({ id: 'open-outubro', status: 'OPEN' }, [dayOn('2026-10-10')]),
+        buildPrismaEventWithDays({ id: 'open-setembro', status: 'OPEN' }, [dayOn('2026-09-05'), dayOn('2026-09-06')]),
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.id).toBe('open-setembro');
+    });
+
+    it('deve preferir OPEN a CLOSED e CLOSED a DRAFT', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        buildPrismaEventWithDays({ id: 'draft', status: 'DRAFT' }, [dayOn('2026-08-28')]),
+        buildPrismaEventWithDays({ id: 'closed', status: 'CLOSED' }, [dayOn('2026-08-29')]),
+        buildPrismaEventWithDays({ id: 'open', status: 'OPEN' }, [dayOn('2026-12-01')]),
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.id).toBe('open');
+    });
+
+    it('deve devolver o CLOSED de primeiro dia mais cedo quando não há OPEN', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        buildPrismaEventWithDays({ id: 'draft', status: 'DRAFT' }, [dayOn('2026-08-28')]),
+        buildPrismaEventWithDays({ id: 'closed-dezembro', status: 'CLOSED' }, [dayOn('2026-12-01')]),
+        buildPrismaEventWithDays({ id: 'closed-hoje', status: 'CLOSED' }, [dayOn('2026-08-27')]),
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.id).toBe('closed-hoje');
+    });
+
+    it('deve devolver o rascunho atualizado por último quando não há OPEN nem CLOSED', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        { ...buildPrismaEventWithDays({ id: 'draft-antigo', status: 'DRAFT' }), updatedAt: new Date('2026-08-01') },
+        { ...buildPrismaEventWithDays({ id: 'draft-recente', status: 'DRAFT' }), updatedAt: new Date('2026-08-20') },
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.id).toBe('draft-recente');
+    });
+
+    it('deve pôr o evento sem dias no fim da fila do seu passo', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        buildPrismaEventWithDays({ id: 'open-sem-dias', status: 'OPEN' }, []),
+        buildPrismaEventWithDays({ id: 'open-com-dias', status: 'OPEN' }, [dayOn('2027-01-15')]),
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.id).toBe('open-com-dias');
+    });
+
+    it('deve devolver o evento com os dias', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        buildPrismaEventWithDays({ status: 'OPEN' }, [dayOn('2026-09-05'), dayOn('2026-09-06', { dayNumber: 2 })]),
+      ] as never);
+
+      const result = await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(result?.days?.map((day) => day.dayNumber)).toEqual([1, 2]);
+    });
+
+    it('deve devolver null quando o circuito não tem evento atual', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      await expect(service.findCurrent(circuitId, buildUser(), now)).resolves.toBeNull();
+    });
+
+    it('deve aceitar CLOSED só quando ainda tem algum dia hoje ou depois, no fuso de São Paulo', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      // 27/08 02:00 UTC ainda é 26/08 em São Paulo: um CLOSED cujo último dia é 26/08
+      // continua sendo o atual; um que terminou em 25/08 já não é.
+      await service.findCurrent(circuitId, buildUser(), new Date('2026-08-27T02:00:00Z'));
+
+      expect(currentEventQuery().where.OR).toContainEqual({
+        status: 'CLOSED',
+        eventDays: { some: { date: { gte: new Date('2026-08-26T00:00:00.000Z') } } },
+      });
+    });
+
+    it('deve buscar rascunhos para os papéis do circuito', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      await service.findCurrent(circuitId, buildUser({ role: 'CIRCUIT_ASSISTANT' }), now);
+
+      expect(currentEventQuery().where.OR).toContainEqual({ status: 'DRAFT' });
+    });
+
+    it('não deve buscar rascunhos para os papéis da congregação', async () => {
+      const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      const result = await service.findCurrent(circuitId, congregationUser, now);
+
+      expect(currentEventQuery().where.OR.map((step) => step.status)).toEqual(['OPEN', 'CLOSED']);
+      expect(result).toBeNull();
+    });
+
+    it('nunca deve buscar eventos FINISHED nem CANCELLED', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(currentEventQuery().where.OR.map((step) => step.status)).toEqual(['OPEN', 'CLOSED', 'DRAFT']);
+    });
+
+    it('deve buscar só eventos do circuito informado', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+
+      await service.findCurrent(circuitId, buildUser(), now);
+
+      expect(currentEventQuery().where).toEqual(expect.objectContaining({ circuitId }));
+    });
+
+    it('deve lançar NotFoundException quando o circuito não existe', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(null);
+
+      await expect(service.findCurrent(circuitId, buildUser(), now)).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ── findOne ───────────────────────────────────────────────────
   describe('findOne', () => {
     it('deve retornar o evento com dias', async () => {

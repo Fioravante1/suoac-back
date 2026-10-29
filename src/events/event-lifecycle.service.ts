@@ -3,13 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { EventStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
+import { notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
 import type { EventLifecycleResult } from './interfaces/event-lifecycle-result.interface';
-
-/**
- * Fuso usado para decidir qual e o "dia de hoje" ao comparar com as datas dos
- * dias do evento (armazenadas como `@db.Date`, ou seja, meia-noite UTC).
- */
-const EVENT_TIMEZONE = 'America/Sao_Paulo';
 
 /** Status a partir dos quais o job pode finalizar um evento automaticamente. */
 const FINISHABLE_STATUSES: EventStatus[] = [EventStatus.OPEN, EventStatus.CLOSED];
@@ -77,15 +72,18 @@ export class EventLifecycleService {
     return this.applyTransition(events, EventStatus.OPEN, EventStatus.CLOSED, 'REGISTRATION_DEADLINE_EXPIRED');
   }
 
-  /** `OPEN | CLOSED -> FINISHED` para eventos cujo ultimo dia programado ja passou. */
+  /**
+   * `OPEN | CLOSED -> FINISHED` para eventos cujo ultimo dia programado ja passou:
+   * a partir do dia seguinte ao ultimo dia, no fuso do evento.
+   */
   private async finishPastEvents(now: Date): Promise<number> {
-    const todayStart = this.startOfTodayUtc(now);
+    const todayStart = startOfTodayInEventTimezone(now);
 
     const events = await this.prisma.client.event.findMany({
       where: {
         status: { in: FINISHABLE_STATUSES },
         eventDays: { some: {} },
-        NOT: { eventDays: { some: { date: { gte: todayStart } } } },
+        NOT: notEndedEventWhere(todayStart),
       },
       select: { id: true, title: true, status: true, circuitId: true },
     });
@@ -137,23 +135,5 @@ export class EventLifecycleService {
     }
 
     return updated.count;
-  }
-
-  /**
-   * Meia-noite (UTC) do dia corrente no fuso do evento.
-   *
-   * Como `EventDay.date` e uma coluna `date` (meia-noite UTC), comparar com esse
-   * marco significa: um evento so e finalizado a partir do dia seguinte ao seu
-   * ultimo dia programado.
-   */
-  private startOfTodayUtc(now: Date): Date {
-    const isoDate = new Intl.DateTimeFormat('en-CA', {
-      timeZone: EVENT_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(now);
-
-    return new Date(`${isoDate}T00:00:00.000Z`);
   }
 }

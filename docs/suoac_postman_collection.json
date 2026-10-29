@@ -789,6 +789,33 @@
           "response": []
         },
         {
+          "name": "Get Current Event by Circuit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Evento atual do circuito pela regra do evento padrão (SUC-120): 1) OPEN de primeiro dia mais cedo; 2) CLOSED que ainda tem dia hoje ou depois (fuso America/Sao_Paulo); 3) DRAFT atualizado por último, só para papéis do circuito. 200 com o evento e os dias; 204 sem corpo quando o circuito não tem evento atual.",
+            "url": {
+              "raw": "{{baseUrl}}/circuits/:circuitId/events/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                ":circuitId",
+                "events",
+                "current"
+              ],
+              "variable": [
+                {
+                  "key": "circuitId",
+                  "value": "{{circuitId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
           "name": "Get Event by ID",
           "request": {
             "method": "GET",
