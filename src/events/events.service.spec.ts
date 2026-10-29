@@ -171,7 +171,7 @@ describe('EventsService', () => {
       expect(result.title).toBe('Assembleia SP 2026');
       expect(result.ticketPrice).toBe('25.00');
       expect(result.days).toHaveLength(1);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -223,9 +223,9 @@ describe('EventsService', () => {
       const result = await service.create(circuitId, buildUser(), dto);
 
       expect(result.days).toHaveLength(3);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
-      expect(result.days![1]!.label).toBe('Dia 2 - Sábado');
-      expect(result.days![2]!.label).toBe('Dia 3 - Domingo');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[1]!.label).toBe('Dia 2 - Sábado');
+      expect(result.days[2]!.label).toBe('Dia 3 - Domingo');
 
       expect(prismaMock.event.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -545,7 +545,7 @@ describe('EventsService', () => {
 
       expect(result.id).toBe(eventId);
       expect(result.days).toHaveLength(1);
-      expect(result.days![0]!.label).toBe('Dia 1 - Sexta-feira');
+      expect(result.days[0]!.label).toBe('Dia 1 - Sexta-feira');
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {

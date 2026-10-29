@@ -21,5 +21,12 @@ export interface EventResponse {
   createdById: string;
   createdAt: Date;
   updatedAt: Date;
-  days?: EventDayResponse[];
+}
+
+/**
+ * Event com os dias, ordenados por `dayNumber`. E o formato do detalhe, da listagem
+ * do circuito e do evento atual: o tipo obriga quem os devolve a carregar os dias.
+ */
+export interface EventWithDaysResponse extends EventResponse {
+  days: EventDayResponse[];
 }

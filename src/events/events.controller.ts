@@ -23,7 +23,7 @@ import { EventQueryDto } from './dto/event-query.dto';
 import { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { EventsService } from './events.service';
-import type { EventResponse } from './interfaces/event-response.interface';
+import type { EventResponse, EventWithDaysResponse } from './interfaces/event-response.interface';
 
 @ApiTags('Events')
 @Controller()
@@ -37,7 +37,7 @@ export class EventsController {
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateEventDto,
-  ): Promise<EventResponse> {
+  ): Promise<EventWithDaysResponse> {
     return this.eventsService.create(circuitId, user, dto);
   }
 
@@ -57,7 +57,7 @@ export class EventsController {
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @CurrentUser() user: JwtPayload,
     @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<EventResponse | undefined> {
+  ): Promise<EventWithDaysResponse | undefined> {
     const event = await this.eventsService.findCurrent(circuitId, user);
 
     // Circuito sem evento atual não é erro: 204 sem corpo, em vez de 200 com `null`.
@@ -70,7 +70,10 @@ export class EventsController {
   }
 
   @Get('events/:id')
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<EventResponse> {
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<EventWithDaysResponse> {
     return this.eventsService.findOne(id, user);
   }
 
