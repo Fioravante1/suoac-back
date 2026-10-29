@@ -326,6 +326,22 @@ describe('EventsService', () => {
       expect(result.data[0]).not.toHaveProperty('days');
     });
 
+    it('deve desempatar pelo id os eventos criados no mesmo instante, para a paginação não repetir nem pular', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.findMany.mockResolvedValue([] as never);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findByCircuit(circuitId, 2, 20, buildUser());
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 20,
+          take: 20,
+        }),
+      );
+    });
+
     it('deve calcular totalPages corretamente', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
       prismaMock.event.findMany.mockResolvedValue([buildPrismaEvent()] as never);
