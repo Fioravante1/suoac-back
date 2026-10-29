@@ -42,11 +42,12 @@ export class EventsController {
   }
 
   @Get('circuits/:circuitId/events')
+  @ApiOkResponse({ description: 'Eventos do circuito, paginados, cada um com os dias.' })
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Query() query: EventQueryDto,
     @CurrentUser() user: JwtPayload,
-  ): Promise<PaginatedResponse<EventResponse>> {
+  ): Promise<PaginatedResponse<EventWithDaysResponse>> {
     return this.eventsService.findByCircuit(circuitId, query.page ?? 1, query.limit ?? 20, user, query.status);
   }
 

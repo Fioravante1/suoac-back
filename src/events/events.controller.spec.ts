@@ -118,7 +118,7 @@ describe('EventsController', () => {
   describe('findByCircuit', () => {
     it('deve delegar a listagem ao service com paginação padrão', async () => {
       const expected = {
-        data: [buildEvent()],
+        data: [buildEventWithDays()],
         meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
       };
       serviceMock.findByCircuit.mockResolvedValue(expected);

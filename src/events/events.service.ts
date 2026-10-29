@@ -209,7 +209,7 @@ export class EventsService {
     limit: number,
     user: JwtPayload,
     status?: EventStatus,
-  ): Promise<PaginatedResponse<EventResponse>> {
+  ): Promise<PaginatedResponse<EventWithDaysResponse>> {
     await this.ensureCircuitExists(circuitId);
 
     this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${user.role}`);
@@ -223,6 +223,7 @@ export class EventsService {
     const [data, total] = await Promise.all([
       this.prisma.client.event.findMany({
         where,
+        include: EVENT_DAYS_IN_ORDER,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
@@ -231,7 +232,7 @@ export class EventsService {
     ]);
 
     return {
-      data: data.map((e) => this.toResponse(e)),
+      data: data.map((e) => this.toResponseWithDays(e)),
       meta: {
         total,
         page,
