@@ -758,6 +758,7 @@
           "request": {
             "method": "GET",
             "header": [],
+            "description": "Eventos do circuito, paginados, do criado por último ao primeiro. Cada evento traz `days`, no formato do detalhe e ordenados por dayNumber, inclusive os dias cancelados (status CANCELLED); evento sem dias vem com `days: []` (SUC-122). Filtro opcional `?status=`; sem ele, papéis da congregação não veem rascunhos.",
             "url": {
               "raw": "{{baseUrl}}/circuits/:circuitId/events?page=1&limit=20",
               "host": [
