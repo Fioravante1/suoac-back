@@ -55,6 +55,7 @@ interface PrismaPassenger {
   congregationId: string;
   createdAt: Date;
   updatedAt: Date;
+  congregation: { circuitId: string };
 }
 
 interface PrismaEventPassengerDay {
@@ -159,6 +160,7 @@ function buildPassenger(overrides: Partial<PrismaPassenger> = {}): PrismaPasseng
     congregationId: overrides.congregationId ?? CONGREGATION_ID,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+    congregation: overrides.congregation ?? { circuitId: 'circuit-1' },
   };
 }
 
@@ -494,6 +496,33 @@ describe('EventPassengersService', () => {
       prismaMock.passenger.findUnique.mockResolvedValue(passenger);
 
       await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(ForbiddenException);
+    });
+
+    it('deve lançar ForbiddenException quando o passageiro é de outro circuito, mesmo para o circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(buildPassenger({ congregation: { circuitId: 'circuit-2' } }));
+
+      await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.eventPassenger.create).not.toHaveBeenCalled();
+    });
+
+    it('deve permitir ao circuito inscrever passageiro já cadastrado de qualquer congregação do circuito', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      const passenger = buildPassenger({ congregationId: 'other-congregation' });
+
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(passenger);
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+      prismaMock.eventPassenger.create.mockResolvedValue(buildEventPassenger() as never);
+
+      await service.create(EVENT_ID, user, { passengerId: PASSENGER_ID });
+
+      expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ congregationId: 'other-congregation' }) }),
+      );
     });
 
     it('deve lançar UnprocessableEntityException quando dia cancelado para congresso', async () => {

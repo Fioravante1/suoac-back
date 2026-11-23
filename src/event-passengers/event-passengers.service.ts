@@ -100,7 +100,7 @@ export class EventPassengersService {
     let resolved: { passengerId: string; congregationId: string; rgHash: string };
 
     if (dto.passengerId) {
-      resolved = await this.resolveExistingPassenger(dto.passengerId);
+      resolved = await this.resolveExistingPassenger(dto.passengerId, user);
       checkCongregationPermission(user, resolved.congregationId, 'passageiros');
       await this.congregationEventStatusService.ensureNotFinalized(
         eventId,
@@ -827,17 +827,26 @@ export class EventPassengersService {
     }
   }
 
+  /**
+   * O passageiro precisa ser do circuito de quem inscreve, e portanto do evento, que já
+   * foi conferido. Os papéis do circuito passam pela checagem de congregação, e sem esta
+   * o `passengerId` de outro circuito seria inscrito.
+   */
   private async resolveExistingPassenger(
     passengerId: string,
+    user: JwtPayload,
   ): Promise<{ passengerId: string; congregationId: string; rgHash: string }> {
     const passenger = await this.prisma.client.passenger.findUnique({
       where: { id: passengerId },
+      include: { congregation: { select: { circuitId: true } } },
     });
 
     if (!passenger) {
       this.logger.warn(`Passageiro não encontrado — id=${passengerId}`);
       throw new NotFoundException('Passageiro não encontrado');
     }
+
+    checkCircuitOwnership(user, passenger.congregation.circuitId);
 
     return { passengerId: passenger.id, congregationId: passenger.congregationId, rgHash: passenger.rgHash };
   }
