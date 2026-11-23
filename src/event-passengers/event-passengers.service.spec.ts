@@ -327,6 +327,105 @@ describe('EventPassengersService', () => {
       );
     });
 
+    describe('passageiro novo, cadastrado na inscrição', () => {
+      const inline = { name: 'João Silva', rg: '12.345.678-X', phone: '11999999999' };
+      const circuitUser = (): JwtPayload => buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+
+      function mockInlineCreation(congregationId: string): void {
+        prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+        passengersServiceMock.create.mockResolvedValue({
+          id: PASSENGER_ID,
+          name: 'João Silva',
+          rg: DECRYPTED_RG,
+          phone: '11999999999',
+          observations: null,
+          congregationId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        prismaMock.passenger.findUnique.mockResolvedValue(buildPassenger({ congregationId }));
+        prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+        prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+        prismaMock.eventPassenger.create.mockResolvedValue(buildEventPassenger({ congregationId }) as never);
+      }
+
+      it('deve cadastrar na congregação que o circuito escolheu e inscrever', async () => {
+        const user = circuitUser();
+        mockInlineCreation('other-congregation');
+
+        await service.create(EVENT_ID, user, { ...inline, congregationId: 'other-congregation' });
+
+        expect(passengersServiceMock.create).toHaveBeenCalledWith('other-congregation', inline, user);
+        expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ congregationId: 'other-congregation' }) }),
+        );
+      });
+
+      it('deve exigir a congregação quando quem cadastra é do circuito e não tem congregação', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+
+        await expect(service.create(EVENT_ID, circuitUser(), inline)).rejects.toThrow(
+          new UnprocessableEntityException('Informe a congregação do passageiro novo'),
+        );
+        expect(passengersServiceMock.create).not.toHaveBeenCalled();
+      });
+
+      it('deve usar a congregação do coordenador do circuito quando ele tem uma e não escolheu outra', async () => {
+        const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: CONGREGATION_ID });
+        mockInlineCreation(CONGREGATION_ID);
+
+        await service.create(EVENT_ID, user, inline);
+
+        expect(passengersServiceMock.create).toHaveBeenCalledWith(CONGREGATION_ID, inline, user);
+      });
+
+      it('deve deixar o coordenador do circuito com congregação escolher outra do circuito', async () => {
+        const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: CONGREGATION_ID });
+        mockInlineCreation('other-congregation');
+
+        await service.create(EVENT_ID, user, { ...inline, congregationId: 'other-congregation' });
+
+        expect(passengersServiceMock.create).toHaveBeenCalledWith('other-congregation', inline, user);
+      });
+
+      it('deve recusar congregação de outro circuito (403), sem inscrever', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+        passengersServiceMock.create.mockRejectedValue(new ForbiddenException('Acesso negado a outro circuito'));
+
+        await expect(
+          service.create(EVENT_ID, circuitUser(), { ...inline, congregationId: 'congregation-other-circuit' }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(prismaMock.eventPassenger.create).not.toHaveBeenCalled();
+      });
+
+      it('deve recusar o papel da congregação cadastrando em outra congregação (403)', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+
+        await expect(
+          service.create(EVENT_ID, buildUser(), { ...inline, congregationId: 'other-congregation' }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(passengersServiceMock.create).not.toHaveBeenCalled();
+      });
+
+      it('deve aceitar o papel da congregação informando a própria congregação', async () => {
+        const user = buildUser();
+        mockInlineCreation(CONGREGATION_ID);
+
+        await service.create(EVENT_ID, user, { ...inline, congregationId: CONGREGATION_ID });
+
+        expect(passengersServiceMock.create).toHaveBeenCalledWith(CONGREGATION_ID, inline, user);
+      });
+
+      it('deve recusar o papel da congregação sem congregação vinculada (403)', async () => {
+        prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+
+        await expect(service.create(EVENT_ID, buildUser({ congregationId: null }), inline)).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(passengersServiceMock.create).not.toHaveBeenCalled();
+      });
+    });
+
     it('deve auto-selecionar o único dia ACTIVE para ASSEMBLY (ignora dayIds)', async () => {
       const user = buildUser();
       const event = buildEvent();
