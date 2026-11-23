@@ -1,4 +1,16 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Matches, Min, ValidateIf } from 'class-validator';
+import {
+  IsEnum,
+  IsISO8601,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { CALENDAR_DATE_MESSAGE, CALENDAR_DATE_REGEX } from '../../common/validators/calendar-date.constants';
 import { EventType } from '../../generated/prisma/enums';
 
 export class CreateEventDto {
@@ -15,11 +27,13 @@ export class CreateEventDto {
   ticketPrice!: number;
 
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   registrationDeadline!: string;
 
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   paymentDeadline!: string;
 
   @IsString()
@@ -47,12 +61,14 @@ export class CreateEventDto {
   observations?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   date!: string;
 
   @ValidateIf((o: CreateEventDto) => o.type === EventType.REGIONAL_CONVENTION)
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   endDate?: string;
 
   @IsString()
