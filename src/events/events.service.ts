@@ -16,7 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import type { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
-import { notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
+import { endOfDayInEventTimezone, notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
 import type { EventResponse, EventWithDaysResponse } from './interfaces/event-response.interface';
 
 const WEEKDAYS_PT = [
@@ -177,8 +177,8 @@ export class EventsService {
         type: dto.type,
         ticketPrice: dto.ticketPrice,
         status: 'DRAFT',
-        registrationDeadline: new Date(dto.registrationDeadline),
-        paymentDeadline: new Date(dto.paymentDeadline),
+        registrationDeadline: endOfDayInEventTimezone(dto.registrationDeadline),
+        paymentDeadline: endOfDayInEventTimezone(dto.paymentDeadline),
         venue: dto.venue,
         address: dto.address,
         city: dto.city,
@@ -345,8 +345,10 @@ export class EventsService {
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.ticketPrice !== undefined && { ticketPrice: dto.ticketPrice }),
-        ...(dto.registrationDeadline !== undefined && { registrationDeadline: new Date(dto.registrationDeadline) }),
-        ...(dto.paymentDeadline !== undefined && { paymentDeadline: new Date(dto.paymentDeadline) }),
+        ...(dto.registrationDeadline !== undefined && {
+          registrationDeadline: endOfDayInEventTimezone(dto.registrationDeadline),
+        }),
+        ...(dto.paymentDeadline !== undefined && { paymentDeadline: endOfDayInEventTimezone(dto.paymentDeadline) }),
         ...(dto.venue !== undefined && { venue: dto.venue }),
         ...(dto.address !== undefined && { address: dto.address }),
         ...(dto.city !== undefined && { city: dto.city }),

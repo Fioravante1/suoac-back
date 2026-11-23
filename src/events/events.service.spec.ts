@@ -191,6 +191,26 @@ describe('EventsService', () => {
       );
     });
 
+    it('deve gravar os prazos no fim do dia em São Paulo, e não na meia-noite UTC', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+
+      await service.create(
+        circuitId,
+        buildUser(),
+        buildCreateDto({ registrationDeadline: '2026-10-12', paymentDeadline: '2026-10-19' }),
+      );
+
+      expect(prismaMock.event.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            registrationDeadline: new Date('2026-10-13T02:59:59.999Z'),
+            paymentDeadline: new Date('2026-10-20T02:59:59.999Z'),
+          }),
+        }),
+      );
+    });
+
     it('deve criar um congresso regional com 3 dias', async () => {
       const dto = buildCreateDto({
         type: 'REGIONAL_CONVENTION' as CreateEventDto['type'],
@@ -677,6 +697,23 @@ describe('EventsService', () => {
       prismaMock.event.update.mockResolvedValue(updated as never);
 
       await expect(service.update(eventId, { registrationDeadline: '2026-08-01' }, buildUser())).resolves.toBeDefined();
+    });
+
+    it('deve gravar os prazos editados no fim do dia em São Paulo', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.event.update.mockResolvedValue(event as never);
+
+      await service.update(eventId, { registrationDeadline: '2026-10-12', paymentDeadline: '2026-10-19' }, buildUser());
+
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId },
+        data: {
+          registrationDeadline: new Date('2026-10-13T02:59:59.999Z'),
+          paymentDeadline: new Date('2026-10-20T02:59:59.999Z'),
+        },
+      });
     });
 
     it('deve rejeitar CIRCUIT_ASSISTANT de editar registrationDeadline em OPEN', async () => {

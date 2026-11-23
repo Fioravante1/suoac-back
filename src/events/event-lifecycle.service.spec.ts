@@ -4,6 +4,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { EventStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
+import { endOfDayInEventTimezone } from './event-calendar.util';
 import { EventLifecycleService } from './event-lifecycle.service';
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -143,6 +144,26 @@ describe('EventLifecycleService', () => {
 
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
       expect(result).toEqual({ closed: 0, finished: 0 });
+    });
+  });
+
+  describe('virada do prazo de inscrição', () => {
+    // "Inscrições até 12/10", como a API grava o prazo. O banco é mockado: a comparação do
+    // filtro de encerramento (`registrationDeadline < now`) é refeita aqui com o mesmo operador.
+    const deadline = endOfDayInEventTimezone('2026-10-12');
+
+    it.each([
+      ['às 21h30 de 12/10 em São Paulo, quando o dia UTC já virou', '2026-10-13T00:30:00Z', false],
+      ['às 23h59 de 12/10 em São Paulo', '2026-10-13T02:59:00Z', false],
+      ['às 00h30 de 13/10 em São Paulo', '2026-10-13T03:30:00Z', true],
+    ])('%s, o prazo vencido deve ser %s', async (_moment, instant, isExpired) => {
+      const now = new Date(instant);
+
+      await service.runAutoTransitions(now);
+
+      const where = prismaMock.event.findMany.mock.calls[0]?.[0]?.where;
+      expect(where).toEqual({ status: EventStatus.OPEN, registrationDeadline: { lt: now } });
+      expect(deadline < now).toBe(isExpired);
     });
   });
 
