@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import type { Prisma } from '../generated/prisma/client';
 import { EventStatus } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
@@ -19,7 +20,8 @@ interface EventSnapshot {
 /**
  * Transicoes automaticas do ciclo de vida do evento, executadas por cron:
  *
- * 1. `OPEN -> CLOSED` quando o prazo de inscricao (`registrationDeadline`) expira.
+ * 1. `OPEN -> CLOSED` quando o prazo de inscricao (`registrationDeadline`) expira,
+ *    gravando o prazo como o momento em que as inscricoes encerraram.
  * 2. `OPEN | CLOSED -> FINISHED` a partir do dia seguinte ao ultimo dia do evento.
  *
  * O passo 2 aceita `OPEN` como origem (diferente das transicoes manuais, que
@@ -62,14 +64,24 @@ export class EventLifecycleService {
     return { closed, finished };
   }
 
-  /** `OPEN -> CLOSED` para eventos cujo prazo de inscricao ja expirou. */
+  /**
+   * `OPEN -> CLOSED` para eventos cujo prazo de inscricao ja expirou. As inscricoes
+   * encerraram no prazo, nao na hora em que o job passou: "ate 12/10" acaba no fim
+   * do dia 12, e o job so ve o evento depois da meia-noite, ja no dia 13.
+   */
   private async closeExpiredRegistrations(now: Date): Promise<number> {
     const events = await this.prisma.client.event.findMany({
       where: { status: EventStatus.OPEN, registrationDeadline: { lt: now } },
-      select: { id: true, title: true, status: true, circuitId: true },
+      select: { id: true, title: true, status: true, circuitId: true, registrationDeadline: true },
     });
 
-    return this.applyTransition(events, EventStatus.OPEN, EventStatus.CLOSED, 'REGISTRATION_DEADLINE_EXPIRED');
+    return this.applyTransition(
+      events,
+      EventStatus.OPEN,
+      EventStatus.CLOSED,
+      'REGISTRATION_DEADLINE_EXPIRED',
+      (event) => ({ registrationClosedAt: event.registrationDeadline }),
+    );
   }
 
   /**
@@ -95,27 +107,31 @@ export class EventLifecycleService {
    * Atualiza o status dos eventos e grava o audit log correspondente na mesma
    * transacao. O `expectedStatus` no `where` evita sobrescrever um evento que
    * mudou de status entre a leitura e a escrita (ex: cancelado nesse intervalo).
+   *
+   * Uma escrita por evento, porque o que acompanha o status pode depender do
+   * proprio evento (`extraData`), como o prazo que vira o encerramento.
    */
-  private async applyTransition(
-    events: EventSnapshot[],
+  private async applyTransition<TEvent extends EventSnapshot>(
+    events: TEvent[],
     expectedStatus: EventStatus | EventStatus[],
     nextStatus: EventStatus,
     reason: string,
+    extraData: (event: TEvent) => Prisma.EventUpdateManyMutationInput = () => ({}),
   ): Promise<number> {
     if (events.length === 0) {
       return 0;
     }
 
-    const ids = events.map((e) => e.id);
-
-    const [updated] = await this.prisma.client.$transaction([
+    const status = Array.isArray(expectedStatus) ? { in: expectedStatus } : expectedStatus;
+    const updates = events.map((event) =>
       this.prisma.client.event.updateMany({
-        where: {
-          id: { in: ids },
-          status: Array.isArray(expectedStatus) ? { in: expectedStatus } : expectedStatus,
-        },
-        data: { status: nextStatus },
+        where: { id: event.id, status },
+        data: { status: nextStatus, ...extraData(event) },
       }),
+    );
+
+    const results = await this.prisma.client.$transaction([
+      ...updates,
       this.prisma.client.auditLog.createMany({
         data: events.map((event) =>
           this.auditLogService.buildCreateData('UPDATE', 'Event', event.id, null, {
@@ -127,6 +143,8 @@ export class EventLifecycleService {
       }),
     ]);
 
+    const updated = results.slice(0, updates.length).reduce((total, result) => total + result.count, 0);
+
     for (const event of events) {
       this.logger.log(
         `Status do evento alterado automaticamente — id=${event.id}, ${event.status} -> ${nextStatus}, ` +
@@ -134,6 +152,6 @@ export class EventLifecycleService {
       );
     }
 
-    return updated.count;
+    return updated;
   }
 }

@@ -10,8 +10,17 @@ export interface EventResponse {
   type: string;
   ticketPrice: string;
   status: string;
+  /** Último instante do dia do prazo em São Paulo: "até 12/10" é `2026-10-13T02:59:59.999Z`. */
   registrationDeadline: Date;
+  /** Mesma regra de `registrationDeadline`. */
   paymentDeadline: Date;
+  /** Quando as inscrições abriram (a publicação do rascunho); `null` em rascunho e em evento antigo sem registro. */
+  publishedAt: Date | null;
+  /**
+   * Quando as inscrições encerraram: o encerramento manual ou, pelo ciclo de vida, o próprio prazo.
+   * `null` enquanto estão abertas e em evento antigo sem registro.
+   */
+  registrationClosedAt: Date | null;
   venue: string;
   address: string;
   city: string;

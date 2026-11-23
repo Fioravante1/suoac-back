@@ -11,11 +11,14 @@ import { EventLifecycleService } from './event-lifecycle.service';
 const CIRCUIT_ID = 'a1b2c3d4-0000-0000-0000-000000000001';
 const EVENT_ID = 'e1e2e3e4-0000-0000-0000-000000000001';
 
+const DEADLINE = new Date('2026-08-26T02:59:59.999Z');
+
 interface EventSnapshot {
   id: string;
   title: string;
   status: EventStatus;
   circuitId: string;
+  registrationDeadline: Date;
 }
 
 function buildSnapshot(overrides: Partial<EventSnapshot> = {}): EventSnapshot {
@@ -24,6 +27,7 @@ function buildSnapshot(overrides: Partial<EventSnapshot> = {}): EventSnapshot {
     title: 'Assembleia de Circuito',
     status: EventStatus.OPEN,
     circuitId: CIRCUIT_ID,
+    registrationDeadline: DEADLINE,
     ...overrides,
   };
 }
@@ -67,9 +71,37 @@ describe('EventLifecycleService', () => {
         }),
       );
       expect(prismaMock.event.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: [EVENT_ID] }, status: EventStatus.OPEN },
-        data: { status: EventStatus.CLOSED },
+        where: { id: EVENT_ID, status: EventStatus.OPEN },
+        data: { status: EventStatus.CLOSED, registrationClosedAt: DEADLINE },
       });
+    });
+
+    it('deve gravar o prazo de cada evento como o encerramento, e não a hora em que o job passou', async () => {
+      const otherDeadline = new Date('2026-08-20T02:59:59.999Z');
+      prismaMock.event.findMany
+        .mockResolvedValueOnce([
+          buildSnapshot(),
+          buildSnapshot({ id: 'e1e2e3e4-0000-0000-0000-000000000002', registrationDeadline: otherDeadline }),
+        ] as never)
+        .mockResolvedValueOnce([] as never);
+      prismaMock.$transaction.mockResolvedValueOnce([{ count: 1 }, { count: 1 }, { count: 2 }] as never);
+
+      const result = await service.runAutoTransitions(new Date('2026-08-27T12:00:00Z'));
+
+      expect(result.closed).toBe(2);
+      expect(prismaMock.event.updateMany).toHaveBeenCalledWith({
+        where: { id: 'e1e2e3e4-0000-0000-0000-000000000002', status: EventStatus.OPEN },
+        data: { status: EventStatus.CLOSED, registrationClosedAt: otherDeadline },
+      });
+    });
+
+    it('não deve contar o evento que mudou de status entre a leitura e a escrita', async () => {
+      prismaMock.event.findMany.mockResolvedValueOnce([buildSnapshot()] as never).mockResolvedValueOnce([] as never);
+      prismaMock.$transaction.mockResolvedValueOnce([{ count: 0 }, { count: 1 }] as never);
+
+      const result = await service.runAutoTransitions(new Date('2026-08-27T12:00:00Z'));
+
+      expect(result.closed).toBe(0);
     });
 
     it('deve finalizar eventos cujo último dia já passou, a partir do dia seguinte', async () => {
@@ -83,7 +115,7 @@ describe('EventLifecycleService', () => {
 
       expect(result.finished).toBe(1);
       expect(prismaMock.event.updateMany).toHaveBeenCalledWith({
-        where: { id: { in: [EVENT_ID] }, status: { in: [EventStatus.OPEN, EventStatus.CLOSED] } },
+        where: { id: EVENT_ID, status: { in: [EventStatus.OPEN, EventStatus.CLOSED] } },
         data: { status: EventStatus.FINISHED },
       });
     });

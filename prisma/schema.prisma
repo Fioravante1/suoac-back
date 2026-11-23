@@ -231,6 +231,13 @@ model Event {
   registrationDeadline DateTime @map("registration_deadline")
   paymentDeadline      DateTime @map("payment_deadline")
 
+  /// Quando as inscrições abriram: a publicação do rascunho (`DRAFT -> OPEN`).
+  /// `null` em rascunho e em evento publicado antes de a API guardar a data.
+  publishedAt          DateTime? @map("published_at")
+  /// Quando as inscrições encerraram: o encerramento manual (`OPEN -> CLOSED`) ou,
+  /// quando quem encerra é o ciclo de vida, o próprio prazo. `null` enquanto estão abertas.
+  registrationClosedAt DateTime? @map("registration_closed_at")
+
   venue        String  @db.VarChar(200)
   address      String  @db.VarChar(300)
   city         String  @db.VarChar(100)

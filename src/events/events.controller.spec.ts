@@ -21,6 +21,8 @@ function buildEvent(overrides: Partial<EventResponse> = {}): EventResponse {
     status: overrides.status ?? 'DRAFT',
     registrationDeadline: new Date('2026-06-01T00:00:00Z'),
     paymentDeadline: new Date('2026-06-15T00:00:00Z'),
+    publishedAt: overrides.publishedAt ?? null,
+    registrationClosedAt: overrides.registrationClosedAt ?? null,
     venue: overrides.venue ?? 'Salão Central',
     address: overrides.address ?? 'Rua das Flores, 100',
     city: overrides.city ?? 'São Paulo',
