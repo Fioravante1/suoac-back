@@ -822,6 +822,7 @@
           "request": {
             "method": "GET",
             "header": [],
+            "description": "Detalhe do evento, com os dias. `publishedAt` é quando as inscrições abriram (a publicação do rascunho) e `registrationClosedAt`, quando encerraram: o encerramento manual ou, pelo ciclo de vida, o próprio prazo. Os dois vêm `null` enquanto não aconteceram e em evento antigo sem registro. Os mesmos campos saem na listagem, no evento atual e nas respostas de edição e troca de status (SUC-126).",
             "url": {
               "raw": "{{baseUrl}}/events/:id",
               "host": [
@@ -885,6 +886,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Troca o status do evento: DRAFT → OPEN (publica; exige pelo menos 1 dia ativo, senão 422), OPEN → CLOSED e CLOSED → FINISHED. Outra transição responde 422.\n\nA publicação grava `publishedAt` e o encerramento grava `registrationClosedAt`, os dois com o instante da troca (SUC-126).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"OPEN\"\n}"
