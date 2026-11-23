@@ -100,7 +100,7 @@ export class EventPassengersService {
     let resolved: { passengerId: string; congregationId: string; rgHash: string };
 
     if (dto.passengerId) {
-      resolved = await this.resolveExistingPassenger(dto.passengerId);
+      resolved = await this.resolveExistingPassenger(dto.passengerId, user);
       checkCongregationPermission(user, resolved.congregationId, 'passageiros');
       await this.congregationEventStatusService.ensureNotFinalized(
         eventId,
@@ -109,11 +109,9 @@ export class EventPassengersService {
         'inscrições',
       );
     } else {
-      this.validateInlinePermissions(user);
-      const congregationId = user.congregationId!;
-      checkCongregationPermission(user, congregationId, 'passageiros');
+      const congregationId = this.resolveInlineCongregation(user, dto.congregationId);
       await this.congregationEventStatusService.ensureNotFinalized(eventId, congregationId, user, 'inscrições');
-      resolved = await this.resolveInlinePassenger(user, dto);
+      resolved = await this.resolveInlinePassenger(user, congregationId, dto);
     }
 
     const existingEnrollment = await this.prisma.client.eventPassenger.findUnique({
@@ -827,11 +825,18 @@ export class EventPassengersService {
     }
   }
 
+  /**
+   * O passageiro precisa ser do circuito de quem inscreve, e portanto do evento, que já
+   * foi conferido. Os papéis do circuito passam pela checagem de congregação, e sem esta
+   * o `passengerId` de outro circuito seria inscrito.
+   */
   private async resolveExistingPassenger(
     passengerId: string,
+    user: JwtPayload,
   ): Promise<{ passengerId: string; congregationId: string; rgHash: string }> {
     const passenger = await this.prisma.client.passenger.findUnique({
       where: { id: passengerId },
+      include: { congregation: { select: { circuitId: true } } },
     });
 
     if (!passenger) {
@@ -839,23 +844,43 @@ export class EventPassengersService {
       throw new NotFoundException('Passageiro não encontrado');
     }
 
+    checkCircuitOwnership(user, passenger.congregation.circuitId);
+
     return { passengerId: passenger.id, congregationId: passenger.congregationId, rgHash: passenger.rgHash };
   }
 
-  private validateInlinePermissions(user: JwtPayload): void {
-    if (!user.congregationId) {
-      throw new UnprocessableEntityException(
-        'Usuários sem congregação vinculada devem usar passengerId para inscrever passageiros',
-      );
+  /**
+   * Congregação do passageiro novo. Os papéis do circuito escolhem uma, que
+   * `PassengersService.create` confere: 404 se não existe e 403 se é de outro circuito.
+   * Sem escolha, vale a do usuário, quando ele tem: quem se cadastra pelo autocadastro
+   * do circuito nasce ligado à própria congregação. Os da congregação cadastram na
+   * própria, e pedir outra é 403.
+   */
+  private resolveInlineCongregation(user: JwtPayload, requestedCongregationId?: string): string {
+    const circuitCongregationId = requestedCongregationId ?? user.congregationId;
+
+    if (isCircuitRole(user.role) && circuitCongregationId) {
+      return circuitCongregationId;
     }
+
+    if (isCircuitRole(user.role)) {
+      throw new UnprocessableEntityException('Informe a congregação do passageiro novo');
+    }
+
+    if (!user.congregationId) {
+      throw new ForbiddenException('Usuário de congregação sem congregação vinculada');
+    }
+
+    checkCongregationPermission(user, requestedCongregationId ?? user.congregationId, 'passageiros');
+
+    return user.congregationId;
   }
 
   private async resolveInlinePassenger(
     user: JwtPayload,
+    congregationId: string,
     dto: CreateEventPassengerDto,
   ): Promise<{ passengerId: string; congregationId: string; rgHash: string }> {
-    const congregationId = user.congregationId!;
-
     try {
       const created = await this.passengersService.create(
         congregationId,

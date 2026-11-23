@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, Length, Min } from 'class-validator';
+import { IsISO8601, IsNotEmpty, IsNumber, IsOptional, IsString, Length, Matches, Min } from 'class-validator';
+import { CALENDAR_DATE_MESSAGE, CALENDAR_DATE_REGEX } from '../../common/validators/calendar-date.constants';
 
 export class UpdateEventDto {
   @IsOptional()
@@ -14,12 +15,14 @@ export class UpdateEventDto {
 
   @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   registrationDeadline?: string;
 
   @IsOptional()
   @IsString()
-  @IsNotEmpty()
+  @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
+  @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   paymentDeadline?: string;
 
   @IsOptional()

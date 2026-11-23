@@ -17,6 +17,8 @@ interface PrismaEvent {
   status: string;
   registrationDeadline: Date;
   paymentDeadline: Date;
+  publishedAt: Date | null;
+  registrationClosedAt: Date | null;
   venue: string;
   address: string;
   city: string;
@@ -76,6 +78,8 @@ function buildPrismaEvent(overrides: Partial<PrismaEvent> = {}): PrismaEvent {
     status: overrides.status ?? 'DRAFT',
     registrationDeadline: new Date('2026-06-01T00:00:00Z'),
     paymentDeadline: new Date('2026-06-15T00:00:00Z'),
+    publishedAt: overrides.publishedAt ?? null,
+    registrationClosedAt: overrides.registrationClosedAt ?? null,
     venue: overrides.venue ?? 'Salão Central',
     address: overrides.address ?? 'Rua das Flores, 100',
     city: overrides.city ?? 'São Paulo',
@@ -186,6 +190,26 @@ describe('EventsService', () => {
                 }),
               ],
             },
+          }),
+        }),
+      );
+    });
+
+    it('deve gravar os prazos no fim do dia em São Paulo, e não na meia-noite UTC', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+
+      await service.create(
+        circuitId,
+        buildUser(),
+        buildCreateDto({ registrationDeadline: '2026-10-12', paymentDeadline: '2026-10-19' }),
+      );
+
+      expect(prismaMock.event.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            registrationDeadline: new Date('2026-10-13T02:59:59.999Z'),
+            paymentDeadline: new Date('2026-10-20T02:59:59.999Z'),
           }),
         }),
       );
@@ -679,6 +703,23 @@ describe('EventsService', () => {
       await expect(service.update(eventId, { registrationDeadline: '2026-08-01' }, buildUser())).resolves.toBeDefined();
     });
 
+    it('deve gravar os prazos editados no fim do dia em São Paulo', async () => {
+      const event = buildPrismaEvent({ status: 'OPEN' });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.event.update.mockResolvedValue(event as never);
+
+      await service.update(eventId, { registrationDeadline: '2026-10-12', paymentDeadline: '2026-10-19' }, buildUser());
+
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId },
+        data: {
+          registrationDeadline: new Date('2026-10-13T02:59:59.999Z'),
+          paymentDeadline: new Date('2026-10-20T02:59:59.999Z'),
+        },
+      });
+    });
+
     it('deve rejeitar CIRCUIT_ASSISTANT de editar registrationDeadline em OPEN', async () => {
       const event = buildPrismaEvent({ status: 'OPEN' });
 
@@ -792,6 +833,42 @@ describe('EventsService', () => {
       expect(result.status).toBe('FINISHED');
     });
 
+    it('deve gravar quando as inscrições abriram ao publicar o rascunho, e devolver na resposta', async () => {
+      const publishedAt = new Date('2026-09-21T13:04:00Z');
+
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays({ status: 'DRAFT' }) as never);
+      prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'OPEN', publishedAt }) as never);
+
+      const result = await service.transitionStatus(eventId, { status: 'OPEN' }, buildUser());
+
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId },
+        data: { status: 'OPEN', publishedAt: expect.any(Date) },
+      });
+      expect(result.publishedAt).toEqual(publishedAt);
+    });
+
+    it('deve gravar quando as inscrições encerraram ao encerrar antes do prazo', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays({ status: 'OPEN' }) as never);
+      prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'CLOSED' }) as never);
+
+      await service.transitionStatus(eventId, { status: 'CLOSED' }, buildUser());
+
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId },
+        data: { status: 'CLOSED', registrationClosedAt: expect.any(Date) },
+      });
+    });
+
+    it('não deve mexer nos marcos das inscrições ao finalizar', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays({ status: 'CLOSED' }) as never);
+      prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'FINISHED' }) as never);
+
+      await service.transitionStatus(eventId, { status: 'FINISHED' }, buildUser());
+
+      expect(prismaMock.event.update).toHaveBeenCalledWith({ where: { id: eventId }, data: { status: 'FINISHED' } });
+    });
+
     it('deve rejeitar transição inválida DRAFT → CLOSED', async () => {
       const event = buildPrismaEventWithDays({ status: 'DRAFT' });
 
@@ -822,7 +899,7 @@ describe('EventsService', () => {
       );
     });
 
-    it('deve rejeitar DRAFT → OPEN sem dias ativos', async () => {
+    it('deve rejeitar DRAFT → OPEN sem dias ativos, sem gravar a publicação', async () => {
       const event = buildPrismaEventWithDays({ status: 'DRAFT' }, [buildEventDay({ status: 'CANCELLED' })]);
 
       prismaMock.event.findUnique.mockResolvedValue(event as never);
@@ -830,6 +907,7 @@ describe('EventsService', () => {
       await expect(service.transitionStatus(eventId, { status: 'OPEN' }, buildUser())).rejects.toThrow(
         UnprocessableEntityException,
       );
+      expect(prismaMock.event.update).not.toHaveBeenCalled();
     });
 
     it('deve lançar NotFoundException quando o evento não existe', async () => {

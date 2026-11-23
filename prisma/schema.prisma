@@ -80,10 +80,10 @@ enum ExpenseCategory {
 // ============================================================
 
 model Circuit {
-  id    String  @id @default(uuid()) @db.Uuid
-  name  String  @unique @db.VarChar(100)
-  city  String  @db.VarChar(100)
-  state String  @db.VarChar(2)
+  id    String @id @default(uuid()) @db.Uuid
+  name  String @unique @db.VarChar(100)
+  city  String @db.VarChar(100)
+  state String @db.VarChar(2)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -133,25 +133,25 @@ model Congregation {
 // ============================================================
 
 model User {
-  id                 String   @id @default(uuid()) @db.Uuid
-  name               String   @db.VarChar(150)
-  email              String   @unique @db.VarChar(255)
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String    @db.VarChar(150)
+  email              String    @unique @db.VarChar(255)
   /// Celular de contato, apenas dígitos com DDD. A máscara do desenho é
   /// apresentação: guardar `(11) 98765-4321` tornaria qualquer comparação futura
   /// dependente de formatação.
-  phone              String?  @db.VarChar(20)
-  passwordHash       String?  @map("password_hash") @db.VarChar(255)
+  phone              String?   @db.VarChar(20)
+  passwordHash       String?   @map("password_hash") @db.VarChar(255)
   /// Legado: a sessão passou para `Session` (SUC-77). Nada mais lê nem grava esta
   /// coluna; ela fica até o deploy seguinte à migration, que a remove (contract).
-  refreshTokenHash   String?  @map("refresh_token_hash") @db.VarChar(255)
+  refreshTokenHash   String?   @map("refresh_token_hash") @db.VarChar(255)
   /// Versao da sessao. Toda redefinicao ou troca de senha incrementa, e o
   /// JwtAuthGuard recusa access tokens emitidos com versao anterior — e o que
   /// mata o token roubado no instante da redefinicao, sem esperar os 15 minutos
   /// de expiracao natural.
-  sessionVersion     Int      @default(0) @map("session_version")
+  sessionVersion     Int       @default(0) @map("session_version")
   role               UserRole
-  isActive           Boolean  @default(true) @map("is_active")
-  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
   /// Aceite dos termos de uso e da política de privacidade (SUC-85): o momento e a
   /// versão (data da página `/termos`, `AAAA-MM-DD`). Nulos para quem já existia
   /// antes do registro e para quem foi criado sem aceite; ninguém é forçado a aceitar.
@@ -230,6 +230,13 @@ model Event {
 
   registrationDeadline DateTime @map("registration_deadline")
   paymentDeadline      DateTime @map("payment_deadline")
+
+  /// Quando as inscrições abriram: a publicação do rascunho (`DRAFT -> OPEN`).
+  /// `null` em rascunho e em evento publicado antes de a API guardar a data.
+  publishedAt          DateTime? @map("published_at")
+  /// Quando as inscrições encerraram: o encerramento manual (`OPEN -> CLOSED`) ou,
+  /// quando quem encerra é o ciclo de vida, o próprio prazo. `null` enquanto estão abertas.
+  registrationClosedAt DateTime? @map("registration_closed_at")
 
   venue        String  @db.VarChar(200)
   address      String  @db.VarChar(300)

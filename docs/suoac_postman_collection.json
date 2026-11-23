@@ -729,6 +729,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Cria o evento em rascunho (DRAFT), com os dias. `date`, `endDate` (congresso regional), `registrationDeadline` e `paymentDeadline` são datas no formato AAAA-MM-DD; outro formato, ou data que não existe, responde 400.\n\nO prazo vale até o fim do dia em São Paulo: `\"registrationDeadline\": \"2026-06-01\"` é gravado e devolvido como `2026-06-02T02:59:59.999Z`, o último instante de 01/06 lá (SUC-127).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"Assembleia SP 2026\",\n  \"type\": \"ASSEMBLY\",\n  \"ticketPrice\": 25.00,\n  \"registrationDeadline\": \"2026-06-01\",\n  \"paymentDeadline\": \"2026-06-15\",\n  \"venue\": \"Salão Central\",\n  \"address\": \"Rua das Flores, 100\",\n  \"city\": \"São Paulo\",\n  \"state\": \"SP\",\n  \"date\": \"2026-07-10\",\n  \"departureTime\": \"06:00\",\n  \"returnTime\": \"18:00\"\n}"
@@ -821,6 +822,7 @@
           "request": {
             "method": "GET",
             "header": [],
+            "description": "Detalhe do evento, com os dias. `publishedAt` é quando as inscrições abriram (a publicação do rascunho) e `registrationClosedAt`, quando encerraram: o encerramento manual ou, pelo ciclo de vida, o próprio prazo. Os dois vêm `null` enquanto não aconteceram e em evento antigo sem registro. Os mesmos campos saem na listagem, no evento atual e nas respostas de edição e troca de status (SUC-126).",
             "url": {
               "raw": "{{baseUrl}}/events/:id",
               "host": [
@@ -844,7 +846,7 @@
           "name": "Update Event",
           "request": {
             "method": "PATCH",
-            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.",
+            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.\n\n`registrationDeadline` e `paymentDeadline` seguem o formato AAAA-MM-DD e a regra de fim do dia em São Paulo do Create Event.",
             "header": [
               {
                 "key": "Content-Type",
@@ -884,6 +886,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Troca o status do evento: DRAFT → OPEN (publica; exige pelo menos 1 dia ativo, senão 422), OPEN → CLOSED e CLOSED → FINISHED. Outra transição responde 422.\n\nA publicação grava `publishedAt` e o encerramento grava `registrationClosedAt`, os dois com o instante da troca (SUC-126).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"OPEN\"\n}"
@@ -1507,6 +1510,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Inscreve um passageiro já cadastrado. O passageiro precisa ser do circuito do evento (403 se for de outro circuito); papéis da congregação só inscrevem passageiros da própria congregação (403).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Observação opcional\"\n}"
@@ -1555,9 +1559,10 @@
                 "value": "application/json"
               }
             ],
+            "description": "Cadastra o passageiro novo (`name` e `rg`) e o inscreve. `congregationId` é a congregação do passageiro novo. Os papéis do circuito escolhem qualquer congregação do circuito (404 se não existe; 403 se é de outro circuito); sem ela, vale a congregação do usuário, e sem nenhuma das duas a API responde 422. Os papéis da congregação cadastram na própria e podem omitir o campo; outra congregação responde 403 (SUC-128).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
+              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"congregationId\": \"{{congregationId}}\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/events/:eventId/passengers",

@@ -45,6 +45,16 @@ export class CreateEventPassengerDto {
   @Length(8, 20)
   phone?: string;
 
+  /**
+   * Congregação do passageiro novo, no cadastro com `name` e `rg`. Os papéis do circuito
+   * escolhem qualquer congregação do circuito; sem ela, vale a do usuário, e sem nenhuma
+   * das duas a API responde 422. Os da congregação cadastram na própria, e outra é
+   * recusada. Ignorada na inscrição por `passengerId`.
+   */
+  @IsOptional()
+  @IsUUID()
+  congregationId?: string;
+
   @IsOptional()
   @IsUUID('4', { each: true })
   dayIds?: string[];

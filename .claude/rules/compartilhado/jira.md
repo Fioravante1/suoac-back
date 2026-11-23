@@ -34,11 +34,15 @@ registre URL nem `cloudId` em arquivos do repositório.
   de abordagem, limite descoberto): registre como comentário no card. É o que torna a decisão
   recuperável meses depois.
 - **Mudança de contrato entre frontend e backend**: comente nos cards dos **dois** lados, não apenas
-  no do repositório onde você está. Quebra de contrato descoberta em tempo de integração é
-  retrabalho dobrado. Se o card expõe um endpoint novo, inclua método, rota, payload e códigos de
-  resposta no comentário.
-- **Trabalho fora do escopo descoberto no caminho**: crie um card novo e siga. Inchar o card atual
-  esconde esforço e atrasa o fechamento.
+  no do repositório onde você está; quando o mesmo card cobre os dois, num comentário dele. Quebra de
+  contrato descoberta em tempo de integração é retrabalho dobrado. Se o card expõe um endpoint novo,
+  inclua método, rota, payload e códigos de resposta no comentário.
+- **Trabalho descoberto no caminho** (dependência que falta, bug, parte do outro repositório): entra
+  no card em andamento, não em card novo (ver a postura do agente). Comente no card o que entrou e
+  por quê **antes** de seguir: é o comentário que mostra ao board que o escopo cresceu. Se o trabalho
+  tocar o outro lado, acrescente ao card a label dele (`backend` ou `frontend`).
+- **Card que já existe e vira parte do trabalho em andamento**: comente nele apontando o card que o
+  absorveu e mova os dois juntos, até `Concluído` depois do merge.
 - **Bloqueio**: comente dizendo o que está bloqueando e de quem ou do que depende, e deixe o card em
   `Em andamento` ou mova para `A fazer` se for parar de verdade. Bloqueio silencioso é o pior estado
   possível do board.
@@ -46,7 +50,8 @@ registre URL nem `cloudId` em arquivos do repositório.
 ## Ao concluir
 
 - A verificação obrigatória do repositório precisa passar inteira.
-- Comente no card: o que foi entregue, branch/PR, o que ficou de fora e por quê.
+- Comente no card: o que foi entregue, as branches e os PRs de cada repositório tocado, o que entrou
+  além da descrição original e o que ficou com outro card, com a chave dele.
 - `Em análise` enquanto o PR aguarda revisão; `Concluído` apenas **após o merge**.
 - Nunca feche um card cujo trabalho você não executou ou não verificou.
 
@@ -83,6 +88,8 @@ verificável ("ficar bom"), ou escopo que só existe na cabeça de quem escreveu
 ## O que não fazer
 
 - Criar card duplicado sem buscar antes.
+- Criar card para um pedaço do trabalho em andamento: a dependência que falta, o bug achado no
+  caminho ou a parte do outro repositório.
 - Usar o Jira como changelog de commits — o histórico do Git já faz isso. O card registra
   **intenção, decisão e estado**.
 - Marcar como `Concluído` algo parcialmente entregue; o correto é comentar o que falta e manter o

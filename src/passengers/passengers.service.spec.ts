@@ -157,6 +157,15 @@ describe('PassengersService', () => {
       await expect(service.create(CONGREGATION_ID, dto, buildUser())).rejects.toThrow(NotFoundException);
     });
 
+    it('deve lançar ForbiddenException quando a congregação é de outro circuito, sem criar o passageiro', async () => {
+      prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
+
+      await expect(service.create(CONGREGATION_ID, dto, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prismaMock.passenger.create).not.toHaveBeenCalled();
+    });
+
     it('deve lançar ConflictException quando o RG já existe na congregação', async () => {
       prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
       prismaMock.passenger.findUnique.mockResolvedValue(buildPrismaPassenger());
