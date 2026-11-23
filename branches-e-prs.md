@@ -18,7 +18,11 @@ desfazer commits.
   seções são obrigatórias: card, o que muda, por que, como verificar, riscos e checklist. "Nada" é
   resposta válida para riscos; deixar a seção em branco não é. Quando o PR alterar contrato de API,
   migration ou variável de ambiente, diga isso explicitamente em **riscos**.
-- Um PR por card, sempre que possível. Quando um PR carregar mais de um card — o que deve ser
-  exceção justificada —, o título leva o card principal e a seção **Card** lista todos.
+- Um PR por card em cada repositório. Card que toca os dois lados tem um PR no frontend e outro no
+  backend, com a mesma chave no título, e cada um cita o outro na seção **Card**. Quando um PR
+  carregar mais de um card — o que deve ser exceção justificada —, o título leva o card principal e
+  a seção **Card** lista todos.
+- Quando o card cresceu no caminho, **o que muda** separa o que a descrição do card pedia do que
+  entrou depois, como uma dependência ou um bug achado no caminho, e aponta os commits de cada um.
 - A verificação obrigatória do repositório precisa passar inteira antes de o trabalho ser
   considerado pronto. O comando está no `AGENTS.md` de cada repositório.
