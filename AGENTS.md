@@ -51,7 +51,7 @@ o que vale igual no backend e no frontend. **Não edite esses arquivos aqui** �
 
 | Regra (`.claude/rules/compartilhado/`) | Vale para |
 | - | - |
-| `postura-do-agente.md` | sempre — decisões são do usuário, dependências pendentes e verificação obrigatória |
+| `postura-do-agente.md` | sempre — decisões são do usuário, o card vai até o fim e verificação obrigatória |
 | `jira.md` | sempre — rastreamento obrigatório de cards no projeto `SUC` |
 | `branches-e-prs.md` | sempre — nome de branch, template de PR e regra de só commitar quando pedido explicitamente |
 | `commits.md` | sempre — Conventional Commits em português, organização por significado, sem trailer de IA |

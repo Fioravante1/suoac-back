@@ -82,7 +82,8 @@ interfaces públicas, e excluídos da cobertura por não serem código de produ�
 escoteiro: ao tocar num `.spec.ts`, se houver duplicação que o padrão resolve, migre **aquele
 arquivo** junto com a mudança. Não faça mutirão de migração nem migre arquivo que você não precisou
 tocar — refatoração ampla escondida dentro de um PR de funcionalidade torna a revisão impossível. Se
-a migração de um arquivo competir em tamanho com o trabalho da vez, ela vira card próprio.
+a migração de um arquivo competir em tamanho com o trabalho da vez, ela fica no mesmo card, mas em
+commit próprio, antes do commit da mudança que motivou o toque.
 
 ### Regras Gerais
 
