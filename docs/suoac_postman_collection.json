@@ -1510,6 +1510,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Inscreve um passageiro já cadastrado. O passageiro precisa ser do circuito do evento (403 se for de outro circuito); papéis da congregação só inscrevem passageiros da própria congregação (403).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"passengerId\": \"{{passengerId}}\",\n  \"observations\": \"Observação opcional\"\n}"
@@ -1558,9 +1559,10 @@
                 "value": "application/json"
               }
             ],
+            "description": "Cadastra o passageiro novo (`name` e `rg`) e o inscreve. `congregationId` é a congregação do passageiro novo. Os papéis do circuito escolhem qualquer congregação do circuito (404 se não existe; 403 se é de outro circuito); sem ela, vale a congregação do usuário, e sem nenhuma das duas a API responde 422. Os papéis da congregação cadastram na própria e podem omitir o campo; outra congregação responde 403 (SUC-128).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
+              "raw": "{\n  \"name\": \"Maria Santos\",\n  \"rg\": \"98.765.432-Y\",\n  \"phone\": \"11988888888\",\n  \"congregationId\": \"{{congregationId}}\",\n  \"dayIds\": [\"substituir-por-uuid-do-dia\"],\n  \"observations\": \"Criação inline\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/events/:eventId/passengers",
