@@ -41,8 +41,9 @@ describe('Contrato HTTP do evento atual do circuito (e2e)', () => {
     app
       .getHttpAdapter()
       .getInstance()
-      .addHook('onRequest', async (req: FastifyRequest & { user?: JwtPayload }) => {
+      .addHook('onRequest', (req: FastifyRequest & { user?: JwtPayload }, _reply, done) => {
         req.user = USER;
+        done();
       });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     app.useGlobalFilters(new AllExceptionsFilter());
