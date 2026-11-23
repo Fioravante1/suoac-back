@@ -729,6 +729,7 @@
                 "value": "application/json"
               }
             ],
+            "description": "Cria o evento em rascunho (DRAFT), com os dias. `date`, `endDate` (congresso regional), `registrationDeadline` e `paymentDeadline` são datas no formato AAAA-MM-DD; outro formato, ou data que não existe, responde 400.\n\nO prazo vale até o fim do dia em São Paulo: `\"registrationDeadline\": \"2026-06-01\"` é gravado e devolvido como `2026-06-02T02:59:59.999Z`, o último instante de 01/06 lá (SUC-127).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"title\": \"Assembleia SP 2026\",\n  \"type\": \"ASSEMBLY\",\n  \"ticketPrice\": 25.00,\n  \"registrationDeadline\": \"2026-06-01\",\n  \"paymentDeadline\": \"2026-06-15\",\n  \"venue\": \"Salão Central\",\n  \"address\": \"Rua das Flores, 100\",\n  \"city\": \"São Paulo\",\n  \"state\": \"SP\",\n  \"date\": \"2026-07-10\",\n  \"departureTime\": \"06:00\",\n  \"returnTime\": \"18:00\"\n}"
@@ -844,7 +845,7 @@
           "name": "Update Event",
           "request": {
             "method": "PATCH",
-            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.",
+            "description": "Atualiza campos do evento. Campos permitidos dependem do status:\n- DRAFT: title, ticketPrice, registrationDeadline, paymentDeadline, venue, address, city, state, observations\n- OPEN: title, ticketPrice, registrationDeadline*, paymentDeadline*, venue, address, city, state, observations\n  * registrationDeadline e paymentDeadline só podem ser alterados por CIRCUIT_COORDINATOR (403 para outros)\n- CLOSED: observations\n- FINISHED: nenhum campo (422)\n\nCampos imutáveis (nunca editáveis): date, endDate, type, status, circuitId, createdById.\n\n`registrationDeadline` e `paymentDeadline` seguem o formato AAAA-MM-DD e a regra de fim do dia em São Paulo do Create Event.",
             "header": [
               {
                 "key": "Content-Type",
