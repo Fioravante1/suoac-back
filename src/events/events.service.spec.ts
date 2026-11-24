@@ -76,7 +76,7 @@ function buildPrismaEvent(overrides: Partial<PrismaEvent> = {}): PrismaEvent {
     type: overrides.type ?? 'ASSEMBLY',
     ticketPrice: overrides.ticketPrice ?? { toString: () => '25.00' },
     status: overrides.status ?? 'DRAFT',
-    registrationDeadline: new Date('2026-06-01T00:00:00Z'),
+    registrationDeadline: overrides.registrationDeadline ?? new Date('2026-06-01T00:00:00Z'),
     paymentDeadline: new Date('2026-06-15T00:00:00Z'),
     publishedAt: overrides.publishedAt ?? null,
     registrationClosedAt: overrides.registrationClosedAt ?? null,
@@ -887,6 +887,36 @@ describe('EventsService', () => {
       await expect(service.transitionStatus(eventId, { status: 'DRAFT' }, buildUser())).rejects.toThrow(
         UnprocessableEntityException,
       );
+    });
+
+    it('deve reabrir as inscrições antes do prazo, apagando a data do encerramento', async () => {
+      const futureDeadline = new Date(Date.now() + 7 * 86_400_000);
+
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildPrismaEventWithDays({ status: 'CLOSED', registrationDeadline: futureDeadline }) as never,
+      );
+      prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'OPEN' }) as never);
+
+      const result = await service.transitionStatus(eventId, { status: 'OPEN' }, buildUser());
+
+      expect(result.status).toBe('OPEN');
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId },
+        data: { status: 'OPEN', registrationClosedAt: null },
+      });
+    });
+
+    it('deve recusar reabrir as inscrições depois do prazo (422), sem gravar nada', async () => {
+      const pastDeadline = new Date(Date.now() - 86_400_000);
+
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildPrismaEventWithDays({ status: 'CLOSED', registrationDeadline: pastDeadline }) as never,
+      );
+
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' }, buildUser())).rejects.toThrow(
+        new UnprocessableEntityException('O prazo de inscrição já passou: não é possível reabrir as inscrições'),
+      );
+      expect(prismaMock.event.update).not.toHaveBeenCalled();
     });
 
     it('deve rejeitar qualquer transição a partir de FINISHED', async () => {

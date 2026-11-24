@@ -32,7 +32,8 @@ const WEEKDAYS_PT = [
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN'],
   OPEN: ['CLOSED', 'CANCELLED'],
-  CLOSED: ['FINISHED'],
+  // Reabrir (CLOSED -> OPEN) so antes do prazo: a regra esta em `transitionStatus`.
+  CLOSED: ['OPEN', 'FINISHED'],
   FINISHED: [],
   CANCELLED: [],
 };
@@ -119,7 +120,8 @@ function compareCurrentEventCandidates(a: CurrentEventCandidate, b: CurrentEvent
 
 /**
  * Marcos das inscrições gravados junto com a troca manual de status: a publicação do
- * rascunho abre as inscrições, e `OPEN -> CLOSED` as encerra antes do prazo. Quando o
+ * rascunho abre as inscrições, e `OPEN -> CLOSED` as encerra antes do prazo. Reabrir
+ * (`CLOSED -> OPEN`) apaga o encerramento; a abertura continua a primeira. Quando o
  * ciclo de vida encerra no prazo, o marco é gravado por ele (`EventLifecycleService`).
  */
 function registrationMilestones(from: EventStatus, to: EventStatus, now: Date): Prisma.EventUpdateInput {
@@ -129,6 +131,10 @@ function registrationMilestones(from: EventStatus, to: EventStatus, now: Date): 
 
   if (from === EventStatus.OPEN && to === EventStatus.CLOSED) {
     return { registrationClosedAt: now };
+  }
+
+  if (from === EventStatus.CLOSED && to === EventStatus.OPEN) {
+    return { registrationClosedAt: null };
   }
 
   return {};
@@ -411,9 +417,18 @@ export class EventsService {
       throw new UnprocessableEntityException('O evento deve ter pelo menos 1 dia ativo para ser aberto');
     }
 
+    // Reabrir depois do prazo não dura: o ciclo de vida encerraria de novo na hora seguinte, e o
+    // prazo não pode ser alterado com as inscrições encerradas.
+    const now = new Date();
+    const isReopening = existing.status === EventStatus.CLOSED && dto.status === EventStatus.OPEN;
+
+    if (isReopening && existing.registrationDeadline < now) {
+      throw new UnprocessableEntityException('O prazo de inscrição já passou: não é possível reabrir as inscrições');
+    }
+
     const updated = await this.prisma.client.event.update({
       where: { id },
-      data: { status: dto.status, ...registrationMilestones(existing.status, dto.status, new Date()) },
+      data: { status: dto.status, ...registrationMilestones(existing.status, dto.status, now) },
     });
 
     this.logger.log(`Status do evento alterado — id=${id}, ${existing.status} → ${dto.status}`);
