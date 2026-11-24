@@ -1,9 +1,9 @@
-import { ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { mockDeep, type DeepMockProxy } from 'jest-mock-extended';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { AuditLogService } from '../audit-log/audit-log.service';
-import type { PrismaClient as PrismaClientType } from '../generated/prisma/client';
+import { Prisma, type PrismaClient as PrismaClientType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import { EventsService } from './events.service';
@@ -842,7 +842,7 @@ describe('EventsService', () => {
       const result = await service.transitionStatus(eventId, { status: 'OPEN' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
-        where: { id: eventId },
+        where: { id: eventId, status: 'DRAFT' },
         data: { status: 'OPEN', publishedAt: expect.any(Date) },
       });
       expect(result.publishedAt).toEqual(publishedAt);
@@ -855,7 +855,7 @@ describe('EventsService', () => {
       await service.transitionStatus(eventId, { status: 'CLOSED' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
-        where: { id: eventId },
+        where: { id: eventId, status: 'OPEN' },
         data: { status: 'CLOSED', registrationClosedAt: expect.any(Date) },
       });
     });
@@ -866,7 +866,10 @@ describe('EventsService', () => {
 
       await service.transitionStatus(eventId, { status: 'FINISHED' }, buildUser());
 
-      expect(prismaMock.event.update).toHaveBeenCalledWith({ where: { id: eventId }, data: { status: 'FINISHED' } });
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: eventId, status: 'CLOSED' },
+        data: { status: 'FINISHED' },
+      });
     });
 
     it('deve rejeitar transição inválida DRAFT → CLOSED', async () => {
@@ -902,7 +905,7 @@ describe('EventsService', () => {
 
       expect(result.status).toBe('OPEN');
       expect(prismaMock.event.update).toHaveBeenCalledWith({
-        where: { id: eventId },
+        where: { id: eventId, status: 'CLOSED' },
         data: { status: 'OPEN', registrationClosedAt: null },
       });
     });
@@ -922,6 +925,20 @@ describe('EventsService', () => {
         where: { id: eventId, eventDays: { some: { date: { gte: expect.any(Date) } } } },
       });
       expect(prismaMock.event.update).not.toHaveBeenCalled();
+    });
+
+    it('deve responder 409 quando o status mudou entre a leitura e a gravação, sem sobrescrever', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEventWithDays({ status: 'OPEN' }) as never);
+      prismaMock.event.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record to update not found', { code: 'P2025', clientVersion: '7' }),
+      );
+
+      await expect(service.transitionStatus(eventId, { status: 'CLOSED' }, buildUser())).rejects.toThrow(
+        new ConflictException('O status do evento mudou nesse meio-tempo. Confira o evento e tente de novo.'),
+      );
+      expect(prismaMock.event.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: eventId, status: 'OPEN' } }),
+      );
     });
 
     it('deve recusar reabrir as inscrições depois do prazo (422), sem gravar nada', async () => {

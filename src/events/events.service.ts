@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -10,7 +11,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
-import type { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { EventStatus, EventType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
@@ -431,9 +432,9 @@ export class EventsService {
       throw new UnprocessableEntityException('O evento já terminou: não é possível reabrir as inscrições');
     }
 
-    const updated = await this.prisma.client.event.update({
-      where: { id },
-      data: { status: dto.status, ...registrationMilestones(existing.status, dto.status, now) },
+    const updated = await this.updateWhileStatus(id, existing.status, {
+      status: dto.status,
+      ...registrationMilestones(existing.status, dto.status, now),
     });
 
     this.logger.log(`Status do evento alterado — id=${id}, ${existing.status} → ${dto.status}`);
@@ -452,6 +453,27 @@ export class EventsService {
     });
 
     return count > 0;
+  }
+
+  /**
+   * Grava a troca só se o evento ainda está no status lido. Uma escrita incondicional
+   * sobrescreveria outra troca feita no meio, como o ciclo de vida finalizando o evento, e o
+   * evento voltaria a um status que já deixou.
+   */
+  private async updateWhileStatus(
+    id: string,
+    status: EventStatus,
+    data: Prisma.EventUpdateInput,
+  ): Promise<EventRecord> {
+    try {
+      return await this.prisma.client.event.update({ where: { id, status }, data });
+    } catch (err: unknown) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) {
+        throw err;
+      }
+
+      throw new ConflictException('O status do evento mudou nesse meio-tempo. Confira o evento e tente de novo.');
+    }
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
