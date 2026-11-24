@@ -418,12 +418,17 @@ export class EventsService {
     }
 
     // Reabrir depois do prazo não dura: o ciclo de vida encerraria de novo na hora seguinte, e o
-    // prazo não pode ser alterado com as inscrições encerradas.
+    // prazo não pode ser alterado com as inscrições encerradas. Com o evento já terminado também
+    // não: o prazo pode ter sido posto depois do evento, e o ciclo de vida o finalizaria.
     const now = new Date();
     const isReopening = existing.status === EventStatus.CLOSED && dto.status === EventStatus.OPEN;
 
     if (isReopening && existing.registrationDeadline < now) {
       throw new UnprocessableEntityException('O prazo de inscrição já passou: não é possível reabrir as inscrições');
+    }
+
+    if (isReopening && !(await this.hasNotEnded(id, now))) {
+      throw new UnprocessableEntityException('O evento já terminou: não é possível reabrir as inscrições');
     }
 
     const updated = await this.prisma.client.event.update({
@@ -439,6 +444,14 @@ export class EventsService {
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updated);
+  }
+
+  private async hasNotEnded(id: string, now: Date): Promise<boolean> {
+    const count = await this.prisma.client.event.count({
+      where: { id, ...notEndedEventWhere(startOfTodayInEventTimezone(now)) },
+    });
+
+    return count > 0;
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {

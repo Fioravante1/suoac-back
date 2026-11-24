@@ -895,6 +895,7 @@ describe('EventsService', () => {
       prismaMock.event.findUnique.mockResolvedValue(
         buildPrismaEventWithDays({ status: 'CLOSED', registrationDeadline: futureDeadline }) as never,
       );
+      prismaMock.event.count.mockResolvedValue(1);
       prismaMock.event.update.mockResolvedValue(buildPrismaEvent({ status: 'OPEN' }) as never);
 
       const result = await service.transitionStatus(eventId, { status: 'OPEN' }, buildUser());
@@ -904,6 +905,23 @@ describe('EventsService', () => {
         where: { id: eventId },
         data: { status: 'OPEN', registrationClosedAt: null },
       });
+    });
+
+    it('deve recusar reabrir as inscrições de um evento que já terminou (422), mesmo antes do prazo', async () => {
+      const futureDeadline = new Date(Date.now() + 7 * 86_400_000);
+
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildPrismaEventWithDays({ status: 'CLOSED', registrationDeadline: futureDeadline }) as never,
+      );
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await expect(service.transitionStatus(eventId, { status: 'OPEN' }, buildUser())).rejects.toThrow(
+        new UnprocessableEntityException('O evento já terminou: não é possível reabrir as inscrições'),
+      );
+      expect(prismaMock.event.count).toHaveBeenCalledWith({
+        where: { id: eventId, eventDays: { some: { date: { gte: expect.any(Date) } } } },
+      });
+      expect(prismaMock.event.update).not.toHaveBeenCalled();
     });
 
     it('deve recusar reabrir as inscrições depois do prazo (422), sem gravar nada', async () => {
