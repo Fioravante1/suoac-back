@@ -886,7 +886,7 @@
                 "value": "application/json"
               }
             ],
-            "description": "Troca o status do evento: DRAFT → OPEN (publica; exige pelo menos 1 dia ativo, senão 422), OPEN → CLOSED e CLOSED → FINISHED. Outra transição responde 422.\n\nA publicação grava `publishedAt` e o encerramento grava `registrationClosedAt`, os dois com o instante da troca (SUC-126).",
+            "description": "Troca o status do evento: DRAFT → OPEN (publica; exige pelo menos 1 dia ativo, senão 422), OPEN → CLOSED (encerra as inscrições), CLOSED → OPEN (reabre as inscrições; só antes do prazo e com o evento ainda por terminar, senão 422) e CLOSED → FINISHED. Outra transição responde 422, e 409 quando o status mudou entre a leitura e a gravação, como o ciclo de vida finalizando o evento no meio.\n\nA publicação grava `publishedAt` e o encerramento grava `registrationClosedAt`, os dois com o instante da troca (SUC-126). Reabrir apaga `registrationClosedAt`; `publishedAt` continua sendo a primeira abertura (SUC-109).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"status\": \"OPEN\"\n}"

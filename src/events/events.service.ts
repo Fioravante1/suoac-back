@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -10,7 +11,7 @@ import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import type { EventDayResponse } from '../event-days/interfaces/event-day-response.interface';
-import type { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { EventStatus, EventType } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
@@ -32,7 +33,8 @@ const WEEKDAYS_PT = [
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN'],
   OPEN: ['CLOSED', 'CANCELLED'],
-  CLOSED: ['FINISHED'],
+  // Reabrir (CLOSED -> OPEN) so antes do prazo: a regra esta em `transitionStatus`.
+  CLOSED: ['OPEN', 'FINISHED'],
   FINISHED: [],
   CANCELLED: [],
 };
@@ -119,7 +121,8 @@ function compareCurrentEventCandidates(a: CurrentEventCandidate, b: CurrentEvent
 
 /**
  * Marcos das inscrições gravados junto com a troca manual de status: a publicação do
- * rascunho abre as inscrições, e `OPEN -> CLOSED` as encerra antes do prazo. Quando o
+ * rascunho abre as inscrições, e `OPEN -> CLOSED` as encerra antes do prazo. Reabrir
+ * (`CLOSED -> OPEN`) apaga o encerramento; a abertura continua a primeira. Quando o
  * ciclo de vida encerra no prazo, o marco é gravado por ele (`EventLifecycleService`).
  */
 function registrationMilestones(from: EventStatus, to: EventStatus, now: Date): Prisma.EventUpdateInput {
@@ -129,6 +132,10 @@ function registrationMilestones(from: EventStatus, to: EventStatus, now: Date): 
 
   if (from === EventStatus.OPEN && to === EventStatus.CLOSED) {
     return { registrationClosedAt: now };
+  }
+
+  if (from === EventStatus.CLOSED && to === EventStatus.OPEN) {
+    return { registrationClosedAt: null };
   }
 
   return {};
@@ -411,9 +418,23 @@ export class EventsService {
       throw new UnprocessableEntityException('O evento deve ter pelo menos 1 dia ativo para ser aberto');
     }
 
-    const updated = await this.prisma.client.event.update({
-      where: { id },
-      data: { status: dto.status, ...registrationMilestones(existing.status, dto.status, new Date()) },
+    // Reabrir depois do prazo não dura: o ciclo de vida encerraria de novo na hora seguinte, e o
+    // prazo não pode ser alterado com as inscrições encerradas. Com o evento já terminado também
+    // não: o prazo pode ter sido posto depois do evento, e o ciclo de vida o finalizaria.
+    const now = new Date();
+    const isReopening = existing.status === EventStatus.CLOSED && dto.status === EventStatus.OPEN;
+
+    if (isReopening && existing.registrationDeadline < now) {
+      throw new UnprocessableEntityException('O prazo de inscrição já passou: não é possível reabrir as inscrições');
+    }
+
+    if (isReopening && !(await this.hasNotEnded(id, now))) {
+      throw new UnprocessableEntityException('O evento já terminou: não é possível reabrir as inscrições');
+    }
+
+    const updated = await this.updateWhileStatus(id, existing.status, {
+      status: dto.status,
+      ...registrationMilestones(existing.status, dto.status, now),
     });
 
     this.logger.log(`Status do evento alterado — id=${id}, ${existing.status} → ${dto.status}`);
@@ -424,6 +445,35 @@ export class EventsService {
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
     return this.toResponse(updated);
+  }
+
+  private async hasNotEnded(id: string, now: Date): Promise<boolean> {
+    const count = await this.prisma.client.event.count({
+      where: { id, ...notEndedEventWhere(startOfTodayInEventTimezone(now)) },
+    });
+
+    return count > 0;
+  }
+
+  /**
+   * Grava a troca só se o evento ainda está no status lido. Uma escrita incondicional
+   * sobrescreveria outra troca feita no meio, como o ciclo de vida finalizando o evento, e o
+   * evento voltaria a um status que já deixou.
+   */
+  private async updateWhileStatus(
+    id: string,
+    status: EventStatus,
+    data: Prisma.EventUpdateInput,
+  ): Promise<EventRecord> {
+    try {
+      return await this.prisma.client.event.update({ where: { id, status }, data });
+    } catch (err: unknown) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) {
+        throw err;
+      }
+
+      throw new ConflictException('O status do evento mudou nesse meio-tempo. Confira o evento e tente de novo.');
+    }
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
