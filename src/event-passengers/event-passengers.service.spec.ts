@@ -1538,6 +1538,21 @@ describe('EventPassengersService', () => {
       );
     });
 
+    it('deve usar só o título do evento, sem prefixo, para eventos do tipo OTHER', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({ type: 'OTHER', title: 'Retiro de Jovens' }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: 'Retiro de Jovens' }),
+      );
+    });
+
     it('deve usar "Usuário desconhecido" quando o requester não é encontrado', async () => {
       setupHappyPath();
       prismaMock.user.findUnique.mockResolvedValue(null);

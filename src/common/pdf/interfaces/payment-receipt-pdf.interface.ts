@@ -1,7 +1,7 @@
 export interface PaymentReceiptPdfData {
   /** Data de emissão do recibo (formatada em BRT no PDF). */
   date: Date;
-  /** Rótulo do tipo de evento (ex.: "Congresso", "Assembleia"). */
+  /** Rótulo do tipo de evento (ex.: "Congresso", "Assembleia"); vazio quando o tipo não tem prefixo. */
   eventTypeLabel: string;
   /** Nome/título do evento. */
   eventTitle: string;

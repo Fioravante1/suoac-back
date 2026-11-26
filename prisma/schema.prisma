@@ -43,6 +43,7 @@ enum AuthProvider {
 enum EventType {
   ASSEMBLY
   REGIONAL_CONVENTION
+  OTHER
 }
 
 enum EventStatus {

@@ -32,6 +32,7 @@ import { formatPhone } from '../common/phone/phone.util';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
 import type { Prisma } from '../generated/prisma/client';
 import { EventDayStatus, EventStatus, EventType, PaymentStatus } from '../generated/prisma/enums';
+import { composeEventTitle } from '../events/event-type.util';
 import { PassengersService } from '../passengers/passengers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventPassengerDto } from './dto/create-event-passenger.dto';
@@ -385,7 +386,7 @@ export class EventPassengersService {
     const multiDay = event.eventDays.length > 1;
 
     const data: PassengerListPdfData = {
-      eventTitle: `${this.getEventTypeLabel(event.type)} ${event.title}`,
+      eventTitle: composeEventTitle(event.type, event.title),
       eventVenue: event.venue,
       eventCity: event.city,
       eventState: event.state,
@@ -534,18 +535,6 @@ export class EventPassengersService {
     }
 
     return [...blocks.values()];
-  }
-
-  /**
-   * Rótulo legível do tipo de evento, usado para compor o título no PDF
-   * (ex.: "Congresso Felicidade Eterna", "Assembleia Ouça o que o espírito...").
-   */
-  private getEventTypeLabel(type: EventType): string {
-    const labels: Record<EventType, string> = {
-      [EventType.REGIONAL_CONVENTION]: 'Congresso',
-      [EventType.ASSEMBLY]: 'Assembleia',
-    };
-    return labels[type];
   }
 
   async findOne(id: string, user: JwtPayload): Promise<EventPassengerResponse> {

@@ -589,6 +589,22 @@ describe('PaymentsService', () => {
       );
     });
 
+    it('deve deixar vazio o rótulo do recibo de um evento do tipo OTHER', async () => {
+      const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
+      mockReceiptData();
+      prismaMock.event.findUnique.mockResolvedValue({
+        title: 'Retiro de Jovens',
+        type: 'OTHER',
+        circuitId: CIRCUIT_ID,
+      } as never);
+
+      await service.generateReceipt(CIRCUIT_ID, EVENT_ID, user, CONGREGATION_ID);
+
+      expect(pdfServiceMock.generatePaymentReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTypeLabel: '', eventTitle: 'Retiro de Jovens' }),
+      );
+    });
+
     it('deve registrar audit log de EXPORT', async () => {
       const user = buildUser({ role: 'CIRCUIT_COORDINATOR', congregationId: null });
       mockReceiptData();
