@@ -304,6 +304,93 @@ describe('EventsService', () => {
       );
     });
 
+    it('deve criar um evento do tipo Outro sem endDate com 1 dia', async () => {
+      const dto = buildCreateDto({ type: 'OTHER' as CreateEventDto['type'], endDate: undefined });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+
+      await service.create(circuitId, buildUser(), dto);
+
+      expect(prismaMock.event.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'OTHER',
+            eventDays: { create: [expect.objectContaining({ dayNumber: 1, label: 'Dia 1 - Sexta-feira' })] },
+          }),
+        }),
+      );
+    });
+
+    it('deve criar um evento do tipo Outro com um dia por data quando há endDate', async () => {
+      const dto = buildCreateDto({
+        type: 'OTHER' as CreateEventDto['type'],
+        date: '2026-07-10',
+        endDate: '2026-07-11',
+      });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+
+      await service.create(circuitId, buildUser(), dto);
+
+      expect(prismaMock.event.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            eventDays: {
+              create: [
+                expect.objectContaining({ dayNumber: 1, label: 'Dia 1 - Sexta-feira' }),
+                expect.objectContaining({ dayNumber: 2, label: 'Dia 2 - Sábado' }),
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    it('deve lançar UnprocessableEntityException quando endDate < date para o tipo Outro', async () => {
+      const dto = buildCreateDto({
+        type: 'OTHER' as CreateEventDto['type'],
+        date: '2026-07-12',
+        endDate: '2026-07-10',
+      });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+
+      await expect(service.create(circuitId, buildUser(), dto)).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('deve aceitar um evento do tipo Outro de 7 dias e recusar o de 8', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+      const other = { type: 'OTHER' as CreateEventDto['type'], date: '2026-07-10' };
+
+      await expect(
+        service.create(circuitId, buildUser(), buildCreateDto({ ...other, endDate: '2026-07-16' })),
+      ).resolves.toBeDefined();
+      await expect(
+        service.create(circuitId, buildUser(), buildCreateDto({ ...other, endDate: '2026-07-17' })),
+      ).rejects.toThrow('Um evento do tipo Outro tem no máximo 7 dias');
+    });
+
+    it('deve aceitar endDate nulo no tipo Outro como evento de 1 dia', async () => {
+      const dto = buildCreateDto({
+        type: 'OTHER' as CreateEventDto['type'],
+        endDate: null as unknown as undefined,
+      });
+
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.event.create.mockResolvedValue(buildPrismaEventWithDays() as never);
+
+      await service.create(circuitId, buildUser(), dto);
+
+      expect(prismaMock.event.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ eventDays: { create: [expect.objectContaining({ dayNumber: 1 })] } }),
+        }),
+      );
+    });
+
     it('deve lançar NotFoundException quando o circuito não existe', async () => {
       prismaMock.circuit.findUnique.mockResolvedValue(null);
 

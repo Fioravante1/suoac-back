@@ -12,6 +12,11 @@ import {
 } from 'class-validator';
 import { CALENDAR_DATE_MESSAGE, CALENDAR_DATE_REGEX } from '../../common/validators/calendar-date.constants';
 import { EventType } from '../../generated/prisma/enums';
+import { requiresEndDate, usesEndDate } from '../event-type.util';
+
+function isPresent(value: string | null | undefined): boolean {
+  return value !== undefined && value !== null;
+}
 
 export class CreateEventDto {
   @IsString()
@@ -65,7 +70,7 @@ export class CreateEventDto {
   @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })
   date!: string;
 
-  @ValidateIf((o: CreateEventDto) => o.type === EventType.REGIONAL_CONVENTION)
+  @ValidateIf((o: CreateEventDto) => requiresEndDate(o.type) || (usesEndDate(o.type) && isPresent(o.endDate)))
   @IsString()
   @Matches(CALENDAR_DATE_REGEX, { message: CALENDAR_DATE_MESSAGE })
   @IsISO8601({ strict: true }, { message: CALENDAR_DATE_MESSAGE })

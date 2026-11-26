@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsISO8601,
   IsNumber,
   IsOptional,
@@ -56,6 +58,8 @@ export class CreateEventPassengerDto {
   congregationId?: string;
 
   @IsOptional()
+  @IsArray()
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   dayIds?: string[];
 

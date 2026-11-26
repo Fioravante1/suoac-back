@@ -58,6 +58,39 @@ describe('CreateEventDto', () => {
 
     expect(await messagesByField(plainToInstance(CreateEventDto, raw))).toEqual({});
   });
+
+  describe('tipo OTHER', () => {
+    it('deve aceitar o tipo com endDate', async () => {
+      const raw = buildRaw({ type: EventType.OTHER });
+
+      expect(await messagesByField(plainToInstance(CreateEventDto, raw))).toEqual({});
+    });
+
+    it('deve aceitar o tipo sem endDate', async () => {
+      const raw = buildRaw({ type: EventType.OTHER, endDate: undefined });
+
+      expect(await messagesByField(plainToInstance(CreateEventDto, raw))).toEqual({});
+    });
+
+    it('deve aceitar endDate nulo, como a assembleia', async () => {
+      const raw = buildRaw({ type: EventType.OTHER, endDate: null });
+
+      expect(await messagesByField(plainToInstance(CreateEventDto, raw))).toEqual({});
+    });
+
+    it('deve validar o formato do endDate quando ele vem', async () => {
+      const raw = buildRaw({ type: EventType.OTHER, endDate: '25/10/2026' });
+      const messages = await messagesByField(plainToInstance(CreateEventDto, raw));
+
+      expect(messages['endDate']).toContain('endDate deve ser uma data no formato AAAA-MM-DD');
+    });
+  });
+
+  it('deve recusar um tipo fora do enum', async () => {
+    const messages = await messagesByField(plainToInstance(CreateEventDto, buildRaw({ type: 'WORKSHOP' })));
+
+    expect(messages['type']).toBeDefined();
+  });
 });
 
 describe('UpdateEventDto', () => {

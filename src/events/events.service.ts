@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateEventDto } from './dto/create-event.dto';
 import type { TransitionEventStatusDto } from './dto/transition-event-status.dto';
 import type { UpdateEventDto } from './dto/update-event.dto';
+import { addEventDays, countEventDays, MAX_OTHER_EVENT_DAYS, requiresEndDate, usesEndDate } from './event-type.util';
 import { endOfDayInEventTimezone, notEndedEventWhere, startOfTodayInEventTimezone } from './event-calendar.util';
 import type { EventResponse, EventWithDaysResponse } from './interfaces/event-response.interface';
 
@@ -187,12 +188,16 @@ export class EventsService {
 
     const startDate = new Date(`${dto.date}T00:00:00Z`);
 
-    if (dto.type === EventType.REGIONAL_CONVENTION && !dto.endDate) {
+    if (requiresEndDate(dto.type) && !dto.endDate) {
       throw new UnprocessableEntityException('endDate é obrigatório para congressos regionais');
     }
 
-    if (dto.type === EventType.REGIONAL_CONVENTION && dto.endDate && new Date(`${dto.endDate}T00:00:00Z`) < startDate) {
+    if (usesEndDate(dto.type) && dto.endDate && new Date(`${dto.endDate}T00:00:00Z`) < startDate) {
       throw new UnprocessableEntityException('endDate deve ser maior ou igual a date');
+    }
+
+    if (dto.type === EventType.OTHER && countEventDays(dto.type, dto.date, dto.endDate) > MAX_OTHER_EVENT_DAYS) {
+      throw new UnprocessableEntityException(`Um evento do tipo Outro tem no máximo ${MAX_OTHER_EVENT_DAYS} dias`);
     }
 
     const days = this.generateDays(dto);
@@ -554,45 +559,19 @@ export class EventsService {
     departureTime: string;
     returnTime: string;
   }> {
-    const days: Array<{
-      dayNumber: number;
-      date: Date;
-      label: string;
-      departureTime: string;
-      returnTime: string;
-    }> = [];
+    const totalDays = countEventDays(dto.type, dto.date, dto.endDate);
 
-    const startDate = new Date(`${dto.date}T00:00:00Z`);
+    return Array.from({ length: totalDays }, (_, offset) => {
+      const date = addEventDays(dto.date, offset);
 
-    if (dto.type === EventType.ASSEMBLY) {
-      const weekday = WEEKDAYS_PT[startDate.getUTCDay()]!;
-      days.push({
-        dayNumber: 1,
-        date: startDate,
-        label: `Dia 1 - ${weekday}`,
+      return {
+        dayNumber: offset + 1,
+        date,
+        label: `Dia ${offset + 1} - ${WEEKDAYS_PT[date.getUTCDay()]!}`,
         departureTime: dto.departureTime,
         returnTime: dto.returnTime,
-      });
-    } else {
-      const endDate = new Date(`${dto.endDate!}T00:00:00Z`);
-      let dayNumber = 1;
-      const current = new Date(startDate);
-
-      while (current <= endDate) {
-        const weekday = WEEKDAYS_PT[current.getUTCDay()]!;
-        days.push({
-          dayNumber,
-          date: new Date(current),
-          label: `Dia ${dayNumber} - ${weekday}`,
-          departureTime: dto.departureTime,
-          returnTime: dto.returnTime,
-        });
-        dayNumber++;
-        current.setUTCDate(current.getUTCDate() + 1);
-      }
-    }
-
-    return days;
+      };
+    });
   }
 
   private toResponse(event: EventRecord): EventResponse {

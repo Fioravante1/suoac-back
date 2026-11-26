@@ -21,7 +21,8 @@ import { paymentStatusFromAmounts } from '../common/money/payment-status.util';
 import { PdfService } from '../common/pdf/pdf.service';
 import { XlsxService } from '../common/xlsx/xlsx.service';
 import { CongregationEventStatusService } from '../congregation-event-status/congregation-event-status.service';
-import { EventStatus, EventType, PaymentStatus, UserRole } from '../generated/prisma/enums';
+import { EventStatus, PaymentStatus, UserRole } from '../generated/prisma/enums';
+import { getEventTypeLabel } from '../events/event-type.util';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreatePaymentDto } from './dto/create-payment.dto';
 import type { ExportEventPaymentsQueryDto } from './dto/export-event-payments-query.dto';
@@ -268,7 +269,7 @@ export class PaymentsService {
 
     const buffer = await this.pdfService.generatePaymentReceipt({
       date: new Date(),
-      eventTypeLabel: this.getEventTypeLabel(event.type),
+      eventTypeLabel: getEventTypeLabel(event.type),
       eventTitle: event.title,
       congregationName: congregation.name,
       totalReceived,
@@ -373,14 +374,6 @@ export class PaymentsService {
         ...(scope ? { congregationId: scope } : {}),
       },
     };
-  }
-
-  private getEventTypeLabel(type: EventType): string {
-    const labels: Record<EventType, string> = {
-      [EventType.REGIONAL_CONVENTION]: 'Congresso',
-      [EventType.ASSEMBLY]: 'Assembleia',
-    };
-    return labels[type];
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {

@@ -645,11 +645,11 @@ describe('EventPassengersService', () => {
       );
     });
 
-    it('deve lançar UnprocessableEntityException quando dayIds ausente para congresso regional', async () => {
+    it('deve lançar UnprocessableEntityException quando dayIds ausente para congresso regional com vários dias', async () => {
       const user = buildUser();
       const event = buildEvent({
         type: 'REGIONAL_CONVENTION',
-        eventDays: [buildEventDay({ id: DAY_ID_1 })],
+        eventDays: [buildEventDay({ id: DAY_ID_1 }), buildEventDay({ id: DAY_ID_2, dayNumber: 2 })],
       });
       const passenger = buildPassenger();
 
@@ -659,6 +659,58 @@ describe('EventPassengersService', () => {
       prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
 
       await expect(service.create(EVENT_ID, user, { passengerId: PASSENGER_ID })).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it.each(['OTHER', 'REGIONAL_CONVENTION'])(
+      'deve auto-selecionar o único dia ACTIVE para o tipo %s sem dayIds',
+      async (type) => {
+        const event = buildEvent({ type });
+
+        prismaMock.event.findUnique.mockResolvedValue(event as never);
+        prismaMock.passenger.findUnique.mockResolvedValue(buildPassenger());
+        prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+        prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+        prismaMock.eventPassenger.create.mockResolvedValue(buildEventPassenger() as never);
+
+        await service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID });
+
+        expect(prismaMock.eventPassenger.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              eventPassengerDays: { create: [{ eventDayId: DAY_ID_1 }] },
+            }),
+          }),
+        );
+      },
+    );
+
+    it('deve dizer que não há dias ativos, e não pedir dayIds, quando o único dia do tipo Outro está cancelado', async () => {
+      const event = buildEvent({ type: 'OTHER', eventDays: [buildEventDay({ status: 'CANCELLED' })] });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(buildPassenger());
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+
+      await expect(service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID })).rejects.toThrow(
+        'O evento não possui dias ativos',
+      );
+    });
+
+    it('deve lançar UnprocessableEntityException quando dayIds ausente para o tipo Outro com vários dias', async () => {
+      const event = buildEvent({
+        type: 'OTHER',
+        eventDays: [buildEventDay({ id: DAY_ID_1 }), buildEventDay({ id: DAY_ID_2 })],
+      });
+
+      prismaMock.event.findUnique.mockResolvedValue(event as never);
+      prismaMock.passenger.findUnique.mockResolvedValue(buildPassenger());
+      prismaMock.eventPassenger.findUnique.mockResolvedValue(null);
+      prismaMock.eventPassenger.findFirst.mockResolvedValue(null);
+
+      await expect(service.create(EVENT_ID, buildUser(), { passengerId: PASSENGER_ID })).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -1535,6 +1587,21 @@ describe('EventPassengersService', () => {
 
       expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
         expect.objectContaining({ eventTitle: 'Congresso Felicidade Eterna' }),
+      );
+    });
+
+    it('deve usar só o título do evento, sem prefixo, para eventos do tipo OTHER', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildEventWithCircuit({ type: 'OTHER', title: 'Retiro de Jovens' }) as never,
+      );
+      prismaMock.user.findUnique.mockResolvedValue({ name: 'João Coordenador' } as never);
+      prismaMock.eventPassenger.count.mockResolvedValue(1);
+      prismaMock.eventPassenger.findMany.mockResolvedValue([buildEnrollment()] as never);
+
+      await service.exportPdf(CIRCUIT_ID, EVENT_ID, circuitUser(), BOARDING);
+
+      expect(pdfServiceMock.generatePassengerList).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: 'Retiro de Jovens' }),
       );
     });
 

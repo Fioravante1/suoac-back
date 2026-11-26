@@ -84,7 +84,7 @@ Facilitar o gerenciamento de inscrições, pagamentos e logística de transporte
 Campos obrigatórios ao criar um evento:
 
 - **Título do evento** (ex: "Assembleia de Circuito - Janeiro 2026")
-- **Tipo de evento:** Assembleia ou Congresso Regional
+- **Tipo de evento:** Assembleia, Congresso Regional ou Outro (título livre; 1 dia, ou até 7 dias com data de término opcional)
 - **Quantidade de dias do evento:** 1 dia (assembleia) ou múltiplos dias (congresso)
 - **Datas do evento:** para eventos de 1 dia, uma data. Para eventos multi-dia, data de início e data de término. O sistema deve gerar automaticamente a lista de dias do evento a partir desse intervalo
 - **Local do evento:** nome, endereço, cidade, estado

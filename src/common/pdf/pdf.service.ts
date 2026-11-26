@@ -125,7 +125,9 @@ export class PdfService {
     }
 
     const valorBR = `R$ ${formatMoneyPtBR(data.totalReceived)}`;
-    const description = `Pagamento Ref. Arranjo de ônibus ${data.eventTypeLabel} ${data.eventTitle}`;
+    const description = ['Pagamento Ref. Arranjo de ônibus', data.eventTypeLabel, data.eventTitle]
+      .filter(Boolean)
+      .join(' ');
 
     // Data (à direita do rótulo "Data:")
     PdfService.drawText(page, font, this.formatDateBR(data.date), { x: 312, y: 191, size: 9 });
