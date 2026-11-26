@@ -906,20 +906,30 @@ export class EventPassengersService {
     }
   }
 
+  private selectOnlyActiveDay(activeDays: Array<{ id: string }>): string[] {
+    if (activeDays.length > 1) {
+      throw new UnprocessableEntityException('dayIds é obrigatório para eventos de mais de um dia');
+    }
+
+    return [activeDays[0]!.id];
+  }
+
   private resolveSelectedDays(
     eventType: string,
     activeDays: Array<{ id: string; status: string }>,
     dayIds?: string[],
   ): string[] {
+    if (activeDays.length === 0) {
+      throw new UnprocessableEntityException('O evento não possui dias ativos');
+    }
+
     if (eventType === EventType.ASSEMBLY) {
-      if (activeDays.length === 0) {
-        throw new UnprocessableEntityException('O evento não possui dias ativos');
-      }
       return [activeDays[0]!.id];
     }
 
-    if (!dayIds || dayIds.length === 0) {
-      throw new UnprocessableEntityException('dayIds é obrigatório para congressos regionais');
+    // Quem decide é a quantidade de dias ativos, não o tipo: com um só dia não há o que escolher.
+    if (!dayIds?.length) {
+      return this.selectOnlyActiveDay(activeDays);
     }
 
     const activeDayIds = new Set(activeDays.map((d) => d.id));
