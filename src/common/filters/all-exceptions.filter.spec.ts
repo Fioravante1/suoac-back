@@ -302,6 +302,50 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  // ── Erro com status 4xx próprio (Fastify e plugins) ──────────────
+  describe('Erro com status 4xx próprio', () => {
+    function buildStatusError(message: string, statusCode: unknown): Error {
+      return Object.assign(new Error(message), { statusCode });
+    }
+
+    it('deve responder 429 ao limite do @fastify/rate-limit, com mensagem em português', () => {
+      const { reply } = catchException(filter, buildStatusError('Rate limit exceeded, retry in 1 minute', 429));
+
+      expectResponse(reply, 429, {
+        statusCode: 429,
+        message: 'Muitas requisições em pouco tempo. Aguarde um instante e tente novamente.',
+        error: 'Too Many Requests',
+      });
+      expect(filter['logger'].error).not.toHaveBeenCalled();
+    });
+
+    it('deve repassar outro 4xx do Fastify com a mensagem original', () => {
+      const { reply } = catchException(filter, buildStatusError('Body is not valid JSON', 400));
+
+      expectResponse(reply, 400, { statusCode: 400, message: 'Body is not valid JSON', error: 'Bad Request' });
+    });
+
+    it('deve manter 500 genérico quando o status próprio é 5xx', () => {
+      const { reply } = catchException(filter, buildStatusError('upstream indisponível', 503));
+
+      expectResponse(reply, 500, {
+        statusCode: 500,
+        message: 'Erro interno do servidor',
+        error: 'Internal Server Error',
+      });
+    });
+
+    it('deve ignorar status que não é número inteiro', () => {
+      const { reply } = catchException(filter, buildStatusError('status em texto', '429'));
+
+      expectResponse(reply, 500, {
+        statusCode: 500,
+        message: 'Erro interno do servidor',
+        error: 'Internal Server Error',
+      });
+    });
+  });
+
   // ── Erro desconhecido ──────────────────────────────────────────
   describe('Erro desconhecido', () => {
     it('deve retornar 500 sem expor stacktrace', () => {

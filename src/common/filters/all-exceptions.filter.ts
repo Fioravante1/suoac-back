@@ -1,3 +1,4 @@
+import { STATUS_CODES } from 'node:http';
 import { type ArgumentsHost, Catch, type ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import type { FastifyReply } from 'fastify';
@@ -42,6 +43,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const TOO_MANY_REQUESTS_MESSAGE = 'Muitas requisições em pouco tempo. Aguarde um instante e tente novamente.';
+
+/**
+ * Erro que já traz o próprio status 4xx em `statusCode`, como os do Fastify e dos plugins
+ * dele: o `@fastify/rate-limit` lança um `Error` comum com `statusCode: 429`. Só os 4xx são
+ * aceitos; um 5xx segue genérico, para não expor detalhe interno.
+ */
+function isClientErrorWithStatus(exception: unknown): exception is Error & { statusCode: number } {
+  if (!(exception instanceof Error)) {
+    return false;
+  }
+
+  const { statusCode } = exception as { statusCode?: unknown };
+
+  return typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 500;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -75,9 +93,32 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    if (isClientErrorWithStatus(exception)) {
+      return this.handleClientErrorWithStatus(exception);
+    }
+
     return {
       statusCode: 500,
       body: { statusCode: 500, message: 'Erro interno do servidor', error: 'Internal Server Error' },
+    };
+  }
+
+  /**
+   * Erros 4xx que chegam fora da hierarquia do Nest, vindos do Fastify e dos plugins dele.
+   * Sem este caminho, a requisição barrada pelo limite (`@fastify/rate-limit`) respondia
+   * 500 "Erro interno do servidor" em vez de 429. A mensagem do plugin vem em inglês e
+   * chega ao usuário, então o 429 ganha texto próprio.
+   */
+  private handleClientErrorWithStatus(exception: Error & { statusCode: number }): {
+    statusCode: number;
+    body: ErrorResponseBody;
+  } {
+    const status = exception.statusCode;
+    const message = status === 429 ? TOO_MANY_REQUESTS_MESSAGE : exception.message;
+
+    return {
+      statusCode: status,
+      body: { statusCode: status, message, error: STATUS_CODES[status] ?? 'Client Error' },
     };
   }
 
