@@ -213,17 +213,6 @@ describe('CongregationEventStatusService', () => {
       expect(prismaMock.congregationEventStatus.upsert).not.toHaveBeenCalled();
     });
 
-    it('deve lançar ForbiddenException quando role de congregação tenta reabrir lista', async () => {
-      const user = buildUser({ role: 'CONGREGATION_COORDINATOR' });
-
-      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
-      prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
-
-      await expect(service.updateStatus(EVENT_ID, CONGREGATION_ID, user, { status: 'PENDING' })).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
     it('deve lançar ForbiddenException quando role de congregação tenta finalizar lista de outra congregação', async () => {
       const user = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'outra-congregacao' });
 
@@ -326,6 +315,19 @@ describe('CongregationEventStatusService', () => {
       ).rejects.toThrow(ForbiddenException);
       expect(prismaMock.congregationEventStatus.upsert).not.toHaveBeenCalled();
       expect(prismaMock.congregationEventStatus.delete).not.toHaveBeenCalled();
+    });
+
+    it('coordenador reabre a própria lista finalizada', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
+      prismaMock.congregationEventStatus.findUnique.mockResolvedValue(buildStatus({ status: 'FINALIZED' }) as never);
+
+      expect(
+        await service.updateStatus(EVENT_ID, CONGREGATION_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' }), {
+          status: 'PENDING',
+        }),
+      ).toMatchObject({ status: 'PENDING', id: null });
+      expect(prismaMock.congregationEventStatus.delete).toHaveBeenCalledWith({ where: { id: STATUS_ID } });
     });
   });
 });

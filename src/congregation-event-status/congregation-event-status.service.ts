@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import {
+  checkCircuitOwnership,
+  checkCongregationPermission,
+  isCircuitRole,
+} from '../common/authorization/circuit-ownership.util';
 import { CongregationListStatus, EventStatus, UserRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateCongregationEventStatusDto } from './dto/update-congregation-event-status.dto';
@@ -81,18 +85,7 @@ export class CongregationEventStatusService {
         'Apenas o coordenador do arranjo de ônibus na congregação ou o circuito pode finalizar ou reabrir a lista',
       );
     }
-
-    if (dto.status === CongregationListStatus.PENDING && !isCircuitRole(user.role)) {
-      throw new ForbiddenException('Apenas coordenadores/assistentes de circuito podem reabrir listas');
-    }
-
-    if (
-      dto.status === CongregationListStatus.FINALIZED &&
-      !isCircuitRole(user.role) &&
-      user.congregationId !== congregationId
-    ) {
-      throw new ForbiddenException('Sem permissão para finalizar a lista de outra congregação');
-    }
+    checkCongregationPermission(user, congregationId, 'lista');
 
     const currentStatus = await this.prisma.client.congregationEventStatus.findUnique({
       where: { congregationId_eventId: { congregationId, eventId } },
