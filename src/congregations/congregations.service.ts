@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
+import { checkCircuitOwnership, checkCongregationPermission } from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCongregationDto } from './dto/create-congregation.dto';
@@ -101,6 +101,7 @@ export class CongregationsService {
     }
 
     checkCircuitOwnership(user, congregation.circuitId);
+    checkCongregationPermission(user, congregation.id, 'dados');
 
     return this.toResponse(congregation);
   }

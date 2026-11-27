@@ -344,4 +344,19 @@ describe('CongregationsService', () => {
       await expect(service.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
+
+  it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)(
+    'isola leitura individual para %s',
+    async (role) => {
+      const congregation = buildPrismaCongregation();
+      prismaMock.congregation.findFirst.mockResolvedValue(congregation);
+
+      await expect(service.findOne(congregation.id, buildUser({ role, congregationId: 'outra' }))).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(
+        service.findOne(congregation.id, buildUser({ role, congregationId: congregation.id })),
+      ).resolves.toMatchObject({ id: congregation.id });
+    },
+  );
 });
