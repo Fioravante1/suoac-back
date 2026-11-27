@@ -269,7 +269,10 @@ describe('EventDaysService', () => {
       expect(result.status).toBe('CANCELLED');
       expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
       expect(prismaMock.eventDay.update).toHaveBeenCalled();
-      expect(prismaMock.event.update).toHaveBeenCalled();
+      expect(prismaMock.event.update).toHaveBeenCalledWith({
+        where: { id: dayWithEvent.eventId },
+        data: { status: 'CANCELLED', cancelledAt: expect.any(Date), cancelledById: buildUser().sub },
+      });
       expect(prismaMock.congregationEventStatus.updateMany).toHaveBeenCalled();
     });
 

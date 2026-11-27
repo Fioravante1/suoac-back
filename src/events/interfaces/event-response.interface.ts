@@ -1,5 +1,10 @@
 import type { EventDayResponse } from '../../event-days/interfaces/event-day-response.interface';
 
+export interface EventCancelledByResponse {
+  id: string;
+  name: string;
+}
+
 /**
  * Representacao de um Event na API.
  * Usado como tipo de retorno nos controllers e services.
@@ -21,6 +26,8 @@ export interface EventResponse {
    * `null` enquanto estão abertas e em evento antigo sem registro.
    */
   registrationClosedAt: Date | null;
+  cancelledAt: Date | null;
+  cancelledBy: EventCancelledByResponse | null;
   venue: string;
   address: string;
   city: string;

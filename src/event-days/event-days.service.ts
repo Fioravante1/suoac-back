@@ -133,7 +133,7 @@ export class EventDaysService {
         }),
         this.prisma.client.event.update({
           where: { id: day.eventId },
-          data: { status: 'CANCELLED' },
+          data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: user.sub },
         }),
         this.prisma.client.congregationEventStatus.updateMany({
           where: { eventId: day.eventId },

@@ -169,6 +169,7 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   accounts              Account[]
+  cancelledEvents       Event[]                   @relation("EventCancelledBy")
   createdEvents         Event[]                   @relation("EventCreatedBy")
   registeredPassengers  EventPassenger[]          @relation("RegisteredBy")
   registeredPayments    Payment[]                 @relation("PaymentRegisteredBy")
@@ -238,6 +239,10 @@ model Event {
   /// Quando as inscrições encerraram: o encerramento manual (`OPEN -> CLOSED`) ou,
   /// quando quem encerra é o ciclo de vida, o próprio prazo. `null` enquanto estão abertas.
   registrationClosedAt DateTime? @map("registration_closed_at")
+  /// Quando e por quem o evento foi cancelado; null em eventos legados.
+  cancelledAt          DateTime? @map("cancelled_at")
+  cancelledById        String?   @map("cancelled_by_id") @db.Uuid
+  cancelledBy          User?     @relation("EventCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
 
   venue        String  @db.VarChar(200)
   address      String  @db.VarChar(300)
