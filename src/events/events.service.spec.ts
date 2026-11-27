@@ -19,6 +19,9 @@ interface PrismaEvent {
   paymentDeadline: Date;
   publishedAt: Date | null;
   registrationClosedAt: Date | null;
+  cancelledAt: Date | null;
+  cancelledById: string | null;
+  cancelledBy: { id: string; name: string } | null;
   venue: string;
   address: string;
   city: string;
@@ -80,6 +83,9 @@ function buildPrismaEvent(overrides: Partial<PrismaEvent> = {}): PrismaEvent {
     paymentDeadline: new Date('2026-06-15T00:00:00Z'),
     publishedAt: overrides.publishedAt ?? null,
     registrationClosedAt: overrides.registrationClosedAt ?? null,
+    cancelledAt: overrides.cancelledAt ?? null,
+    cancelledById: overrides.cancelledById ?? null,
+    cancelledBy: overrides.cancelledBy ?? null,
     venue: overrides.venue ?? 'Salão Central',
     address: overrides.address ?? 'Rua das Flores, 100',
     city: overrides.city ?? 'São Paulo',
@@ -423,6 +429,17 @@ describe('EventsService', () => {
 
   // ── findByCircuit ─────────────────────────────────────────────
   describe('findByCircuit', () => {
+    it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)(
+      'não expõe rascunhos com filtro explícito para %s',
+      async (role) => {
+        prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+        const result = await service.findByCircuit(circuitId, 1, 20, buildUser({ role }), 'DRAFT');
+        expect(result).toEqual({ data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } });
+        expect(prismaMock.event.findMany).not.toHaveBeenCalled();
+        expect(prismaMock.event.count).not.toHaveBeenCalled();
+      },
+    );
+
     it('deve retornar lista paginada de eventos', async () => {
       const events = [buildPrismaEventWithDays(), buildPrismaEventWithDays({ id: 'e2' })];
 
@@ -463,7 +480,7 @@ describe('EventsService', () => {
 
       expect(prismaMock.event.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          include: { eventDays: { orderBy: { dayNumber: 'asc' } } },
+          include: { cancelledBy: { select: { id: true, name: true } }, eventDays: { orderBy: { dayNumber: 'asc' } } },
         }),
       );
     });
@@ -522,18 +539,18 @@ describe('EventsService', () => {
       });
     });
 
-    it('deve usar filtro de status explícito mesmo para roles restritas', async () => {
+    it('deve permitir filtro explícito de status publicado para papéis da congregação', async () => {
       const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
-      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'DRAFT' })] as never);
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'OPEN' })] as never);
       prismaMock.event.count.mockResolvedValue(1);
 
-      await service.findByCircuit(circuitId, 1, 20, congregationUser, 'DRAFT');
+      await service.findByCircuit(circuitId, 1, 20, congregationUser, 'OPEN');
 
       expect(prismaMock.event.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { circuitId, status: 'DRAFT' },
+          where: { circuitId, status: 'OPEN' },
         }),
       );
     });
@@ -799,6 +816,7 @@ describe('EventsService', () => {
       await service.update(eventId, { registrationDeadline: '2026-10-12', paymentDeadline: '2026-10-19' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId },
         data: {
           registrationDeadline: new Date('2026-10-13T02:59:59.999Z'),
@@ -847,6 +865,7 @@ describe('EventsService', () => {
 
       expect(result).toBeDefined();
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId },
         data: {},
       });
@@ -929,6 +948,7 @@ describe('EventsService', () => {
       const result = await service.transitionStatus(eventId, { status: 'OPEN' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId, status: 'DRAFT' },
         data: { status: 'OPEN', publishedAt: expect.any(Date) },
       });
@@ -942,6 +962,7 @@ describe('EventsService', () => {
       await service.transitionStatus(eventId, { status: 'CLOSED' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId, status: 'OPEN' },
         data: { status: 'CLOSED', registrationClosedAt: expect.any(Date) },
       });
@@ -954,6 +975,7 @@ describe('EventsService', () => {
       await service.transitionStatus(eventId, { status: 'FINISHED' }, buildUser());
 
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId, status: 'CLOSED' },
         data: { status: 'FINISHED' },
       });
@@ -992,6 +1014,7 @@ describe('EventsService', () => {
 
       expect(result.status).toBe('OPEN');
       expect(prismaMock.event.update).toHaveBeenCalledWith({
+        include: { cancelledBy: { select: { id: true, name: true } } },
         where: { id: eventId, status: 'CLOSED' },
         data: { status: 'OPEN', registrationClosedAt: null },
       });
@@ -1195,6 +1218,38 @@ describe('EventsService', () => {
       await expect(service.remove(event.id, buildUser({ circuitId: 'outro-circuito' }))).rejects.toThrow(
         ForbiddenException,
       );
+    });
+  });
+  describe('metadados de cancelamento', () => {
+    it('grava data e autor e retorna somente id e nome do autor', async () => {
+      const cancelledAt = new Date('2026-10-08T15:00:00Z');
+      const cancelledBy = { id: userId, name: 'Marcos Oliveira' };
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEvent({ status: 'OPEN' }) as never);
+      prismaMock.$transaction.mockResolvedValue([
+        buildPrismaEvent({ status: 'CANCELLED', cancelledAt, cancelledBy }),
+        {},
+        {},
+      ]);
+      const result = await service.cancel(eventId, buildUser());
+      expect(prismaMock.event.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: 'CANCELLED', cancelledAt: expect.any(Date), cancelledById: userId },
+        }),
+      );
+      expect(result).toMatchObject({ cancelledAt, cancelledBy });
+    });
+    it('preserva data e autor em cancelamento idempotente', async () => {
+      const cancelledAt = new Date('2026-10-08T15:00:00Z');
+      const cancelledBy = { id: 'original', name: 'Marcos Oliveira' };
+      prismaMock.event.findUnique.mockResolvedValue(
+        buildPrismaEvent({ status: 'CANCELLED', cancelledAt, cancelledBy }) as never,
+      );
+      expect(await service.cancel(eventId, buildUser())).toMatchObject({ cancelledAt, cancelledBy });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+    it('mantém null para eventos legados', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildPrismaEvent({ status: 'CANCELLED' }) as never);
+      expect(await service.cancel(eventId, buildUser())).toMatchObject({ cancelledAt: null, cancelledBy: null });
     });
   });
 });

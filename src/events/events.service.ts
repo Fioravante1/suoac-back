@@ -76,7 +76,11 @@ const ROLE_RESTRICTED_FIELDS: Record<string, Record<string, string>> = {
 };
 
 /** Os dias do evento na ordem em que acontecem: detalhe, listagem e evento atual usam a mesma. */
-const EVENT_DAYS_IN_ORDER = { eventDays: { orderBy: { dayNumber: 'asc' } } } satisfies Prisma.EventInclude;
+const EVENT_CANCELLATION = { cancelledBy: { select: { id: true, name: true } } } as const satisfies Prisma.EventInclude;
+const EVENT_DAYS_IN_ORDER = {
+  ...EVENT_CANCELLATION,
+  eventDays: { orderBy: { dayNumber: 'asc' } },
+} satisfies Prisma.EventInclude;
 
 /** Ordem dos passos da regra do evento atual: o primeiro status com candidato vence. */
 const CURRENT_EVENT_STATUS_PRIORITY: readonly EventStatus[] = [EventStatus.OPEN, EventStatus.CLOSED, EventStatus.DRAFT];
@@ -152,6 +156,8 @@ interface EventRecord {
   paymentDeadline: Date;
   publishedAt: Date | null;
   registrationClosedAt: Date | null;
+  cancelledAt: Date | null;
+  cancelledBy: { id: string; name: string } | null;
   venue: string;
   address: string;
   city: string;
@@ -246,6 +252,11 @@ export class EventsService {
     this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${user.role}`);
 
     const isRestricted = !isCircuitRole(user.role);
+    // O filtro explícito não pode abrir uma exceção à privacidade dos rascunhos.
+    if (isRestricted && status === EventStatus.DRAFT) {
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+
     const where = {
       circuitId,
       ...(status ? { status } : isRestricted && { status: { not: EventStatus.DRAFT } }),
@@ -341,7 +352,7 @@ export class EventsService {
   }
 
   async update(id: string, dto: UpdateEventDto, user: JwtPayload): Promise<EventResponse> {
-    const existing = await this.prisma.client.event.findUnique({ where: { id } });
+    const existing = await this.prisma.client.event.findUnique({ where: { id }, include: EVENT_CANCELLATION });
 
     if (!existing) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
@@ -386,6 +397,7 @@ export class EventsService {
         ...(dto.state !== undefined && { state: dto.state.toUpperCase() }),
         ...(dto.observations !== undefined && { observations: dto.observations }),
       },
+      include: EVENT_CANCELLATION,
     });
 
     this.logger.log(`Evento atualizado — id=${id}`);
@@ -471,7 +483,7 @@ export class EventsService {
     data: Prisma.EventUpdateInput,
   ): Promise<EventRecord> {
     try {
-      return await this.prisma.client.event.update({ where: { id, status }, data });
+      return await this.prisma.client.event.update({ where: { id, status }, data, include: EVENT_CANCELLATION });
     } catch (err: unknown) {
       if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025')) {
         throw err;
@@ -507,7 +519,7 @@ export class EventsService {
   }
 
   async cancel(id: string, user: JwtPayload): Promise<EventResponse> {
-    const event = await this.prisma.client.event.findUnique({ where: { id } });
+    const event = await this.prisma.client.event.findUnique({ where: { id }, include: EVENT_CANCELLATION });
 
     if (!event) {
       this.logger.warn(`Evento não encontrado — id=${id}`);
@@ -530,7 +542,8 @@ export class EventsService {
     const [updatedEvent] = await this.prisma.client.$transaction([
       this.prisma.client.event.update({
         where: { id },
-        data: { status: 'CANCELLED' },
+        data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: user.sub },
+        include: EVENT_CANCELLATION,
       }),
       this.prisma.client.eventDay.updateMany({
         where: { eventId: id, status: 'ACTIVE' },
@@ -585,6 +598,8 @@ export class EventsService {
       paymentDeadline: event.paymentDeadline,
       publishedAt: event.publishedAt,
       registrationClosedAt: event.registrationClosedAt,
+      cancelledAt: event.cancelledAt,
+      cancelledBy: event.cancelledBy ? { id: event.cancelledBy.id, name: event.cancelledBy.name } : null,
       venue: event.venue,
       address: event.address,
       city: event.city,
