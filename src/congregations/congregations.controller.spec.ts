@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CongregationsController } from './congregations.controller';
 import { CongregationsService } from './congregations.service';
@@ -180,5 +181,12 @@ describe('CongregationsController', () => {
 
       await expect(controller.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
+  });
+
+  it.each(['create', 'findByCircuit', 'update', 'remove'] as const)('restringe %s aos papéis do circuito', (method) => {
+    expect(Reflect.getMetadata(ROLES_KEY, CongregationsController.prototype[method])).toEqual([
+      'CIRCUIT_COORDINATOR',
+      'CIRCUIT_ASSISTANT',
+    ]);
   });
 });
