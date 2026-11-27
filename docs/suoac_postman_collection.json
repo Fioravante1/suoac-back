@@ -597,7 +597,8 @@
                   "value": "substituir-por-um-uuid-valido"
                 }
               ]
-            }
+            },
+            "description": "Acesso restrito a CIRCUIT_COORDINATOR e CIRCUIT_ASSISTANT; papéis da congregação recebem 403. A leitura da própria congregação continua disponível por GET /congregations/:id."
           },
           "response": []
         },
@@ -632,7 +633,8 @@
                   "value": "substituir-por-um-uuid-valido"
                 }
               ]
-            }
+            },
+            "description": "Acesso restrito a CIRCUIT_COORDINATOR e CIRCUIT_ASSISTANT; papéis da congregação recebem 403. A leitura da própria congregação continua disponível por GET /congregations/:id."
           },
           "response": []
         },
@@ -689,7 +691,8 @@
                   "value": "substituir-por-um-uuid-valido"
                 }
               ]
-            }
+            },
+            "description": "Acesso restrito a CIRCUIT_COORDINATOR e CIRCUIT_ASSISTANT; papéis da congregação recebem 403. A leitura da própria congregação continua disponível por GET /congregations/:id."
           },
           "response": []
         },
@@ -713,7 +716,8 @@
                   "value": "substituir-por-um-uuid-valido"
                 }
               ]
-            }
+            },
+            "description": "Acesso restrito a CIRCUIT_COORDINATOR e CIRCUIT_ASSISTANT; papéis da congregação recebem 403. A leitura da própria congregação continua disponível por GET /congregations/:id."
           },
           "response": []
         }
@@ -2252,7 +2256,28 @@
                 "{{congregationId}}"
               ]
             },
-            "description": "Finaliza ou reabre a lista de uma congregação para um evento. FINALIZED cria/atualiza o registro; PENDING deleta o registro (retorno à ausência implícita). Reabrir (PENDING) restrito a CC/CA."
+            "description": "Finaliza ou reabre a lista de uma congregação em evento OPEN. FINALIZED cria/atualiza o registro; PENDING remove o registro. Papéis de circuito podem alterar qualquer congregação do próprio circuito; coordenador de congregação altera somente a própria; assistente de congregação recebe 403 em ambas as direções. Evento fora de OPEN retorna 422."
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar status individual da congregação",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/events/{{eventId}}/congregation-statuses/{{congregationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "events",
+                "{{eventId}}",
+                "congregation-statuses",
+                "{{congregationId}}"
+              ]
+            },
+            "description": "Consulta a própria lista para papéis de congregação; circuito consulta qualquer congregação do próprio circuito. Retorna PENDING sem registro; 403 para outra congregação/circuito, 404 para evento ou congregação ausente/inativa e rascunho para congregação."
           },
           "response": []
         }
