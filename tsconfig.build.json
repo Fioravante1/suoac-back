@@ -4,7 +4,11 @@
     // TS 6: `@types/*` não são mais incluídos automaticamente — o build não precisa dos globais do Jest.
     "types": ["node"],
     // TS 6 (TS5011): exige `rootDir` explícito em vez de inferir o common source directory.
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // O `nest build` apaga o dist/ antes de compilar (`deleteOutDir`), mas o `.tsbuildinfo`
+    // do modo incremental ficava na raiz: no segundo build o TypeScript achava tudo em dia e
+    // não emitia nada, e o dist/ saía sem `main.js` com o comando terminando sem erro.
+    "incremental": false
   },
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma.config.ts", "prisma", "scripts"]
 }
