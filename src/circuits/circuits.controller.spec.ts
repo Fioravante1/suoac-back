@@ -35,6 +35,7 @@ describe('CircuitsController', () => {
   beforeEach(async () => {
     serviceMock = {
       findOwn: jest.fn(),
+      getSummary: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
@@ -124,5 +125,16 @@ describe('CircuitsController', () => {
 
       await expect(controller.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
+  });
+  it('delega o resumo com o usuário completo e restringe os papéis', async () => {
+    const user = buildUser();
+    const summary = { activeCongregationCount: 20, activeCoordinatorCount: 18, pendingInvitationCount: 2 };
+    serviceMock.getSummary.mockResolvedValue(summary);
+    expect(await controller.getSummary('circuit-a', user)).toEqual(summary);
+    expect(serviceMock.getSummary).toHaveBeenCalledWith('circuit-a', user);
+    expect(Reflect.getMetadata('roles', CircuitsController.prototype.getSummary)).toEqual([
+      'CIRCUIT_COORDINATOR',
+      'CIRCUIT_ASSISTANT',
+    ]);
   });
 });

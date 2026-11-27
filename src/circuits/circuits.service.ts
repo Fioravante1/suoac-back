@@ -1,10 +1,12 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
+import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
+import { UserRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateCircuitDto } from './dto/update-circuit.dto';
 import type { CircuitResponse } from './interfaces/circuit-response.interface';
+import type { CircuitSummaryResponse } from './interfaces/circuit-summary-response.interface';
 
 const CIRCUIT_SELECT = {
   id: true,
@@ -54,6 +56,22 @@ export class CircuitsService {
     checkCircuitOwnership(user, circuit.id);
 
     return this.toResponse(circuit);
+  }
+
+  async getSummary(circuitId: string, user: JwtPayload, now: Date = new Date()): Promise<CircuitSummaryResponse> {
+    if (!isCircuitRole(user.role)) {
+      throw new ForbiddenException('Apenas papéis do circuito podem consultar o resumo');
+    }
+    await this.findOne(circuitId, user);
+    this.logger.debug(`Consultando resumo do circuito — circuitId=${circuitId}`);
+    const [activeCongregationCount, activeCoordinatorCount, pendingInvitationCount] = await Promise.all([
+      this.prisma.client.congregation.count({ where: { circuitId, isActive: true } }),
+      this.prisma.client.user.count({ where: { circuitId, role: UserRole.CONGREGATION_COORDINATOR, isActive: true } }),
+      this.prisma.client.invitation.count({
+        where: { circuitId, usedAt: null, revokedAt: null, declinedAt: null, expiresAt: { gt: now } },
+      }),
+    ]);
+    return { activeCongregationCount, activeCoordinatorCount, pendingInvitationCount };
   }
 
   async update(id: string, dto: UpdateCircuitDto, user: JwtPayload): Promise<CircuitResponse> {

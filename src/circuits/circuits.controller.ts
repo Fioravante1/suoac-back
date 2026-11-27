@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
+import type { CircuitSummaryResponse } from './interfaces/circuit-summary-response.interface';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CircuitsService } from './circuits.service';
@@ -14,6 +16,27 @@ export class CircuitsController {
   @Get('me')
   async findOwn(@CurrentUser() user: JwtPayload): Promise<CircuitResponse> {
     return this.circuitsService.findOwn(user);
+  }
+
+  @Get(':circuitId/summary')
+  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
+  @ApiOkResponse({
+    description: 'Contagens de congregações ativas, coordenadores ativos e convites pendentes',
+    schema: {
+      type: 'object',
+      required: ['activeCongregationCount', 'activeCoordinatorCount', 'pendingInvitationCount'],
+      properties: {
+        activeCongregationCount: { type: 'integer' },
+        activeCoordinatorCount: { type: 'integer' },
+        pendingInvitationCount: { type: 'integer' },
+      },
+    },
+  })
+  async getSummary(
+    @Param('circuitId', ParseUUIDPipe) circuitId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CircuitSummaryResponse> {
+    return this.circuitsService.getSummary(circuitId, user);
   }
 
   @Get(':id')

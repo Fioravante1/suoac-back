@@ -224,4 +224,40 @@ describe('CircuitsService', () => {
       await expect(service.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
+  describe('getSummary', () => {
+    it('conta ativos e somente convites não usados, revogados, recusados ou expirados', async () => {
+      const now = new Date('2026-11-27T12:00:00Z');
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      prismaMock.congregation.count.mockResolvedValue(20);
+      prismaMock.user.count.mockResolvedValue(18);
+      prismaMock.invitation.count.mockResolvedValue(2);
+      expect(await service.getSummary(CIRCUIT_ID, buildUser(), now)).toEqual({
+        activeCongregationCount: 20,
+        activeCoordinatorCount: 18,
+        pendingInvitationCount: 2,
+      });
+      expect(prismaMock.congregation.count).toHaveBeenCalledWith({ where: { circuitId: CIRCUIT_ID, isActive: true } });
+      expect(prismaMock.user.count).toHaveBeenCalledWith({
+        where: { circuitId: CIRCUIT_ID, role: 'CONGREGATION_COORDINATOR', isActive: true },
+      });
+      expect(prismaMock.invitation.count).toHaveBeenCalledWith({
+        where: { circuitId: CIRCUIT_ID, usedAt: null, revokedAt: null, declinedAt: null, expiresAt: { gt: now } },
+      });
+    });
+    it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)('nega o resumo para %s', async (role) => {
+      await expect(service.getSummary(CIRCUIT_ID, buildUser({ role }))).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.congregation.count).not.toHaveBeenCalled();
+    });
+    it('nega outro circuito antes de consultar contagens', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+      await expect(service.getSummary(CIRCUIT_ID, buildUser({ circuitId: 'other' }))).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prismaMock.congregation.count).not.toHaveBeenCalled();
+    });
+    it('retorna 404 para circuito inexistente', async () => {
+      prismaMock.circuit.findUnique.mockResolvedValue(null);
+      await expect(service.getSummary(CIRCUIT_ID, buildUser())).rejects.toThrow(NotFoundException);
+    });
+  });
 });
