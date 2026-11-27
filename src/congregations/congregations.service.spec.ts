@@ -344,4 +344,38 @@ describe('CongregationsService', () => {
       await expect(service.remove('id-inexistente', buildUser())).rejects.toThrow(NotFoundException);
     });
   });
+
+  it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)(
+    'isola leitura individual para %s',
+    async (role) => {
+      const congregation = buildPrismaCongregation();
+      prismaMock.congregation.findFirst.mockResolvedValue(congregation);
+
+      await expect(service.findOne(congregation.id, buildUser({ role, congregationId: 'outra' }))).rejects.toThrow(
+        ForbiddenException,
+      );
+      await expect(
+        service.findOne(congregation.id, buildUser({ role, congregationId: congregation.id })),
+      ).resolves.toMatchObject({ id: congregation.id });
+    },
+  );
+
+  it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)(
+    'bloqueia gestão e listagem de congregações para %s',
+    async (role) => {
+      const congregation = buildPrismaCongregation();
+      const user = buildUser({ role, congregationId: congregation.id });
+
+      await expect(
+        service.create(CIRCUIT_ID, { code: '31245', name: 'Centro', email: 'centro@example.com' }, user),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(service.findByCircuit(CIRCUIT_ID, user, 1, 20)).rejects.toThrow(ForbiddenException);
+      await expect(service.update(congregation.id, { name: 'Outro nome' }, user)).rejects.toThrow(ForbiddenException);
+      await expect(service.remove(congregation.id, user)).rejects.toThrow(ForbiddenException);
+
+      expect(prismaMock.congregation.create).not.toHaveBeenCalled();
+      expect(prismaMock.congregation.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.congregation.update).not.toHaveBeenCalled();
+    },
+  );
 });

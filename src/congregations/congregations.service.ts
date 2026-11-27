@@ -1,7 +1,11 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { checkCircuitOwnership } from '../common/authorization/circuit-ownership.util';
+import {
+  checkCircuitOwnership,
+  checkCongregationPermission,
+  isCircuitRole,
+} from '../common/authorization/circuit-ownership.util';
 import type { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateCongregationDto } from './dto/create-congregation.dto';
@@ -18,6 +22,8 @@ export class CongregationsService {
   ) {}
 
   async create(circuitId: string, dto: CreateCongregationDto, user: JwtPayload): Promise<CongregationResponse> {
+    this.ensureCircuitRole(user);
+    checkCircuitOwnership(user, circuitId);
     await this.ensureCircuitExists(circuitId);
 
     const existing = await this.prisma.client.congregation.findFirst({
@@ -60,6 +66,8 @@ export class CongregationsService {
     page: number,
     limit: number,
   ): Promise<PaginatedResponse<CongregationResponse>> {
+    this.ensureCircuitRole(user);
+
     // Defense-in-depth: além do CircuitOwnershipGuard (que valida :circuitId no path),
     // o service valida o escopo pelo claim do token — nunca confiando apenas na URL.
     checkCircuitOwnership(user, circuitId);
@@ -101,11 +109,13 @@ export class CongregationsService {
     }
 
     checkCircuitOwnership(user, congregation.circuitId);
+    checkCongregationPermission(user, congregation.id, 'dados');
 
     return this.toResponse(congregation);
   }
 
   async update(id: string, dto: UpdateCongregationDto, user: JwtPayload): Promise<CongregationResponse> {
+    this.ensureCircuitRole(user);
     const current = await this.findOne(id, user);
 
     const conditions: Array<{ code: string } | { email: string }> = [];
@@ -157,6 +167,7 @@ export class CongregationsService {
   }
 
   async remove(id: string, user: JwtPayload): Promise<void> {
+    this.ensureCircuitRole(user);
     const existing = await this.findOne(id, user);
 
     const updated = await this.prisma.client.congregation.update({
@@ -172,6 +183,12 @@ export class CongregationsService {
         newValues: { ...updated, isActive: false } as unknown as Record<string, unknown>,
       })
       .catch((err: unknown) => this.logger.error({ err, entityId: id }, 'Falha ao gravar audit log'));
+  }
+
+  private ensureCircuitRole(user: JwtPayload): void {
+    if (!isCircuitRole(user.role)) {
+      throw new ForbiddenException('Apenas papéis do circuito podem gerenciar e listar congregações');
+    }
   }
 
   private toResponse(congregation: {

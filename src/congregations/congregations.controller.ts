@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
@@ -27,6 +28,7 @@ export class CongregationsController {
   constructor(private readonly congregationsService: CongregationsService) {}
 
   @Post('circuits/:circuitId/congregations')
+  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
@@ -37,6 +39,7 @@ export class CongregationsController {
   }
 
   @Get('circuits/:circuitId/congregations')
+  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
   async findByCircuit(
     @Param('circuitId', ParseUUIDPipe) circuitId: string,
     @Query() query: PaginationQueryDto,
@@ -54,6 +57,7 @@ export class CongregationsController {
   }
 
   @Patch('congregations/:id')
+  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCongregationDto,
@@ -63,6 +67,7 @@ export class CongregationsController {
   }
 
   @Delete('congregations/:id')
+  @Roles('CIRCUIT_COORDINATOR', 'CIRCUIT_ASSISTANT')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload): Promise<void> {
     return this.congregationsService.remove(id, user);

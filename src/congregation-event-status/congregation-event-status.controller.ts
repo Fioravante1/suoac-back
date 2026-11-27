@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -21,6 +21,16 @@ export class CongregationEventStatusController {
     @CurrentUser() user: JwtPayload,
   ): Promise<CongregationEventStatusResponse[]> {
     return this.congregationEventStatusService.findByEvent(eventId, user);
+  }
+
+  @Get('events/:eventId/congregation-statuses/:congregationId')
+  @ApiOkResponse({ description: 'Status da lista da congregação no evento.' })
+  async findOne(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('congregationId', ParseUUIDPipe) congregationId: string,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<CongregationEventStatusResponse> {
+    return this.congregationEventStatusService.findOne(eventId, congregationId, user);
   }
 
   @Patch('events/:eventId/congregation-statuses/:congregationId')
