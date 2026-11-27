@@ -8,7 +8,7 @@ import {
 import { AuditLogService } from '../audit-log/audit-log.service';
 import type { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { checkCircuitOwnership, isCircuitRole } from '../common/authorization/circuit-ownership.util';
-import { CongregationListStatus, EventStatus } from '../generated/prisma/enums';
+import { CongregationListStatus, EventStatus, UserRole } from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdateCongregationEventStatusDto } from './dto/update-congregation-event-status.dto';
 import type { CongregationEventStatusResponse } from './interfaces/congregation-event-status-response.interface';
@@ -74,6 +74,12 @@ export class CongregationEventStatusService {
     if (!congregation) {
       this.logger.warn(`Congregação não encontrada ou inativa — id=${congregationId}, circuitId=${event.circuitId}`);
       throw new NotFoundException('Congregação não encontrada ou não pertence a este circuito');
+    }
+
+    if (user.role === UserRole.CONGREGATION_ASSISTANT) {
+      throw new ForbiddenException(
+        'Apenas o coordenador do arranjo de ônibus na congregação ou o circuito pode finalizar ou reabrir a lista',
+      );
     }
 
     if (dto.status === CongregationListStatus.PENDING && !isCircuitRole(user.role)) {

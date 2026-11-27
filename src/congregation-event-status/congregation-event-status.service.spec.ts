@@ -315,4 +315,17 @@ describe('CongregationEventStatusService', () => {
       expect(prismaMock.congregationEventStatus.findUnique).not.toHaveBeenCalled();
     });
   });
+
+  describe('consulta e autorização individual', () => {
+    it.each(['PENDING', 'FINALIZED'] as const)('bloqueia assistente ao alterar para %s', async (status) => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
+
+      await expect(
+        service.updateStatus(EVENT_ID, CONGREGATION_ID, buildUser({ role: 'CONGREGATION_ASSISTANT' }), { status }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.congregationEventStatus.upsert).not.toHaveBeenCalled();
+      expect(prismaMock.congregationEventStatus.delete).not.toHaveBeenCalled();
+    });
+  });
 });
