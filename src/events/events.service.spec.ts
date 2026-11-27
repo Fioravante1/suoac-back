@@ -423,6 +423,17 @@ describe('EventsService', () => {
 
   // ── findByCircuit ─────────────────────────────────────────────
   describe('findByCircuit', () => {
+    it.each(['CONGREGATION_COORDINATOR', 'CONGREGATION_ASSISTANT'] as const)(
+      'não expõe rascunhos com filtro explícito para %s',
+      async (role) => {
+        prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
+        const result = await service.findByCircuit(circuitId, 1, 20, buildUser({ role }), 'DRAFT');
+        expect(result).toEqual({ data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } });
+        expect(prismaMock.event.findMany).not.toHaveBeenCalled();
+        expect(prismaMock.event.count).not.toHaveBeenCalled();
+      },
+    );
+
     it('deve retornar lista paginada de eventos', async () => {
       const events = [buildPrismaEventWithDays(), buildPrismaEventWithDays({ id: 'e2' })];
 
@@ -522,18 +533,18 @@ describe('EventsService', () => {
       });
     });
 
-    it('deve usar filtro de status explícito mesmo para roles restritas', async () => {
+    it('deve permitir filtro explícito de status publicado para papéis da congregação', async () => {
       const congregationUser = buildUser({ role: 'CONGREGATION_COORDINATOR', congregationId: 'cong-1' });
 
       prismaMock.circuit.findUnique.mockResolvedValue(buildCircuit());
-      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'DRAFT' })] as never);
+      prismaMock.event.findMany.mockResolvedValue([buildPrismaEventWithDays({ status: 'OPEN' })] as never);
       prismaMock.event.count.mockResolvedValue(1);
 
-      await service.findByCircuit(circuitId, 1, 20, congregationUser, 'DRAFT');
+      await service.findByCircuit(circuitId, 1, 20, congregationUser, 'OPEN');
 
       expect(prismaMock.event.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { circuitId, status: 'DRAFT' },
+          where: { circuitId, status: 'OPEN' },
         }),
       );
     });

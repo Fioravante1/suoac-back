@@ -246,6 +246,11 @@ export class EventsService {
     this.logger.debug(`Listando eventos — circuitId=${circuitId}, page=${page}, limit=${limit}, role=${user.role}`);
 
     const isRestricted = !isCircuitRole(user.role);
+    // O filtro explícito não pode abrir uma exceção à privacidade dos rascunhos.
+    if (isRestricted && status === EventStatus.DRAFT) {
+      return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+    }
+
     const where = {
       circuitId,
       ...(status ? { status } : isRestricted && { status: { not: EventStatus.DRAFT } }),
