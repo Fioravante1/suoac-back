@@ -541,6 +541,26 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Resumo do circuito",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/circuits/{{circuitId}}/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "circuits",
+                "{{circuitId}}",
+                "summary"
+              ]
+            },
+            "description": "Somente coordenador/assistente do circuito. 200: activeCongregationCount, activeCoordinatorCount, pendingInvitationCount. 400 UUID inválido; 401 sem sessão; 403 sem permissão; 404 circuito inexistente."
+          },
+          "response": []
         }
       ]
     },
