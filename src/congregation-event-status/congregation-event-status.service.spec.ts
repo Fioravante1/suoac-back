@@ -329,5 +329,47 @@ describe('CongregationEventStatusService', () => {
       ).toMatchObject({ status: 'PENDING', id: null });
       expect(prismaMock.congregationEventStatus.delete).toHaveBeenCalledWith({ where: { id: STATUS_ID } });
     });
+
+    it.each(['PENDING', 'FINALIZED'] as const)('consulta a própria lista %s', async (status) => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.congregation.findFirst.mockResolvedValue(buildCongregation());
+      prismaMock.congregationEventStatus.findUnique.mockResolvedValue(
+        status === 'PENDING' ? null : (buildStatus({ status }) as never),
+      );
+
+      expect(
+        await service.findOne(EVENT_ID, CONGREGATION_ID, buildUser({ role: 'CONGREGATION_ASSISTANT' })),
+      ).toMatchObject({ status, congregationId: CONGREGATION_ID });
+    });
+
+    it('não consulta outra congregação', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+
+      await expect(
+        service.findOne(EVENT_ID, CONGREGATION_ID_2, buildUser({ role: 'CONGREGATION_COORDINATOR' })),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.congregationEventStatus.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('esconde rascunho da congregação', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent({ status: 'DRAFT' }) as never);
+
+      await expect(
+        service.findOne(EVENT_ID, CONGREGATION_ID, buildUser({ role: 'CONGREGATION_COORDINATOR' })),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('retorna 404 para evento inexistente', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(null);
+
+      await expect(service.findOne(EVENT_ID, CONGREGATION_ID, buildUser())).rejects.toThrow(NotFoundException);
+    });
+
+    it('retorna 404 para congregação inativa ou de outro circuito', async () => {
+      prismaMock.event.findUnique.mockResolvedValue(buildEvent() as never);
+      prismaMock.congregation.findFirst.mockResolvedValue(null);
+
+      await expect(service.findOne(EVENT_ID, CONGREGATION_ID, buildUser())).rejects.toThrow(NotFoundException);
+    });
   });
 });

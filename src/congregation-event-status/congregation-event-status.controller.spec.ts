@@ -41,6 +41,7 @@ describe('CongregationEventStatusController', () => {
 
   beforeEach(async () => {
     serviceMock = {
+      findOne: jest.fn(),
       findByEvent: jest.fn(),
       updateStatus: jest.fn(),
       ensureNotFinalized: jest.fn(),
@@ -79,5 +80,13 @@ describe('CongregationEventStatusController', () => {
       expect(result).toEqual(expected);
       expect(serviceMock.updateStatus).toHaveBeenCalledWith(EVENT_ID, CONGREGATION_ID, user, dto);
     });
+  });
+
+  it('delega a consulta individual com o escopo do usuário', async () => {
+    const user = buildUser();
+    serviceMock.findOne.mockResolvedValue(buildStatusResponse());
+
+    expect(await controller.findOne(EVENT_ID, CONGREGATION_ID, user)).toEqual(buildStatusResponse());
+    expect(serviceMock.findOne).toHaveBeenCalledWith(EVENT_ID, CONGREGATION_ID, user);
   });
 });

@@ -55,6 +55,44 @@ export class CongregationEventStatusService {
     });
   }
 
+  /** Consulta individual sem expor listas de outras congregações. */
+  async findOne(eventId: string, congregationId: string, user: JwtPayload): Promise<CongregationEventStatusResponse> {
+    const event = await this.prisma.client.event.findUnique({ where: { id: eventId } });
+
+    if (!event) {
+      this.logger.warn(`Evento não encontrado para consulta da lista — eventId=${eventId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCircuitOwnership(user, event.circuitId);
+
+    if (!isCircuitRole(user.role) && event.status === EventStatus.DRAFT) {
+      this.logger.warn(`Evento não encontrado para consulta da lista — eventId=${eventId}`);
+      throw new NotFoundException('Evento não encontrado');
+    }
+
+    checkCongregationPermission(user, congregationId, 'status da lista');
+
+    const congregation = await this.prisma.client.congregation.findFirst({
+      where: { id: congregationId, circuitId: event.circuitId, isActive: true },
+    });
+
+    if (!congregation) {
+      this.logger.warn(
+        `Congregação não encontrada ou inativa — congregationId=${congregationId}, circuitId=${event.circuitId}`,
+      );
+      throw new NotFoundException('Congregação não encontrada ou não pertence a este circuito');
+    }
+
+    const status = await this.prisma.client.congregationEventStatus.findUnique({
+      where: { congregationId_eventId: { congregationId, eventId } },
+    });
+
+    this.logger.debug(`Consultando lista — eventId=${eventId}, congregationId=${congregationId}`);
+
+    return this.toResponse(congregation, eventId, status);
+  }
+
   async updateStatus(
     eventId: string,
     congregationId: string,
